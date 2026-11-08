@@ -81,6 +81,18 @@ export const STEPS: { id: StepId; label: string; phase: number }[] = [
   { id: 'report', label: '리포트', phase: 5 },
 ]
 
+/** 대지 경계가 바뀌었는지 비교하기 위한 짧은 식별값 */
+export function siteKey(site: Project['site']): string {
+  if (site.boundaryMode === 'drawn') {
+    const ring = site.drawn?.coordinates[0] ?? []
+    return `drawn:${ring.map(([x, y]) => `${x.toFixed(6)},${y.toFixed(6)}`).join(';')}`
+  }
+  return `parcels:${site.parcels
+    .map((p) => p.pnu)
+    .sort()
+    .join(',')}`
+}
+
 export function hasBoundary(project: Project): boolean {
   const s = project.site
   return s.boundaryMode === 'drawn' ? !!s.drawn : s.parcels.length > 0

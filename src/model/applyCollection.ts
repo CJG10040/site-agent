@@ -9,7 +9,7 @@ import { sunSummaries } from '../lib/sun'
 import type { CollectOutcome, LayerOutcome } from '../sources/collect'
 import { SOURCE_NAME } from '../sources/vworld'
 import { jimokName, useName } from './codes'
-import { makeCard, nextNumber, nowIso } from './project'
+import { makeCard, nextNumber, nowIso, siteKey } from './project'
 import type { Card, CardType, Project, SourceRecord } from './types'
 
 interface DraftFact {
@@ -211,6 +211,7 @@ export function applyCollection(project: Project, outcome: CollectOutcome, bound
 
   project.collectedAt = outcome.finishedAt
   project.collectedRadiusM = radiusM
+  project.collectedSiteKey = siteKey(site)
 
   // ── 2. 사실 카드 초안
   const layer = (id: string): LayerOutcome | undefined => outcome.layers.find((o) => o.layer.id === id)

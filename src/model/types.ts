@@ -123,6 +123,8 @@ export interface Project {
   site: Site
   collectedAt: string | null
   collectedRadiusM: number | null
+  /** 수집할 때의 대지 경계 식별값 (대지가 바뀌었는지 알기 위함) */
+  collectedSiteKey?: string | null
   collected: Record<string, CollectedLayer>
   sources: SourceRecord[]
   cards: Card[]

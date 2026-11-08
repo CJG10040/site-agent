@@ -5,6 +5,7 @@ import { FloorLegend, SunLegend } from '../components/Legends'
 import { areaM2, centerOf, radiusCircle, siteBoundary } from '../lib/geo'
 import { sunPathFeatures } from '../lib/sun'
 import { applyCollection } from '../model/applyCollection'
+import { siteKey } from '../model/project'
 import type { Project } from '../model/types'
 import { collectSiteData, type CollectProgress } from '../sources/collect'
 import { COLLECT_LAYERS, LAYER_GROUP_ORDER } from '../sources/vworldLayers'
@@ -63,6 +64,7 @@ export default function DataStep({ project, update, config, baseMap, onBaseMap, 
 
   const questionEmpty = !project.question.curiosity.trim() && project.question.lenses.length === 0
   const radiusChanged = project.collectedAt && project.collectedRadiusM !== site.radiusM
+  const siteChanged = !!project.collectedAt && !!project.collectedSiteKey && project.collectedSiteKey !== siteKey(site)
 
   const run = async () => {
     if (!boundary) return
@@ -143,6 +145,9 @@ export default function DataStep({ project, update, config, baseMap, onBaseMap, 
                 마지막 수집 {new Date(project.collectedAt).toLocaleString('ko-KR')}
                 {radiusChanged && ` · 반경이 ${project.collectedRadiusM}m에서 바뀌었습니다. 다시 수집하세요.`}
               </p>
+            )}
+            {siteChanged && !running && (
+              <p className="notice error">수집한 뒤 대지 경계가 바뀌었습니다. 지금 보이는 자료와 사실 카드는 이전 대지 기준입니다. 다시 수집하세요.</p>
             )}
             {error && <p className="notice error">{error}</p>}
           </section>

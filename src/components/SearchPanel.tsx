@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import {
   errorHint,
+  parseCoordinate,
   search,
   SEARCH_KIND_LABEL,
   VWorldError,
@@ -15,7 +16,7 @@ interface Props {
   hint?: string
 }
 
-const KINDS: SearchKind[] = ['road', 'parcel', 'place']
+const KINDS: Exclude<SearchKind, 'coord'>[] = ['road', 'parcel', 'place']
 
 interface Group {
   kind: SearchKind
@@ -31,8 +32,27 @@ export default function SearchPanel({ config, onPick, hint }: Props) {
   const run = async () => {
     const q = query.trim()
     if (!q) return
-    setBusy(true)
     setError(null)
+    const coord = parseCoordinate(q)
+    if (coord) {
+      setGroups([
+        {
+          kind: 'coord',
+          hits: [
+            {
+              id: 'coord',
+              kind: 'coord',
+              title: `위도 ${coord.lat}, 경도 ${coord.lon}`,
+              subtitle: 'WGS84 좌표로 이동',
+              lon: coord.lon,
+              lat: coord.lat,
+            },
+          ],
+        },
+      ])
+      return
+    }
+    setBusy(true)
     const settled = await Promise.allSettled(KINDS.map((k) => search(config, q, k)))
     const next: Group[] = []
     let firstError: unknown = null
@@ -67,8 +87,8 @@ export default function SearchPanel({ config, onPick, hint }: Props) {
           type="search"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="주소 또는 장소 (예: 광주 동구 충장로)"
-          aria-label="주소 또는 장소 검색"
+          placeholder="주소·장소·좌표 (예: 광주 동구 충장로 / 35.148, 126.917)"
+          aria-label="주소, 장소 또는 좌표 검색"
         />
         <button type="submit" className="btn primary" disabled={busy || !query.trim()}>
           {busy ? '검색 중…' : '검색'}

@@ -72,15 +72,16 @@ function SourceDetail({ s }: { s: SourceRecord }) {
       )}
       {s.original_url && (
         <>
-          <dt>원본</dt>
+          <dt>원본 요청</dt>
           <dd className="mono small">
             {/^https?:\/\//.test(s.original_url) ? (
-              <a href={s.original_url} target="_blank" rel="noreferrer noopener">
-                {s.original_url}
+              <a href={s.original_url} target="_blank" rel="noreferrer noopener" title={s.original_url}>
+                {s.original_url.length > 90 ? `${s.original_url.slice(0, 90)}…` : s.original_url}
               </a>
             ) : (
               s.original_url
             )}
+            <span className="muted"> (인증키 제외)</span>
           </dd>
         </>
       )}

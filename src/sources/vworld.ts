@@ -152,12 +152,29 @@ export function publicUrl(path: string, params: Record<string, string>): string 
 
 // ───────────────────────── 검색 ─────────────────────────
 
-export type SearchKind = 'road' | 'parcel' | 'place'
+export type SearchKind = 'road' | 'parcel' | 'place' | 'coord'
 
 export const SEARCH_KIND_LABEL: Record<SearchKind, string> = {
   road: '도로명 주소',
   parcel: '지번 주소',
   place: '장소',
+  coord: '좌표',
+}
+
+/**
+ * "35.148, 126.917" 또는 "126.917 35.148" 같은 입력을 좌표로 해석한다.
+ * 한국 범위(위도 33~39, 경도 124~132)로 위도·경도 순서를 판단한다.
+ */
+export function parseCoordinate(text: string): { lon: number; lat: number } | null {
+  const m = text.trim().match(/^(-?\d{1,3}(?:\.\d+)?)\s*[,\s]\s*(-?\d{1,3}(?:\.\d+)?)$/)
+  if (!m) return null
+  const a = Number(m[1])
+  const b = Number(m[2])
+  const isLat = (v: number) => v >= 33 && v <= 39
+  const isLon = (v: number) => v >= 124 && v <= 132
+  if (isLat(a) && isLon(b)) return { lat: a, lon: b }
+  if (isLon(a) && isLat(b)) return { lat: b, lon: a }
+  return null
 }
 
 export interface SearchHit {
