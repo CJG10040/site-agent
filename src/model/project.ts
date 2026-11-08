@@ -127,6 +127,14 @@ export function stepStatus(project: Project, step: StepId): { done: boolean; not
       const differ = obs.filter((c) => c.observation?.links.some((l) => l.relation === 'differ')).length
       return { done: obs.length >= 5, note: obs.length ? `${obs.length}개${differ ? ` · 다름 ${differ}` : ''}` : '' }
     }
+    case 'interpret': {
+      const live = project.cards.filter((c) => c.origin === 'chatbot' && c.status !== 'rejected')
+      const rel = live.filter((c) => c.type === 'INTERPRETATION' && c.fields?.['구분'] === '관계').length
+      const ten = live.filter((c) => c.type === 'TENSION').length
+      const q = live.filter((c) => c.type === 'QUESTION').length
+      const h = live.filter((c) => c.type === 'HYPOTHESIS').length
+      return { done: rel >= 5 && ten >= 3 && q >= 3 && h >= 3, note: live.length ? `가설 ${h} · 질문 ${q}` : '' }
+    }
     default:
       return { done: false, note: '' }
   }

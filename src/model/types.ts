@@ -127,6 +127,30 @@ export interface Card {
   created_at: string
   updated_at: string
   history: { at: string; text: string }[]
+  /** 챗봇 답변의 구조화된 항목 (예: 관점, 관계 유형, 공간적 행동, 장점, 위험 …) */
+  fields?: Record<string, string>
+  /** 이 카드를 만든 챗봇 왕복 단계 */
+  round?: RoundId
+  /** 요청서 F-12 사용자 반응 */
+  reaction?: Reaction | null
+}
+
+/** 챗봇 왕복 단계: ① 관계·긴장·기회 ② 복수 해석·설계 질문 ③ 설계 가설 ④ 심화 ⑤ 추가 조사·요약 */
+export type RoundId = 'R1' | 'R2' | 'R3' | 'R4' | 'R5'
+
+/** 요청서 F-12: 동의 · 부분 동의 · 현장과 다름 · 중요하지 않음 · 더 조사하기 · 반대 해석 만들기 · 발전시키기 (직접 수정은 편집으로) */
+export type Reaction = 'agree' | 'partial' | 'differs' | 'unimportant' | 'investigate' | 'counter' | 'develop'
+
+/** 계획서 3.6 챗봇 세션: 보낸 프롬프트와 붙여넣은 답변 원문을 남긴다 */
+export interface ChatSession {
+  id: string
+  round: RoundId
+  createdAt: string
+  prompt: string
+  answer: string | null
+  answeredAt: string | null
+  chatbot: string
+  importedCardIds: string[]
 }
 
 export interface CollectedLayer {
@@ -156,4 +180,8 @@ export interface Project {
   sources: SourceRecord[]
   cards: Card[]
   counters: Record<string, number>
+  /** 챗봇 왕복 기록 */
+  chatLog?: ChatSession[]
+  /** 패널용 대지해석 요약문 (⑤ 단계 답변) */
+  panelSummary?: string
 }

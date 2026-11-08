@@ -1,15 +1,6 @@
 import type { StepId } from '../model/types'
 
 const PLANS: Partial<Record<StepId, { phase: number; title: string; items: string[] }>> = {
-  interpret: {
-    phase: 4,
-    title: '해석·가설 (챗봇 왕복)',
-    items: [
-      '확인한 사실·관찰로 단계별 프롬프트 만들기 (관계 → 긴장 → 복수 해석 → 설계 질문 → 가설)',
-      '챗봇 답변을 붙여넣으면 해석·긴장·질문·가설 카드로 정리',
-      '동의 · 부분 동의 · 현장과 다름 · 반대 해석 만들기 · 이 가설 발전시키기',
-    ],
-  },
   report: {
     phase: 5,
     title: '리포트',
