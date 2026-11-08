@@ -5,6 +5,6 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   base: './',
-  // OpenLayers 포함 시 번들이 500kB를 조금 넘으므로 경고 기준만 조정
-  build: { chunkSizeWarningLimit: 1000 },
+  // OpenLayers·Turf·proj4 포함 시 번들이 약 1MB(압축 약 290kB)이므로 경고 기준만 조정
+  build: { chunkSizeWarningLimit: 1500 },
 })
