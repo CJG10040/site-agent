@@ -32,6 +32,21 @@ function uniq<T>(arr: T[]): T[] {
   return [...new Set(arr)]
 }
 
+/** 이름 목록 정리: 빈 값·"-" 같은 자리표시 제거, 띄어쓰기만 다른 중복 제거 */
+function cleanNames(names: string[]): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const raw of names) {
+    const name = raw.trim()
+    if (!name || /^[-–—_.\s]+$/.test(name)) continue
+    const key = name.replace(/\s+/g, '')
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(name)
+  }
+  return out
+}
+
 function fmt(n: number, digits = 0): string {
   return n.toLocaleString('ko-KR', { maximumFractionDigits: digits, minimumFractionDigits: 0 })
 }
@@ -358,8 +373,12 @@ export function applyCollection(project: Project, outcome: CollectOutcome, bound
       })
     }
 
+    // 용도가 비어 있는 건물이 많으므로, 용도가 확인되는 건물만으로 비율을 낸다
     const useCounts = new Map<string, number>()
+    let useKnown = 0
     for (const p of props) {
+      if (!str(p.usability)) continue
+      useKnown++
       const u = useName(p.usability)
       useCounts.set(u, (useCounts.get(u) ?? 0) + 1)
     }
@@ -368,7 +387,7 @@ export function applyCollection(project: Project, outcome: CollectOutcome, bound
       fact({
         auto_key: 'bldg-use',
         topic: '주변 건물',
-        text: `반경 안 건물의 주용도는 ${topUses.map(([u, c]) => `${u} ${pct(c, n)}%`).join(', ')} 순으로 많다.`,
+        text: `주용도가 확인되는 ${fmt(useKnown)}동 중 ${topUses.map(([u, c]) => `${u} ${pct(c, useKnown)}%`).join(', ')} 순으로 많다 (반경 안 건물의 ${pct(n - useKnown, n)}%는 용도 정보 없음).`,
         sources: src,
       })
     }
@@ -413,7 +432,7 @@ export function applyCollection(project: Project, outcome: CollectOutcome, bound
         near.push({ name: str(f.properties.road_name) || '이름 없는 도로', speed: str(f.properties.max_spd) })
       }
     }
-    const nearNames = uniq(near.map((r) => (r.speed && r.speed !== '0' ? `${r.name}(제한속도 ${r.speed}km/h)` : r.name)))
+    const nearNames = cleanNames(near.map((r) => (r.speed && r.speed !== '0' ? `${r.name}(제한속도 ${r.speed}km/h)` : r.name)))
     fact({
       auto_key: 'road-adjacent',
       topic: '도로',
@@ -423,7 +442,7 @@ export function applyCollection(project: Project, outcome: CollectOutcome, bound
       sources: src,
       confidence: 'medium',
     })
-    const allNames = uniq(rOut.features.map((f) => str(f.properties.road_name)).filter(Boolean))
+    const allNames = cleanNames(rOut.features.map((f) => str(f.properties.road_name)))
     if (allNames.length > 0) {
       fact({
         auto_key: 'road-network',
@@ -457,7 +476,7 @@ export function applyCollection(project: Project, outcome: CollectOutcome, bound
   for (const id of ['LT_C_UQ162', 'LT_C_UPISUQ152']) {
     const o = layer(id)
     if (o?.state !== 'ok') continue
-    const names = uniq(o.features.map((f) => str(f.properties[o.layer.nameField])).filter(Boolean))
+    const names = cleanNames(o.features.map((f) => str(f.properties[o.layer.nameField])))
     if (names.length === 0) continue
     fact({
       auto_key: `facility:${id}`,
