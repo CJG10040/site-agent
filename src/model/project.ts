@@ -122,27 +122,13 @@ export function stepStatus(project: Project, step: StepId): { done: boolean; not
       const drafts = project.cards.filter((c) => c.status === 'draft').length
       return { done: confirmed >= 5, note: confirmed || drafts ? `확인 ${confirmed}${drafts ? ` · 검토 ${drafts}` : ''}` : '' }
     }
+    case 'observe': {
+      const obs = project.cards.filter((c) => c.type === 'OBSERVATION' && c.status !== 'rejected' && c.text.trim())
+      const differ = obs.filter((c) => c.observation?.links.some((l) => l.relation === 'differ')).length
+      return { done: obs.length >= 5, note: obs.length ? `${obs.length}개${differ ? ` · 다름 ${differ}` : ''}` : '' }
+    }
     default:
       return { done: false, note: '' }
-  }
-}
-
-// ───────────── 내보내기 / 가져오기 ─────────────
-
-interface ExportFile {
-  app: 'site-agent'
-  schema: number
-  exportedAt: string
-  project: Project
-}
-
-export function exportProject(project: Project): { filename: string; blob: Blob } {
-  const data: ExportFile = { app: 'site-agent', schema: SCHEMA_VERSION, exportedAt: nowIso(), project }
-  const safeName = (project.brief.projectName || '대지해석').replace(/[\\/:*?"<>|]+/g, '_').slice(0, 40)
-  const date = new Date().toISOString().slice(0, 10)
-  return {
-    filename: `${safeName}_${date}.siteagent.json`,
-    blob: new Blob([JSON.stringify(data)], { type: 'application/json' }),
   }
 }
 
@@ -155,17 +141,4 @@ export function downloadBlob(filename: string, blob: Blob): void {
   a.click()
   a.remove()
   window.setTimeout(() => URL.revokeObjectURL(url), 1000)
-}
-
-export async function readProjectFile(file: File): Promise<Project> {
-  const text = await file.text()
-  let data: Partial<ExportFile>
-  try {
-    data = JSON.parse(text) as Partial<ExportFile>
-  } catch {
-    throw new Error('JSON 파일이 아닙니다.')
-  }
-  if (data.app !== 'site-agent' || !data.project) throw new Error('이 프로그램에서 내보낸 프로젝트 파일이 아닙니다.')
-  if ((data.schema ?? 0) > SCHEMA_VERSION) throw new Error('더 새로운 버전에서 만든 파일입니다. 사이트를 새로고침한 뒤 다시 시도하세요.')
-  return data.project
 }

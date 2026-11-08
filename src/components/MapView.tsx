@@ -42,7 +42,19 @@ export interface MapData {
   statsAreas?: GeoFeature[]
   sun?: GeoFeature[]
   marker?: [number, number] | null
+  observations?: MapObservation[]
 }
+
+export interface MapObservation {
+  id: string
+  lon: number
+  lat: number
+  label: string
+  kind: 'normal' | 'differ' | 'discovery'
+  selected: boolean
+}
+
+const OBS_COLORS: Record<MapObservation['kind'], string> = { normal: '#343a40', differ: '#c92a2a', discovery: '#0c8599' }
 
 export type MapMode = 'click' | 'draw' | 'modify'
 
@@ -59,6 +71,7 @@ interface Props {
   onMapClick?: (lon: number, lat: number) => void
   onDrawEnd?: (polygon: Polygon) => void
   onModifyEnd?: (polygon: Polygon) => void
+  onObservationClick?: (id: string) => void
   children?: ReactNode
 }
 
@@ -101,6 +114,7 @@ export default function MapView({
   onMapClick,
   onDrawEnd,
   onModifyEnd,
+  onObservationClick,
   children,
 }: Props) {
   const targetRef = useRef<HTMLDivElement>(null)
@@ -110,8 +124,8 @@ export default function MapView({
   const wmsRefs = useRef(new Map<string, TileLayer<TileWMS>>())
   const sources = useRef<Record<string, VectorSource>>({})
   const editSourceRef = useRef<VectorSource | null>(null)
-  const handlers = useRef({ onMapClick, onDrawEnd, onModifyEnd, mode })
-  handlers.current = { onMapClick, onDrawEnd, onModifyEnd, mode }
+  const handlers = useRef({ onMapClick, onDrawEnd, onModifyEnd, onObservationClick, mode })
+  handlers.current = { onMapClick, onDrawEnd, onModifyEnd, onObservationClick, mode }
 
   // ── 지도 생성 (한 번)
   useEffect(() => {
@@ -190,6 +204,23 @@ export default function MapView({
       }),
       60,
     )
+    const observations = make((f) => {
+      const kind = (f.get('kind') as MapObservation['kind']) ?? 'normal'
+      const selected = !!f.get('selected')
+      return new Style({
+        image: new CircleStyle({
+          radius: selected ? 14 : 11,
+          fill: new Fill({ color: OBS_COLORS[kind] }),
+          stroke: new Stroke({ color: selected ? accent : '#ffffff', width: selected ? 3.5 : 2 }),
+        }),
+        text: new Text({
+          text: String(f.get('label') ?? ''),
+          font: '700 11px Pretendard, sans-serif',
+          fill: new Fill({ color: '#ffffff' }),
+        }),
+        zIndex: selected ? 2 : 1,
+      })
+    }, 65)
     const edit = make(
       new Style({
         stroke: new Stroke({ color: accent, width: 3 }),
@@ -204,13 +235,20 @@ export default function MapView({
 
     const map = new OlMap({
       target: targetRef.current,
-      layers: [base, label, statsAreas.layer, buildings.layer, roads.layer, radius.layer, parcels.layer, boundary.layer, sun.layer, marker.layer, edit.layer],
+      layers: [base, label, statsAreas.layer, buildings.layer, roads.layer, radius.layer, parcels.layer, boundary.layer, sun.layer, marker.layer, observations.layer, edit.layer],
       view: new View({ center: fromLonLat([START.lon, START.lat]), zoom: START.zoom, minZoom: 6, maxZoom: 21 }),
       controls: defaultControls({ attributionOptions: { collapsible: true } }).extend([new ScaleLine()]),
     })
 
     map.on('singleclick', (evt) => {
       if (handlers.current.mode !== 'click') return
+      if (handlers.current.onObservationClick) {
+        const hit = map.forEachFeatureAtPixel(evt.pixel, (f, layer) => (layer === observations.layer ? f : undefined), { hitTolerance: 4 })
+        if (hit) {
+          handlers.current.onObservationClick(String(hit.get('id')))
+          return
+        }
+      }
       const [lon, lat] = toLonLat(evt.coordinate)
       handlers.current.onMapClick?.(lon, lat)
     })
@@ -227,6 +265,7 @@ export default function MapView({
       boundary: boundary.source,
       sun: sun.source,
       marker: marker.source,
+      observations: observations.source,
     }
     editSourceRef.current = edit.source
     const wmsLayers = wmsRefs.current
@@ -317,7 +356,13 @@ export default function MapView({
     setMany('sun', data.sun)
     s.marker?.clear()
     if (data.marker) s.marker?.addFeature(new Feature(new Point(fromLonLat(data.marker))))
-  }, [data.boundary, data.radius, data.parcels, data.buildings, data.roads, data.statsAreas, data.sun, data.marker])
+    s.observations?.clear()
+    for (const o of data.observations ?? []) {
+      const f = new Feature(new Point(fromLonLat([o.lon, o.lat])))
+      f.setProperties({ id: o.id, label: o.label, kind: o.kind, selected: o.selected })
+      s.observations?.addFeature(f)
+    }
+  }, [data.boundary, data.radius, data.parcels, data.buildings, data.roads, data.statsAreas, data.sun, data.marker, data.observations])
 
   // ── 이동·맞춤
   useEffect(() => {

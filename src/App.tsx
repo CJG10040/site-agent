@@ -3,7 +3,8 @@ import DiagnosticsPanel from './components/DiagnosticsPanel'
 import SettingsDialog from './components/SettingsDialog'
 import Stepper from './components/Stepper'
 import { useHashRoute } from './lib/hashRoute'
-import { downloadBlob, exportProject, nowIso } from './model/project'
+import { downloadBlob, nowIso } from './model/project'
+import { exportProjectFile } from './model/transfer'
 import type { StepId } from './model/types'
 import { useProject, type SaveState } from './model/useProject'
 import BriefStep from './screens/BriefStep'
@@ -11,6 +12,7 @@ import ComingSoon from './screens/ComingSoon'
 import DataStep from './screens/DataStep'
 import FactsStep from './screens/FactsStep'
 import Home from './screens/Home'
+import ObserveStep from './screens/ObserveStep'
 import QuestionStep from './screens/QuestionStep'
 import SiteStep from './screens/SiteStep'
 import { loadKeys, saveKeys, type ApiKeys } from './sources/keys'
@@ -52,13 +54,21 @@ export default function App() {
   }
   const closeSettings = useCallback(() => setSettingsOpen(false), [])
 
-  const doExport = () => {
-    if (!project) return
-    const { filename, blob } = exportProject(project)
-    downloadBlob(filename, blob)
-    update((d) => {
-      d.lastExportedAt = nowIso()
-    })
+  const [exporting, setExporting] = useState(false)
+  const doExport = async () => {
+    if (!project || exporting) return
+    setExporting(true)
+    try {
+      const { filename, blob } = await exportProjectFile(project)
+      downloadBlob(filename, blob)
+      update((d) => {
+        d.lastExportedAt = nowIso()
+      })
+    } catch (e) {
+      window.alert(`내보내지 못했습니다: ${e instanceof Error ? e.message : String(e)}`)
+    } finally {
+      setExporting(false)
+    }
   }
 
   const step = route.name === 'project' ? route.step : 'brief'
@@ -81,8 +91,15 @@ export default function App() {
         )}
         <span className="spacer" />
         {project && (
-          <button type="button" className="btn ghost" onClick={doExport} title="프로젝트를 파일로 저장 (다른 기기로 옮기거나 백업)">
-            내보내기{!project.lastExportedAt && <span className="dot-warn" aria-label="내보낸 적 없음" />}
+          <button
+            type="button"
+            className="btn ghost"
+            onClick={() => void doExport()}
+            disabled={exporting}
+            title="프로젝트를 사진까지 파일 하나로 저장 (다른 기기로 옮기거나 백업)"
+          >
+            {exporting ? '내보내는 중…' : '내보내기'}
+            {!project.lastExportedAt && <span className="dot-warn" aria-label="내보낸 적 없음" />}
           </button>
         )}
         <button type="button" className="btn ghost" onClick={() => setDiagOpen(true)}>
@@ -141,7 +158,10 @@ export default function App() {
                   />
                 )}
                 {step === 'facts' && <FactsStep project={project} update={update} onGoData={() => go('data')} />}
-                {(step === 'observe' || step === 'interpret' || step === 'report') && <ComingSoon step={step} />}
+                {step === 'observe' && (
+                  <ObserveStep project={project} update={update} config={config} baseMap={baseMap} onBaseMap={setBaseMap} onGoFacts={() => go('facts')} />
+                )}
+                {(step === 'interpret' || step === 'report') && <ComingSoon step={step} />}
               </main>
             </div>
           )}

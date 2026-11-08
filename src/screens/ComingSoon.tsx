@@ -1,16 +1,6 @@
 import type { StepId } from '../model/types'
 
 const PLANS: Partial<Record<StepId, { phase: number; title: string; items: string[] }>> = {
-  observe: {
-    phase: 3,
-    title: '현장 관찰',
-    items: [
-      '사진 올리기 — 촬영 위치·시간을 사진에서 자동으로 읽기',
-      '지도 위에 관찰 위치 표시',
-      '관찰 문장, 감각 키워드, 이용자·행위 태그, 개인적인 느낌',
-      '공공데이터와 현장 관찰을 나란히 비교하기',
-    ],
-  },
   interpret: {
     phase: 4,
     title: '해석·가설 (챗봇 왕복)',

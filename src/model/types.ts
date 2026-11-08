@@ -84,9 +84,32 @@ export type CardType =
 
 export type CardStatus = 'draft' | 'confirmed' | 'rejected'
 
+/** 현장 관찰(F-05, 화면 4)의 세부 정보 — OBSERVATION 카드에 붙는다 */
+export interface ObservationDetail {
+  photoIds: string[]
+  location: { lon: number; lat: number; source: 'exif' | 'gps' | 'map' } | null
+  /** 대지 중심에서 본 위치 (예: "대지 북동쪽 120m") — 저장 시 계산 */
+  relative: string | null
+  /** 관찰 시각 (현지 시각, "YYYY-MM-DDTHH:mm") */
+  observedAt: string | null
+  timeSource: 'exif' | 'now' | 'manual' | null
+  senses: string[]
+  actors: string[]
+  actions: string[]
+  feeling: string
+  weather: string
+  /** 자료(지도·공공데이터)에 없던 새로운 발견인지 */
+  discovery: boolean
+  /** 관련 사실 카드와의 관계 */
+  links: { cardId: string; relation: 'match' | 'differ' }[]
+}
+
 /** 8.5 해석 데이터 구조를 카드 단위로 표현 */
 export interface Card {
   id: string // 예: "F-01"
+  /** 기기 사이에 관찰을 합칠 때 쓰는 고유값 (번호와 달리 바뀌지 않음) */
+  uid?: string
+  observation?: ObservationDetail
   type: CardType
   topic: string // 예: "규제", "주변 건물"
   text: string

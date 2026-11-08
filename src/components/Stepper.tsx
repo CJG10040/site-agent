@@ -7,7 +7,8 @@ interface Props {
   onSelect: (step: StepId) => void
 }
 
-const CURRENT_PHASE = 1
+/** 개발이 끝난 단계까지 (이후 단계는 '준비 중'으로 표시) */
+const CURRENT_PHASE = 3
 
 export default function Stepper({ project, current, onSelect }: Props) {
   return (

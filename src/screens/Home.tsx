@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { deleteProject, getProject, listProjects, putProject, type ProjectSummary } from '../model/db'
-import { createProject, newId, readProjectFile } from '../model/project'
+import { deleteProject, listProjects, putProject, type ProjectSummary } from '../model/db'
+import { createProject } from '../model/project'
+import { importProjectFile } from '../model/transfer'
 
 interface Props {
   onOpen: (id: string) => void
@@ -44,19 +45,10 @@ export default function Home({ onOpen }: Props) {
   const importFile = async (file: File) => {
     setMessage(null)
     try {
-      const project = await readProjectFile(file)
-      const exists = await getProject(project.id)
-      if (exists) {
-        const overwrite = window.confirm(
-          `"${exists.brief.projectName || '이름 없는 프로젝트'}"이(가) 이미 있습니다.\n\n[확인] 파일 내용으로 덮어쓰기\n[취소] 사본으로 가져오기`,
-        )
-        if (!overwrite) {
-          project.id = newId()
-          project.brief.projectName = `${project.brief.projectName || '이름 없는 프로젝트'} (사본)`
-        }
-      }
-      await putProject(project)
-      setMessage(`"${project.brief.projectName || '이름 없는 프로젝트'}"을(를) 가져왔습니다.`)
+      const r = await importProjectFile(file, (name) =>
+        window.confirm(`"${name}"이(가) 이미 있습니다.\n\n[확인] 파일 내용으로 덮어쓰기\n[취소] 사본으로 가져오기`) ? 'overwrite' : 'copy',
+      )
+      setMessage(`"${r.name}"을(를) 가져왔습니다${r.photoCount ? ` (사진 ${r.photoCount}장)` : ''}.`)
       await refresh()
     } catch (e) {
       setMessage(e instanceof Error ? e.message : '가져오지 못했습니다.')
@@ -65,7 +57,7 @@ export default function Home({ onOpen }: Props) {
 
   const remove = async (item: ProjectSummary) => {
     const ok = window.confirm(
-      `"${item.name}"을(를) 이 브라우저에서 삭제할까요?\n삭제하면 되돌릴 수 없습니다. 필요하면 먼저 프로젝트를 열어 파일로 내보내세요.`,
+      `"${item.name}"을(를) 이 브라우저에서 삭제할까요? (현장 사진 포함)\n삭제하면 되돌릴 수 없습니다. 필요하면 먼저 프로젝트를 열어 파일로 내보내세요.`,
     )
     if (!ok) return
     await deleteProject(item.id)
@@ -113,7 +105,7 @@ export default function Home({ onOpen }: Props) {
               <button type="button" className="project-open" onClick={() => onOpen(it.id)}>
                 <span className="project-name">{it.name}</span>
                 <span className="project-meta">
-                  {it.address || '대지 미지정'} · 확인된 사실 {it.factCount}개 · 수정 {when(it.updatedAt)}
+                  {it.address || '대지 미지정'} · 확인된 사실 {it.factCount}개 · 관찰 {it.observationCount}개 · 수정 {when(it.updatedAt)}
                 </span>
                 {!it.lastExportedAt && <span className="badge warn">파일로 내보낸 적 없음</span>}
               </button>

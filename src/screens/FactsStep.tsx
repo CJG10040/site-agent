@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { linksByFact } from '../model/observations'
 import { makeCard, nextNumber, nowIso } from '../model/project'
 import type { Card, CardStatus, Project, SourceRecord } from '../model/types'
 
@@ -98,12 +99,14 @@ function SourceDetail({ s }: { s: SourceRecord }) {
 function FactCard({
   card,
   sources,
+  observed,
   onStatus,
   onEdit,
   onNote,
 }: {
   card: Card
   sources: Map<string, SourceRecord>
+  observed: { obsId: string; relation: 'match' | 'differ' }[]
   onStatus: (status: CardStatus) => void
   onEdit: (text: string) => void
   onNote: (note: string) => void
@@ -175,6 +178,17 @@ function FactCard({
         </div>
       )}
       {openSource && sources.get(openSource) && <SourceDetail s={sources.get(openSource)!} />}
+
+      {observed.length > 0 && (
+        <p className="observed-line">
+          현장 관찰:{' '}
+          {observed.map((o, i) => (
+            <span key={`${o.obsId}-${i}`} className={`rel-badge rel-${o.relation}`}>
+              {o.obsId} {o.relation === 'differ' ? '다름' : '일치'}
+            </span>
+          ))}
+        </p>
+      )}
 
       {noteOpen && (
         <textarea
@@ -305,6 +319,7 @@ interface NewFact {
 export default function FactsStep({ project, update, onGoData }: Props) {
   const [filter, setFilter] = useState<Filter>('draft')
   const sources = useMemo(() => new Map(project.sources.map((s) => [s.source_id, s])), [project.sources])
+  const observedBy = useMemo(() => linksByFact(project), [project])
 
   const cards = project.cards.filter((c) => c.type === 'FACT' || c.type === 'UNKNOWN')
   const counts = {
@@ -427,6 +442,7 @@ export default function FactsStep({ project, update, onGoData }: Props) {
                       key={c.id}
                       card={c}
                       sources={sources}
+                      observed={observedBy.get(c.id) ?? []}
                       onStatus={(status) => patch(c.id, (x) => void (x.status = status))}
                       onEdit={(text) =>
                         patch(c.id, (x) => {
