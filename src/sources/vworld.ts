@@ -3,6 +3,7 @@
 // - 검색·주소·2D 데이터 API: CORS 미지원 → JSONP로 호출 (2026-11-08 확인)
 // 인증키는 코드에 넣지 않고 사용자가 설정 화면에서 입력하며, 이 브라우저에만 저장한다.
 
+import type { Geometry } from 'geojson'
 import { jsonp, JsonpError } from '../lib/jsonp'
 import { readSetting, writeSetting } from '../lib/storage'
 
@@ -129,6 +130,26 @@ export function tileUrl(key: string, layer: BaseMap | 'Hybrid'): string {
   return `${API}/req/wmts/1.0.0/${encodeURIComponent(key.trim())}/${layer}/{z}/{y}/{x}.${ext}`
 }
 
+// ───────────────────────── 지도 위 주제도 (WMS 이미지) ─────────────────────────
+// 2026-11-08 실제 키로 EPSG:3857 GetMap 응답 확인
+
+export const WMS_URL = `${API}/req/wms`
+
+export const WMS_LAYERS: { id: string; label: string }[] = [
+  { id: 'lp_pa_cbnd_bubun', label: '지적도' },
+  { id: 'lt_c_uq111', label: '용도지역' },
+  { id: 'lt_c_uq121', label: '경관지구' },
+  { id: 'lt_c_uq141', label: '지구단위계획' },
+  { id: 'lt_c_bldginfo', label: '건물' },
+  { id: 'lt_l_moctlink', label: '도로망' },
+]
+
+/** 출처 기록용 요청 주소. 인증키·도메인·콜백은 빼고 저장한다. */
+export function publicUrl(path: string, params: Record<string, string>): string {
+  const q = new URLSearchParams(params)
+  return `${API}${path}?${q.toString()}`
+}
+
 // ───────────────────────── 검색 ─────────────────────────
 
 export type SearchKind = 'road' | 'parcel' | 'place'
@@ -246,7 +267,7 @@ export async function geocode(
 
 export interface GeoFeature {
   type: 'Feature'
-  geometry: unknown
+  geometry: Geometry | null
   properties: Record<string, unknown>
 }
 
@@ -285,6 +306,57 @@ export async function featuresAtPoint(
     attribute: 'true',
   })
   return r.result?.featureCollection?.features ?? []
+}
+
+export interface FeatureQuery {
+  layerId: string
+  /** 브이월드 geomFilter: POINT(x y) / BOX(minx,miny,maxx,maxy) / POLYGON((…)) */
+  geomFilter: string
+  geometry: boolean
+  maxFeatures?: number
+}
+
+export interface FeatureQueryResult {
+  features: GeoFeature[]
+  total: number
+  truncated: boolean
+  url: string
+}
+
+/** 범위 안의 피처를 페이지를 넘겨 가며 모두 받는다 (한 번에 최대 1000건). */
+export async function queryFeatures(config: VWorldConfig, q: FeatureQuery): Promise<FeatureQueryResult> {
+  const max = q.maxFeatures ?? 3000
+  const size = 1000
+  const base: Record<string, string> = {
+    service: 'data',
+    request: 'GetFeature',
+    version: '2.0',
+    data: q.layerId,
+    geomFilter: q.geomFilter,
+    crs: 'EPSG:4326',
+    size: String(size),
+    geometry: String(q.geometry),
+    attribute: 'true',
+  }
+  const features: GeoFeature[] = []
+  let total = 0
+  for (let page = 1; page <= Math.ceil(max / size); page++) {
+    const r = await call<{ featureCollection?: { features?: GeoFeature[] } }>('/req/data', config, {
+      ...base,
+      page: String(page),
+    })
+    if (!r.found) break
+    const batch = r.result?.featureCollection?.features ?? []
+    total = r.total ?? batch.length
+    features.push(...batch)
+    if (features.length >= total || batch.length < size) break
+  }
+  return {
+    features: features.slice(0, max),
+    total,
+    truncated: total > max,
+    url: publicUrl('/req/data', { ...base, page: '1', format: 'json' }),
+  }
 }
 
 // ───────────────────────── 연결 진단 ─────────────────────────

@@ -12,6 +12,7 @@ import {
 interface Props {
   config: VWorldConfig
   onPick: (hit: SearchHit) => void
+  hint?: string
 }
 
 const KINDS: SearchKind[] = ['road', 'parcel', 'place']
@@ -21,7 +22,7 @@ interface Group {
   hits: SearchHit[]
 }
 
-export default function SearchPanel({ config, onPick }: Props) {
+export default function SearchPanel({ config, onPick, hint }: Props) {
   const [query, setQuery] = useState('')
   const [busy, setBusy] = useState(false)
   const [groups, setGroups] = useState<Group[] | null>(null)
@@ -54,7 +55,7 @@ export default function SearchPanel({ config, onPick }: Props) {
   const total = groups?.reduce((n, g) => n + g.hits.length, 0) ?? 0
 
   return (
-    <div className="panel-body">
+    <div className="search-block">
       <form
         className="search-form"
         onSubmit={(e) => {
@@ -66,7 +67,7 @@ export default function SearchPanel({ config, onPick }: Props) {
           type="search"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="주소 또는 장소 (예: 광주 동구 금남로 1가)"
+          placeholder="주소 또는 장소 (예: 광주 동구 충장로)"
           aria-label="주소 또는 장소 검색"
         />
         <button type="submit" className="btn primary" disabled={busy || !query.trim()}>
@@ -74,7 +75,7 @@ export default function SearchPanel({ config, onPick }: Props) {
         </button>
       </form>
 
-      <p className="help">결과를 누르면 지도가 이동하고 그 지점의 필지·용도지역을 조회합니다. 지도를 직접 눌러도 됩니다.</p>
+      {hint && <p className="help">{hint}</p>}
 
       {error && (
         <div className="notice error">
@@ -86,25 +87,36 @@ export default function SearchPanel({ config, onPick }: Props) {
 
       {groups && total === 0 && <p className="empty">검색 결과가 없습니다. 표현을 바꿔 보세요.</p>}
 
-      {groups?.map(
-        (g) =>
-          g.hits.length > 0 && (
-            <section key={g.kind} className="result-group">
-              <h3>
-                {SEARCH_KIND_LABEL[g.kind]} <span className="count">{g.hits.length}</span>
-              </h3>
-              <ul>
-                {g.hits.map((h) => (
-                  <li key={h.id}>
-                    <button type="button" className="result" onClick={() => onPick(h)}>
-                      <span className="result-title">{h.title}</span>
-                      {h.subtitle && <span className="result-sub">{h.subtitle}</span>}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          ),
+      {groups && total > 0 && (
+        <div className="search-results">
+          {groups.map(
+            (g) =>
+              g.hits.length > 0 && (
+                <section key={g.kind} className="result-group">
+                  <h3>
+                    {SEARCH_KIND_LABEL[g.kind]} <span className="count">{g.hits.length}</span>
+                  </h3>
+                  <ul>
+                    {g.hits.map((h) => (
+                      <li key={h.id}>
+                        <button
+                          type="button"
+                          className="result"
+                          onClick={() => {
+                            onPick(h)
+                            setGroups(null)
+                          }}
+                        >
+                          <span className="result-title">{h.title}</span>
+                          {h.subtitle && <span className="result-sub">{h.subtitle}</span>}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              ),
+          )}
+        </div>
       )}
     </div>
   )

@@ -1,0 +1,159 @@
+import { SCHEMA_VERSION, type Card, type CardType, type Project, type StepId } from './types'
+
+export function newId(): string {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) return crypto.randomUUID()
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
+}
+
+export function nowIso(): string {
+  return new Date().toISOString()
+}
+
+export function createProject(): Project {
+  const t = nowIso()
+  return {
+    schema: SCHEMA_VERSION,
+    id: newId(),
+    createdAt: t,
+    updatedAt: t,
+    lastExportedAt: null,
+    brief: {
+      projectName: '',
+      program: '',
+      theme: '',
+      scale: '',
+      targetUsers: '',
+      nature: '',
+      visit: '',
+      deliverables: '',
+      materials: '',
+    },
+    question: { curiosity: '', lenses: [], lensOther: '', avoid: '', personal: '' },
+    site: { parcels: [], drawn: null, boundaryMode: 'parcels', radiusM: 500, address: null },
+    collectedAt: null,
+    collectedRadiusM: null,
+    collected: {},
+    sources: [],
+    cards: [],
+    counters: {},
+  }
+}
+
+const CARD_PREFIX: Record<CardType, string> = {
+  FACT: 'F',
+  OBSERVATION: 'O',
+  INTERPRETATION: 'I',
+  TENSION: 'T',
+  OPPORTUNITY: 'P',
+  QUESTION: 'Q',
+  HYPOTHESIS: 'H',
+  UNKNOWN: 'U',
+}
+
+/** 카드·출처 번호를 프로젝트 안에서 순서대로 발급 (예: F-01, S-03). 한 번 쓴 번호는 다시 쓰지 않는다. */
+export function nextNumber(project: Project, prefix: string): string {
+  const n = (project.counters[prefix] ?? 0) + 1
+  project.counters[prefix] = n
+  return `${prefix}-${String(n).padStart(2, '0')}`
+}
+
+export function nextCardId(project: Project, type: CardType): string {
+  return nextNumber(project, CARD_PREFIX[type])
+}
+
+export function cardPrefix(type: CardType): string {
+  return CARD_PREFIX[type]
+}
+
+export function makeCard(project: Project, partial: Omit<Card, 'id' | 'created_at' | 'updated_at' | 'history' | 'edited'>): Card {
+  const t = nowIso()
+  return { ...partial, id: nextCardId(project, partial.type), created_at: t, updated_at: t, history: [], edited: false }
+}
+
+export const STEPS: { id: StepId; label: string; phase: number }[] = [
+  { id: 'brief', label: '과제', phase: 1 },
+  { id: 'question', label: '첫 질문', phase: 1 },
+  { id: 'site', label: '대지', phase: 1 },
+  { id: 'data', label: '공간정보', phase: 1 },
+  { id: 'facts', label: '사실 카드', phase: 1 },
+  { id: 'observe', label: '현장 관찰', phase: 3 },
+  { id: 'interpret', label: '해석·가설', phase: 4 },
+  { id: 'report', label: '리포트', phase: 5 },
+]
+
+export function hasBoundary(project: Project): boolean {
+  const s = project.site
+  return s.boundaryMode === 'drawn' ? !!s.drawn : s.parcels.length > 0
+}
+
+/** 단계 옆에 표시할 진행 상태 */
+export function stepStatus(project: Project, step: StepId): { done: boolean; note: string } {
+  switch (step) {
+    case 'brief': {
+      const b = project.brief
+      const filled = [b.program, b.theme, b.scale, b.targetUsers, b.nature, b.deliverables].filter((v) => v.trim()).length
+      return { done: !!(b.program.trim() || b.theme.trim()), note: filled ? `${filled}/6` : '' }
+    }
+    case 'question': {
+      const q = project.question
+      return { done: !!(q.curiosity.trim() || q.lenses.length), note: '' }
+    }
+    case 'site':
+      return {
+        done: hasBoundary(project),
+        note: project.site.boundaryMode === 'drawn' ? (project.site.drawn ? '직접 그림' : '') : project.site.parcels.length ? `${project.site.parcels.length}필지` : '',
+      }
+    case 'data':
+      return { done: !!project.collectedAt, note: project.collectedAt ? `${project.sources.filter((s) => s.status === 'ok').length}종` : '' }
+    case 'facts': {
+      const confirmed = project.cards.filter((c) => c.type === 'FACT' && c.status === 'confirmed').length
+      const drafts = project.cards.filter((c) => c.status === 'draft').length
+      return { done: confirmed >= 5, note: confirmed || drafts ? `확인 ${confirmed}${drafts ? ` · 검토 ${drafts}` : ''}` : '' }
+    }
+    default:
+      return { done: false, note: '' }
+  }
+}
+
+// ───────────── 내보내기 / 가져오기 ─────────────
+
+interface ExportFile {
+  app: 'site-agent'
+  schema: number
+  exportedAt: string
+  project: Project
+}
+
+export function exportProject(project: Project): { filename: string; blob: Blob } {
+  const data: ExportFile = { app: 'site-agent', schema: SCHEMA_VERSION, exportedAt: nowIso(), project }
+  const safeName = (project.brief.projectName || '대지해석').replace(/[\\/:*?"<>|]+/g, '_').slice(0, 40)
+  const date = new Date().toISOString().slice(0, 10)
+  return {
+    filename: `${safeName}_${date}.siteagent.json`,
+    blob: new Blob([JSON.stringify(data)], { type: 'application/json' }),
+  }
+}
+
+export function downloadBlob(filename: string, blob: Blob): void {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
+export async function readProjectFile(file: File): Promise<Project> {
+  const text = await file.text()
+  let data: Partial<ExportFile>
+  try {
+    data = JSON.parse(text) as Partial<ExportFile>
+  } catch {
+    throw new Error('JSON 파일이 아닙니다.')
+  }
+  if (data.app !== 'site-agent' || !data.project) throw new Error('이 프로그램에서 내보낸 프로젝트 파일이 아닙니다.')
+  if ((data.schema ?? 0) > SCHEMA_VERSION) throw new Error('더 새로운 버전에서 만든 파일입니다. 사이트를 새로고침한 뒤 다시 시도하세요.')
+  return data.project
+}

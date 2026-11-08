@@ -1,0 +1,130 @@
+// 프로젝트 데이터 구조.
+// 요청서 5장(정보 유형), 6.1·6.2(시작 입력), 8.4(출처 기록), 8.5(해석 데이터)를 따른다.
+
+import type { Geometry, Polygon, MultiPolygon } from 'geojson'
+
+export const SCHEMA_VERSION = 1
+
+export type StepId = 'brief' | 'question' | 'site' | 'data' | 'facts' | 'observe' | 'interpret' | 'report'
+
+/** F-02 과제 맥락 + 6.1 시작 입력 */
+export interface Brief {
+  projectName: string
+  program: string // 건축 프로그램
+  theme: string // 과제명 또는 공모전 주제
+  scale: string // 예상 규모·연면적
+  targetUsers: string // 사용자·대상자
+  nature: string // 설계 대상의 성격 (신축, 리노베이션 …)
+  visit: '' | 'done' | 'planned' | 'none' // 현장답사 여부
+  deliverables: string // 제출 결과물 형태
+  materials: string // 이미 가진 사진·도면·메모
+}
+
+/** 6.2 첫 질문 + 4.2 개인의 관점 */
+export interface FirstQuestion {
+  curiosity: string // 이 대지를 통해 가장 궁금한 것
+  lenses: string[] // 관심 관점
+  lensOther: string
+  avoid: string // 피하고 싶은 일반적인 해석
+  personal: string // 이 대지를 고른 이유, 기억, 불편했던 점
+}
+
+export interface ParcelRef {
+  pnu: string
+  addr: string
+  jibun: string // 예: "3-4대"
+  jimok: string // 예: "대"
+  jiga: number | null // 개별공시지가 (원/㎡)
+  gosiYM: string | null // 기준 연월 "2025-01"
+  areaM2: number // 지적 도형으로 계산한 면적
+  geometry: Polygon | MultiPolygon
+}
+
+export interface Site {
+  parcels: ParcelRef[]
+  drawn: Polygon | null
+  boundaryMode: 'parcels' | 'drawn'
+  radiusM: number
+  address: { road?: string; parcel?: string } | null
+}
+
+/** 8.4 권장 데이터 구조 */
+export interface SourceRecord {
+  source_id: string // 예: "S-03"
+  source_name: string // 예: "브이월드 (국토교통부 공간정보 오픈플랫폼)"
+  dataset_name: string // 예: "GIS건물통합정보"
+  dataset_id: string // 예: "LT_C_BLDGINFO"
+  retrieved_at: string // ISO 시각
+  update_date: string | null // 데이터 갱신일 (제공되지 않으면 null)
+  geometry: string // 조회 범위 설명
+  coordinate_system: string
+  spatial_scale: string // 예: "대지 경계", "반경 500m"
+  time_range: string | null
+  raw_ref: string | null // collected 안의 원본 키
+  normalized_value: unknown
+  unit: string | null
+  license: string
+  limitations: string
+  original_url: string // 인증키는 제거하고 저장
+  reliability: 'official' | 'computed' | 'user'
+  feature_count: number | null
+  status: 'ok' | 'empty' | 'error'
+  error: string | null
+}
+
+export type CardType =
+  | 'FACT'
+  | 'OBSERVATION'
+  | 'INTERPRETATION'
+  | 'TENSION'
+  | 'OPPORTUNITY'
+  | 'QUESTION'
+  | 'HYPOTHESIS'
+  | 'UNKNOWN'
+
+export type CardStatus = 'draft' | 'confirmed' | 'rejected'
+
+/** 8.5 해석 데이터 구조를 카드 단위로 표현 */
+export interface Card {
+  id: string // 예: "F-01"
+  type: CardType
+  topic: string // 예: "규제", "주변 건물"
+  text: string
+  related_source_ids: string[]
+  related_card_ids: string[]
+  origin: 'data' | 'user' | 'chatbot'
+  confidence: 'high' | 'medium' | 'low'
+  human_validation_required: boolean
+  status: CardStatus
+  user_note: string
+  /** 자동 생성 카드를 다시 만들 때 같은 항목을 찾기 위한 키 */
+  auto_key: string | null
+  /** 사용자가 문장을 고쳤는지 (고친 카드는 재생성 시 덮어쓰지 않음) */
+  edited: boolean
+  created_at: string
+  updated_at: string
+  history: { at: string; text: string }[]
+}
+
+export interface CollectedLayer {
+  dataset_id: string
+  retrieved_at: string
+  features: { type: 'Feature'; geometry: Geometry | null; properties: Record<string, unknown> }[]
+}
+
+export interface Project {
+  schema: number
+  id: string
+  createdAt: string
+  updatedAt: string
+  lastExportedAt: string | null
+  brief: Brief
+  question: FirstQuestion
+  site: Site
+  collectedAt: string | null
+  collectedRadiusM: number | null
+  collected: Record<string, CollectedLayer>
+  sources: SourceRecord[]
+  cards: Card[]
+  counters: Record<string, number>
+}
