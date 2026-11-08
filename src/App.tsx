@@ -13,6 +13,7 @@ import FactsStep from './screens/FactsStep'
 import Home from './screens/Home'
 import QuestionStep from './screens/QuestionStep'
 import SiteStep from './screens/SiteStep'
+import { loadKeys, saveKeys, type ApiKeys } from './sources/keys'
 import { loadConfig, saveConfig, type BaseMap, type VWorldConfig } from './sources/vworld'
 
 const SAVE_LABEL: Record<SaveState, string> = {
@@ -25,6 +26,7 @@ const SAVE_LABEL: Record<SaveState, string> = {
 export default function App() {
   const [route, navigate] = useHashRoute()
   const [config, setConfig] = useState<VWorldConfig>(() => loadConfig())
+  const [keys, setKeys] = useState<ApiKeys>(() => loadKeys())
   const [settingsOpen, setSettingsOpen] = useState(() => !loadConfig().key)
   const [diagOpen, setDiagOpen] = useState(false)
   const [storageBlocked, setStorageBlocked] = useState(false)
@@ -40,9 +42,12 @@ export default function App() {
     [navigate, projectId],
   )
 
-  const handleSave = (next: VWorldConfig) => {
-    setStorageBlocked(!saveConfig(next))
+  const handleSave = (next: VWorldConfig, nextKeys: ApiKeys) => {
+    const ok1 = saveConfig(next)
+    const ok2 = saveKeys(nextKeys)
+    setStorageBlocked(!(ok1 && ok2))
     setConfig({ key: next.key.trim(), domain: next.domain.trim() })
+    setKeys({ sgisKey: nextKeys.sgisKey.trim(), sgisSecret: nextKeys.sgisSecret.trim(), dataGoKr: nextKeys.dataGoKr.trim() })
     setSettingsOpen(false)
   }
   const closeSettings = useCallback(() => setSettingsOpen(false), [])
@@ -141,7 +146,7 @@ export default function App() {
         </>
       )}
 
-      {settingsOpen && <SettingsDialog initial={config} onSave={handleSave} onClose={closeSettings} />}
+      {settingsOpen && <SettingsDialog initial={config} initialKeys={keys} onSave={handleSave} onClose={closeSettings} />}
       {diagOpen && (
         <div className="dialog-backdrop" onClick={() => setDiagOpen(false)}>
           <div className="dialog" role="dialog" aria-modal="true" aria-label="연결 진단" onClick={(e) => e.stopPropagation()}>

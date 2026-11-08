@@ -1,19 +1,55 @@
 import { useEffect, useRef, useState } from 'react'
+import type { ApiKeys } from '../sources/keys'
 import type { VWorldConfig } from '../sources/vworld'
 
 interface Props {
   initial: VWorldConfig
-  onSave: (config: VWorldConfig) => void
+  initialKeys: ApiKeys
+  onSave: (config: VWorldConfig, keys: ApiKeys) => void
   onClose: () => void
 }
 
-export default function SettingsDialog({ initial, onSave, onClose }: Props) {
+function SecretInput({
+  id,
+  value,
+  onChange,
+  placeholder,
+  inputRef,
+}: {
+  id: string
+  value: string
+  onChange: (v: string) => void
+  placeholder: string
+  inputRef?: React.Ref<HTMLInputElement>
+}) {
+  const [show, setShow] = useState(false)
+  return (
+    <div className="input-row">
+      <input
+        id={id}
+        ref={inputRef}
+        type={show ? 'text' : 'password'}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        autoComplete="off"
+        spellCheck={false}
+        placeholder={placeholder}
+      />
+      <button type="button" className="btn ghost" onClick={() => setShow((v) => !v)}>
+        {show ? '숨기기' : '보기'}
+      </button>
+    </div>
+  )
+}
+
+export default function SettingsDialog({ initial, initialKeys, onSave, onClose }: Props) {
   const [key, setKey] = useState(initial.key)
   const [domain, setDomain] = useState(initial.domain)
-  const [showKey, setShowKey] = useState(false)
+  const [keys, setKeys] = useState<ApiKeys>(initialKeys)
   const [copied, setCopied] = useState(false)
   const firstFieldRef = useRef<HTMLInputElement>(null)
   const pageUrl = `${window.location.origin}${window.location.pathname}`
+  const setK = (k: keyof ApiKeys, v: string) => setKeys((x) => ({ ...x, [k]: v }))
 
   useEffect(() => {
     firstFieldRef.current?.focus()
@@ -36,86 +72,94 @@ export default function SettingsDialog({ initial, onSave, onClose }: Props) {
 
   return (
     <div className="dialog-backdrop" onClick={onClose}>
-      <div
-        className="dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="settings-title"
-        onClick={(e) => e.stopPropagation()}
-      >
+      <div className="dialog" role="dialog" aria-modal="true" aria-labelledby="settings-title" onClick={(e) => e.stopPropagation()}>
         <h2 id="settings-title">설정</h2>
+        <p className="help">
+          모든 키는 <strong>이 브라우저에만</strong> 저장되고 GitHub 저장소에는 올라가지 않습니다. 칸을 비우고 저장하면 그 키가
+          지워집니다.
+        </p>
 
         <form
           onSubmit={(e) => {
             e.preventDefault()
-            onSave({ key, domain })
+            onSave({ key, domain }, keys)
           }}
         >
-          <section className="field">
-            <label htmlFor="vworld-key">브이월드 인증키</label>
-            <div className="input-row">
-              <input
+          <fieldset className="settings-group">
+            <legend>브이월드 (지도·공간정보·토지 자료)</legend>
+            <div className="field">
+              <label htmlFor="vworld-key" className="label">
+                인증키
+              </label>
+              <SecretInput
                 id="vworld-key"
-                ref={firstFieldRef}
-                type={showKey ? 'text' : 'password'}
+                inputRef={firstFieldRef}
                 value={key}
-                onChange={(e) => setKey(e.target.value)}
-                autoComplete="off"
-                spellCheck={false}
+                onChange={setKey}
                 placeholder="브이월드 마이페이지 › 인증키 관리에서 복사"
               />
-              <button type="button" className="btn ghost" onClick={() => setShowKey((v) => !v)}>
-                {showKey ? '숨기기' : '보기'}
-              </button>
             </div>
-            <p className="help">
-              키는 <strong>이 브라우저에만</strong> 저장되고 GitHub 저장소에는 올라가지 않습니다. 브이월드에 보내는
-              요청에만 사용됩니다.
-            </p>
-          </section>
-
-          <section className="field">
-            <span className="label">브이월드 서비스 URL에 등록할 주소</span>
-            <div className="input-row">
-              <code className="url-box">{pageUrl}</code>
-              <button type="button" className="btn ghost" onClick={copyUrl}>
-                {copied ? '복사됨' : '복사'}
-              </button>
+            <div className="field">
+              <span className="label">서비스 URL에 등록할 주소</span>
+              <div className="input-row">
+                <code className="url-box">{pageUrl}</code>
+                <button type="button" className="btn ghost" onClick={copyUrl}>
+                  {copied ? '복사됨' : '복사'}
+                </button>
+              </div>
             </div>
-            <p className="help">
-              브이월드 인증키는 등록한 서비스 URL에서만 동작합니다. 지금 접속한 주소와 등록한 주소가 같은지
-              확인하세요.
-            </p>
-          </section>
+            <details className="advanced">
+              <summary>고급: domain 파라미터 직접 지정</summary>
+              <div className="field">
+                <label htmlFor="vworld-domain" className="label">
+                  domain 값
+                </label>
+                <input
+                  id="vworld-domain"
+                  type="text"
+                  value={domain}
+                  onChange={(e) => setDomain(e.target.value)}
+                  autoComplete="off"
+                  spellCheck={false}
+                  placeholder={`비워 두면 ${window.location.origin}`}
+                />
+                <p className="help">연결 진단에서 서비스 URL 관련 오류가 날 때만 바꿔 보세요.</p>
+              </div>
+            </details>
+          </fieldset>
 
-          <details className="advanced">
-            <summary>고급: domain 파라미터 직접 지정</summary>
-            <section className="field">
-              <label htmlFor="vworld-domain">domain 값</label>
-              <input
-                id="vworld-domain"
-                type="text"
-                value={domain}
-                onChange={(e) => setDomain(e.target.value)}
-                autoComplete="off"
-                spellCheck={false}
-                placeholder={`비워 두면 ${window.location.origin}`}
+          <fieldset className="settings-group">
+            <legend>통계청 SGIS (인구·가구·사업체)</legend>
+            <div className="field">
+              <label htmlFor="sgis-key" className="label">
+                서비스ID (consumer_key)
+              </label>
+              <SecretInput id="sgis-key" value={keys.sgisKey} onChange={(v) => setK('sgisKey', v)} placeholder="SGIS 개발지원센터 › 마이페이지 › 인증키" />
+            </div>
+            <div className="field">
+              <label htmlFor="sgis-secret" className="label">
+                보안키 (consumer_secret)
+              </label>
+              <SecretInput id="sgis-secret" value={keys.sgisSecret} onChange={(v) => setK('sgisSecret', v)} placeholder="" />
+            </div>
+          </fieldset>
+
+          <fieldset className="settings-group">
+            <legend>공공데이터포털 (건축물대장)</legend>
+            <div className="field">
+              <label htmlFor="datagokr-key" className="label">
+                일반 인증키
+              </label>
+              <SecretInput
+                id="datagokr-key"
+                value={keys.dataGoKr}
+                onChange={(v) => setK('dataGoKr', v)}
+                placeholder="마이페이지 › 개발계정 › 일반 인증키 (Encoding·Decoding 둘 다 가능)"
               />
-              <p className="help">연결 진단에서 서비스 URL 관련 오류가 날 때만 바꿔 보세요.</p>
-            </section>
-          </details>
+            </div>
+          </fieldset>
 
           <div className="dialog-actions">
-            <button
-              type="button"
-              className="btn ghost danger"
-              onClick={() => {
-                setKey('')
-                onSave({ key: '', domain })
-              }}
-            >
-              키 삭제
-            </button>
             <span className="spacer" />
             <button type="button" className="btn ghost" onClick={onClose}>
               닫기
