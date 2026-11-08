@@ -18,7 +18,7 @@ import type { Geometry as OlGeometry } from 'ol/geom'
 import 'ol/ol.css'
 import type { Geometry, Polygon } from 'geojson'
 import { tileUrl, WMS_URL, type BaseMap, type GeoFeature } from '../sources/vworld'
-import { floorClass } from './mapStyles'
+import { densityClass, floorClass } from './mapStyles'
 
 export interface MapFocus {
   lon: number
@@ -39,6 +39,7 @@ export interface MapData {
   parcels?: GeoFeature[]
   buildings?: GeoFeature[]
   roads?: GeoFeature[]
+  statsAreas?: GeoFeature[]
   sun?: GeoFeature[]
   marker?: [number, number] | null
 }
@@ -133,6 +134,19 @@ export default function MapView({
       }
       return s
     }, 20)
+    const densityStyles = new Map<string, Style>()
+    const statsAreas = make((f) => {
+      const cls = densityClass(f.get('ppltn_dnsty') as number | null)
+      let s = densityStyles.get(cls.id)
+      if (!s) {
+        s = new Style({
+          fill: new Fill({ color: `${cls.color}b3` }),
+          stroke: new Stroke({ color: 'rgba(70,40,120,0.55)', width: 1 }),
+        })
+        densityStyles.set(cls.id, s)
+      }
+      return s
+    }, 15)
     const roads = make(new Style({ stroke: new Stroke({ color: 'rgba(60,64,70,0.75)', width: 2.5 }) }), 25)
     const radius = make(
       new Style({ stroke: new Stroke({ color: 'rgba(80,76,68,0.9)', width: 1.5, lineDash: [8, 6] }) }),
@@ -190,7 +204,7 @@ export default function MapView({
 
     const map = new OlMap({
       target: targetRef.current,
-      layers: [base, label, buildings.layer, roads.layer, radius.layer, parcels.layer, boundary.layer, sun.layer, marker.layer, edit.layer],
+      layers: [base, label, statsAreas.layer, buildings.layer, roads.layer, radius.layer, parcels.layer, boundary.layer, sun.layer, marker.layer, edit.layer],
       view: new View({ center: fromLonLat([START.lon, START.lat]), zoom: START.zoom, minZoom: 6, maxZoom: 21 }),
       controls: defaultControls({ attributionOptions: { collapsible: true } }).extend([new ScaleLine()]),
     })
@@ -205,6 +219,7 @@ export default function MapView({
     baseRef.current = base
     labelRef.current = label
     sources.current = {
+      statsAreas: statsAreas.source,
       buildings: buildings.source,
       roads: roads.source,
       radius: radius.source,
@@ -298,10 +313,11 @@ export default function MapView({
     setMany('parcels', data.parcels)
     setMany('buildings', data.buildings)
     setMany('roads', data.roads)
+    setMany('statsAreas', data.statsAreas)
     setMany('sun', data.sun)
     s.marker?.clear()
     if (data.marker) s.marker?.addFeature(new Feature(new Point(fromLonLat(data.marker))))
-  }, [data.boundary, data.radius, data.parcels, data.buildings, data.roads, data.sun, data.marker])
+  }, [data.boundary, data.radius, data.parcels, data.buildings, data.roads, data.statsAreas, data.sun, data.marker])
 
   // ── 이동·맞춤
   useEffect(() => {

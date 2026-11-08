@@ -1,24 +1,27 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import MapView, { type MapFit } from '../components/MapView'
 import MapToolbar from '../components/MapToolbar'
-import { FloorLegend, SunLegend } from '../components/Legends'
+import { DensityLegend, FloorLegend, SunLegend } from '../components/Legends'
 import { areaM2, centerOf, radiusCircle, siteBoundary } from '../lib/geo'
 import { sunPathFeatures } from '../lib/sun'
 import { applyCollection } from '../model/applyCollection'
 import { siteKey } from '../model/project'
 import type { Project } from '../model/types'
+import { ALL_CATEGORIES, DATA_CATEGORIES, type DataCategory, type KeyNeed } from '../sources/categories'
 import { collectSiteData, type CollectProgress } from '../sources/collect'
-import { COLLECT_LAYERS, LAYER_GROUP_ORDER } from '../sources/vworldLayers'
+import type { ApiKeys } from '../sources/keys'
 import { effectiveDomain, type BaseMap, type GeoFeature, type VWorldConfig } from '../sources/vworld'
 
 interface Props {
   project: Project
   update: (fn: (draft: Project) => void) => void
   config: VWorldConfig
+  keys: ApiKeys
   baseMap: BaseMap
   onBaseMap: (b: BaseMap) => void
   onGoSite: () => void
   onGoQuestion: () => void
+  onOpenSettings: () => void
   onNext: () => void
 }
 
@@ -30,15 +33,21 @@ const STATE_LABEL: Record<CollectProgress['state'], string> = {
   error: '오류',
 }
 
+const GROUP_ORDER = ['행정', '규제', '토지', '건물', '교통', '시설', '인구·사업체']
+
+const KEY_LABEL: Record<KeyNeed, string> = { vworld: '브이월드', sgis: 'SGIS', dataGoKr: '공공데이터포털' }
+
 function fmt(n: number): string {
   return Math.round(n).toLocaleString('ko-KR')
 }
 
-export default function DataStep({ project, update, config, baseMap, onBaseMap, onGoSite, onGoQuestion, onNext }: Props) {
+export default function DataStep(props: Props) {
+  const { project, update, config, keys, baseMap, onBaseMap, onGoSite, onGoQuestion, onOpenSettings, onNext } = props
   const site = project.site
   const [wms, setWms] = useState<string[]>([])
   const [showBuildings, setShowBuildings] = useState(true)
   const [showRoads, setShowRoads] = useState(false)
+  const [showStats, setShowStats] = useState(false)
   const [showSun, setShowSun] = useState(false)
   const [progress, setProgress] = useState<CollectProgress[] | null>(null)
   const [running, setRunning] = useState(false)
@@ -54,6 +63,8 @@ export default function DataStep({ project, update, config, baseMap, onBaseMap, 
   )
   const buildings = (project.collected.LT_C_BLDGINFO?.features ?? []) as GeoFeature[]
   const roads = (project.collected.LT_L_MOCTLINK?.features ?? []) as GeoFeature[]
+  const statsAreas = (project.collected['sgis:statsarea']?.features ?? []) as GeoFeature[]
+  const statsYear = statsAreas[0]?.properties?.year as number | undefined
 
   const fitted = useRef(false)
   useEffect(() => {
@@ -61,6 +72,21 @@ export default function DataStep({ project, update, config, baseMap, onBaseMap, 
     fitted.current = true
     setFit({ geometry: radius, seq: Date.now() })
   }, [radius])
+
+  const selection = (project.dataSelection as DataCategory[] | undefined) ?? ALL_CATEGORIES
+  const hasKey: Record<KeyNeed, boolean> = {
+    vworld: !!config.key.trim(),
+    sgis: !!(keys.sgisKey.trim() && keys.sgisSecret.trim()),
+    dataGoKr: !!keys.dataGoKr.trim(),
+  }
+  const runnable = selection.filter((c) => hasKey[DATA_CATEGORIES.find((d) => d.id === c)!.needs])
+  const skippedForKey = selection.filter((c) => !runnable.includes(c))
+
+  const toggleCategory = (c: DataCategory) =>
+    update((d) => {
+      const cur = (d.dataSelection as DataCategory[] | undefined) ?? ALL_CATEGORIES
+      d.dataSelection = cur.includes(c) ? cur.filter((x) => x !== c) : [...cur, c]
+    })
 
   const questionEmpty = !project.question.curiosity.trim() && project.question.lenses.length === 0
   const radiusChanged = project.collectedAt && project.collectedRadiusM !== site.radiusM
@@ -70,10 +96,18 @@ export default function DataStep({ project, update, config, baseMap, onBaseMap, 
     if (!boundary) return
     setRunning(true)
     setError(null)
+    let last: CollectProgress[] = []
     try {
-      const outcome = await collectSiteData(config, boundary, site.radiusM, setProgress)
-      update((d) => applyCollection(d, outcome, boundary))
+      const outcome = await collectSiteData(
+        { config, keys, boundary, parcels: site.parcels, radiusM: site.radiusM, selection: runnable },
+        (p) => {
+          last = p
+          setProgress(p)
+        },
+      )
+      update((d) => applyCollection(d, outcome, boundary, last))
       setShowBuildings(true)
+      if (outcome.sgis?.statsAreas.length) setShowStats(false)
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     } finally {
@@ -81,27 +115,8 @@ export default function DataStep({ project, update, config, baseMap, onBaseMap, 
     }
   }
 
-  // 지난 수집 결과를 진행 목록 형태로 보여 준다
-  const rows: CollectProgress[] =
-    progress ??
-    COLLECT_LAYERS.flatMap((l) => {
-      // 같은 레이어의 출처가 여럿이면 (확인한 카드가 옛 출처를 가리키는 경우) 가장 최근 것
-      const s = project.sources.filter((x) => x.dataset_id === l.id && x.reliability === 'official').at(-1)
-      return s
-        ? [
-            {
-              id: l.id,
-              label: l.label,
-              group: l.group,
-              state: s.status,
-              count: s.feature_count ?? undefined,
-              message: s.error ?? undefined,
-            } satisfies CollectProgress,
-          ]
-        : []
-    })
-  const grouped = LAYER_GROUP_ORDER.map((g) => ({ group: g, rows: rows.filter((r) => r.group === g) })).filter((g) => g.rows.length)
-
+  const rows: CollectProgress[] = progress ?? project.collectLog ?? []
+  const grouped = GROUP_ORDER.map((g) => ({ group: g, rows: rows.filter((r) => r.group === g) })).filter((g) => g.rows.length)
   const drafts = project.cards.filter((c) => c.status === 'draft').length
 
   return (
@@ -120,7 +135,7 @@ export default function DataStep({ project, update, config, baseMap, onBaseMap, 
             </button>
           </div>
         ) : (
-          <section className="block">
+          <>
             <p className="stat-line">
               대지 약 <strong>{fmt(areaM2(boundary))}㎡</strong> · 조사 반경 <strong>{site.radiusM}m</strong>
               <button type="button" className="link-btn" onClick={onGoSite}>
@@ -135,9 +150,44 @@ export default function DataStep({ project, update, config, baseMap, onBaseMap, 
                 </button>
               </p>
             )}
-            {!config.key.trim() && <p className="notice error">설정에서 브이월드 인증키를 먼저 입력하세요.</p>}
+
+            <section className="block">
+              <h3>수집할 자료</h3>
+              <ul className="category-list">
+                {DATA_CATEGORIES.map((c) => {
+                  const on = selection.includes(c.id)
+                  const keyOk = hasKey[c.needs]
+                  return (
+                    <li key={c.id} className={on ? 'on' : ''}>
+                      <label>
+                        <input type="checkbox" checked={on} onChange={() => toggleCategory(c.id)} />
+                        <span className="category-text">
+                          <span className="category-label">
+                            {c.label}
+                            {!keyOk && <span className="badge warn">{KEY_LABEL[c.needs]} 키 필요</span>}
+                          </span>
+                          <span className="category-detail">{c.detail}</span>
+                          <span className="category-meta">
+                            {c.source} · {c.scope}
+                          </span>
+                        </span>
+                      </label>
+                    </li>
+                  )
+                })}
+              </ul>
+              {skippedForKey.length > 0 && (
+                <p className="help">
+                  키가 없는 자료는 건너뜁니다.{' '}
+                  <button type="button" className="link-btn" onClick={onOpenSettings}>
+                    설정에서 키 입력
+                  </button>
+                </p>
+              )}
+            </section>
+
             {site.radiusM >= 1000 && <p className="help">반경 1km는 건물이 수천 동일 수 있어 1분 정도 걸릴 수 있습니다.</p>}
-            <button type="button" className="btn primary block" onClick={() => void run()} disabled={running || !config.key.trim()}>
+            <button type="button" className="btn primary block" onClick={() => void run()} disabled={running || runnable.length === 0}>
               {running ? '수집 중…' : project.collectedAt ? '다시 수집' : '공간정보 수집'}
             </button>
             {project.collectedAt && !running && (
@@ -150,12 +200,12 @@ export default function DataStep({ project, update, config, baseMap, onBaseMap, 
               <p className="notice error">수집한 뒤 대지 경계가 바뀌었습니다. 지금 보이는 자료와 사실 카드는 이전 대지 기준입니다. 다시 수집하세요.</p>
             )}
             {error && <p className="notice error">{error}</p>}
-          </section>
+          </>
         )}
 
         {rows.length > 0 && (
           <section className="block">
-            <h3>수집 항목</h3>
+            <h3>수집 결과</h3>
             {grouped.map((g) => (
               <div key={g.group} className="collect-group">
                 <p className="collect-group-title">{g.group}</p>
@@ -164,16 +214,14 @@ export default function DataStep({ project, update, config, baseMap, onBaseMap, 
                     <li key={r.id} className={`state-${r.state}`}>
                       <span className="dot" aria-hidden="true" />
                       <span className="collect-label">{r.label}</span>
-                      <span className="collect-state">
-                        {r.state === 'ok' && r.count !== undefined ? `${fmt(r.count)}건` : STATE_LABEL[r.state]}
-                      </span>
+                      <span className="collect-state">{r.state === 'ok' && r.count !== undefined ? `${fmt(r.count)}건` : STATE_LABEL[r.state]}</span>
                       {r.message && <span className="collect-msg">{r.message}</span>}
                     </li>
                   ))}
                 </ul>
               </div>
             ))}
-            <p className="help">'해당 없음'은 오류가 아니라 대지·반경 안에 그 자료가 없다는 뜻입니다.</p>
+            <p className="help">'해당 없음'은 오류가 아니라 대지·반경 안에 그 자료가 없다는 뜻입니다. 기준 연도가 자료마다 다르니 사실 카드의 출처를 확인하세요.</p>
           </section>
         )}
 
@@ -199,6 +247,7 @@ export default function DataStep({ project, update, config, baseMap, onBaseMap, 
             radius,
             buildings: showBuildings ? buildings : [],
             roads: showRoads ? roads : [],
+            statsAreas: showStats ? statsAreas : [],
             sun,
           }}
           fit={fit}
@@ -217,19 +266,21 @@ export default function DataStep({ project, update, config, baseMap, onBaseMap, 
                 onToggle: () => setShowBuildings((v) => !v),
                 disabled: buildings.length === 0,
               },
+              { id: 'roads', label: '수집한 도로망', on: showRoads, onToggle: () => setShowRoads((v) => !v), disabled: roads.length === 0 },
               {
-                id: 'roads',
-                label: '수집한 도로망',
-                on: showRoads,
-                onToggle: () => setShowRoads((v) => !v),
-                disabled: roads.length === 0,
+                id: 'stats',
+                label: `집계구 인구밀도 ${statsAreas.length ? `${statsAreas.length}곳` : ''}`,
+                on: showStats,
+                onToggle: () => setShowStats((v) => !v),
+                disabled: statsAreas.length === 0,
               },
               { id: 'sun', label: '태양 궤적', on: showSun, onToggle: () => setShowSun((v) => !v), disabled: !center },
             ]}
           />
-          {((showBuildings && buildings.length > 0) || (showSun && center)) && (
+          {((showBuildings && buildings.length > 0) || (showStats && statsAreas.length > 0) || (showSun && center)) && (
             <div className="map-legend">
               {showBuildings && buildings.length > 0 && <FloorLegend />}
+              {showStats && statsAreas.length > 0 && <DensityLegend year={statsYear} />}
               {showSun && center && <SunLegend />}
             </div>
           )}

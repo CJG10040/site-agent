@@ -131,10 +131,12 @@ export default function App() {
                     project={project}
                     update={update}
                     config={config}
+                    keys={keys}
                     baseMap={baseMap}
                     onBaseMap={setBaseMap}
                     onGoSite={() => go('site')}
                     onGoQuestion={() => go('question')}
+                    onOpenSettings={() => setSettingsOpen(true)}
                     onNext={() => go('facts')}
                   />
                 )}

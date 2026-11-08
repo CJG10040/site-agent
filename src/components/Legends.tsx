@@ -1,4 +1,19 @@
-import { FLOOR_CLASSES, FLOOR_UNKNOWN } from './mapStyles'
+import { DENSITY_CLASSES, DENSITY_UNKNOWN, FLOOR_CLASSES, FLOOR_UNKNOWN } from './mapStyles'
+
+export function DensityLegend({ year }: { year?: number | string }) {
+  return (
+    <div className="legend-item">
+      <p className="legend-title">집계구 인구밀도 (명/㎢{year ? `, ${year}년` : ''})</p>
+      <ul className="legend-list">
+        {[...DENSITY_CLASSES, DENSITY_UNKNOWN].map((c) => (
+          <li key={c.id}>
+            <i style={{ background: c.color }} /> {c.label}
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
 
 export function SunLegend() {
   return (

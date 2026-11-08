@@ -125,6 +125,10 @@ export interface Project {
   collectedRadiusM: number | null
   /** 수집할 때의 대지 경계 식별값 (대지가 바뀌었는지 알기 위함) */
   collectedSiteKey?: string | null
+  /** 수집할 자료 묶음 (데이터 선택 화면). 없으면 전부 */
+  dataSelection?: string[]
+  /** 마지막 수집의 항목별 결과 (새로고침 후에도 보여 주기 위함) */
+  collectLog?: { id: string; label: string; group: string; state: 'pending' | 'running' | 'ok' | 'empty' | 'error'; count?: number; message?: string }[]
   collected: Record<string, CollectedLayer>
   sources: SourceRecord[]
   cards: Card[]

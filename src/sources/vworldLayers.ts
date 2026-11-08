@@ -2,7 +2,28 @@
 // 레이어 코드와 속성 이름은 2026-11-08 실제 키로 광주 동구 충장로 일대를 조회해 확인했다.
 // (용도지구 UQ123·125·129 등은 레이어는 있으나 확인 지역에 해당 구역이 없어 이름은 응답의 uname으로 표시)
 
+import type { DataCategory } from './categories'
+
 export type LayerGroup = '행정' | '규제' | '건물' | '교통' | '시설'
+
+/** 레이어가 속한 데이터 묶음 (행정은 위치 확인에 늘 필요하므로 null = 항상 수집) */
+export function layerCategory(layer: CollectLayer): DataCategory | null {
+  switch (layer.kind) {
+    case 'admin':
+      return null
+    case 'zoning':
+    case 'district':
+    case 'protect':
+      return 'zoning'
+    case 'buildings':
+      return 'buildings'
+    case 'roads':
+    case 'planRoads':
+      return 'roads'
+    case 'facilities':
+      return 'facilities'
+  }
+}
 export type LayerScope = 'center' | 'site' | 'radius'
 
 export interface CollectLayer {

@@ -109,6 +109,12 @@ export function areaToAreaDistanceM(a: Areal, b: Areal): number {
   return min
 }
 
+/** 도형을 감싸는 사각형을 margin(도)만큼 넓힌 브이월드 BOX 필터 */
+export function expandedBoxFilter(g: Geometry, marginDeg: number): string {
+  const [minx, miny, maxx, maxy] = bbox(feature(g))
+  return `BOX(${(minx - marginDeg).toFixed(7)},${(miny - marginDeg).toFixed(7)},${(maxx + marginDeg).toFixed(7)},${(maxy + marginDeg).toFixed(7)})`
+}
+
 export function isAreal(g: Geometry | null | undefined): g is Areal {
   return !!g && (g.type === 'Polygon' || g.type === 'MultiPolygon')
 }

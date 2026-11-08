@@ -6,13 +6,15 @@
 
 import { lineToAreaDistanceM, areaToAreaDistanceM, areaM2, isAreal, isLinear, type Areal } from '../lib/geo'
 import { sunSummaries } from '../lib/sun'
-import type { CollectOutcome, LayerOutcome } from '../sources/collect'
+import type { CollectOutcome, CollectProgress, LayerOutcome } from '../sources/collect'
 import { SOURCE_NAME } from '../sources/vworld'
+import { addLandFacts, addRegisterFacts, addSgisFacts } from './applyExtended'
 import { jimokName, useName } from './codes'
 import { makeCard, nextNumber, nowIso, siteKey } from './project'
+import { cleanNames, fmt, listText, median, pct, str, uniq } from './textUtil'
 import type { Card, CardType, Project, SourceRecord } from './types'
 
-interface DraftFact {
+export interface DraftFact {
   auto_key: string
   type: CardType
   topic: string
@@ -22,51 +24,20 @@ interface DraftFact {
   human_validation_required: boolean
 }
 
-const VWORLD_LICENSE = '브이월드 오픈API 이용약관에 따름 (출처 표기 필요)'
-
-function str(v: unknown): string {
-  return v === null || v === undefined ? '' : String(v).trim()
+/** 확장 수집(토지·건축물대장·SGIS)이 출처와 사실 초안을 만들 때 쓰는 도구 */
+export interface FactContext {
+  project: Project
+  newSource: (s: Omit<SourceRecord, 'source_id'>) => string
+  push: (d: Omit<DraftFact, 'type' | 'confidence' | 'human_validation_required'> & Partial<DraftFact>) => void
+  boundary: Areal
+  /** 지적도 도형으로 계산한 대지 면적(㎡) */
+  areaValue: number
+  radiusM: number
 }
 
-function uniq<T>(arr: T[]): T[] {
-  return [...new Set(arr)]
-}
+export const VWORLD_LICENSE = '브이월드 오픈API 이용약관에 따름 (출처 표기 필요)'
 
-/** 이름 목록 정리: 빈 값·"-" 같은 자리표시 제거, 띄어쓰기만 다른 중복 제거 */
-function cleanNames(names: string[]): string[] {
-  const seen = new Set<string>()
-  const out: string[] = []
-  for (const raw of names) {
-    const name = raw.trim()
-    if (!name || /^[-–—_.\s]+$/.test(name)) continue
-    const key = name.replace(/\s+/g, '')
-    if (seen.has(key)) continue
-    seen.add(key)
-    out.push(name)
-  }
-  return out
-}
-
-function fmt(n: number, digits = 0): string {
-  return n.toLocaleString('ko-KR', { maximumFractionDigits: digits, minimumFractionDigits: 0 })
-}
-
-function pct(part: number, whole: number): number {
-  return whole > 0 ? Math.round((part / whole) * 100) : 0
-}
-
-function median(values: number[]): number {
-  const s = [...values].sort((a, b) => a - b)
-  const m = Math.floor(s.length / 2)
-  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2
-}
-
-function listText(items: string[], max = 6): string {
-  const shown = items.slice(0, max).join(', ')
-  return items.length > max ? `${shown} 외 ${items.length - max}곳` : shown
-}
-
-export function applyCollection(project: Project, outcome: CollectOutcome, boundary: Areal): void {
+export function applyCollection(project: Project, outcome: CollectOutcome, boundary: Areal, log?: CollectProgress[]): void {
   const site = project.site
   const radiusM = outcome.radiusM
 
@@ -278,7 +249,7 @@ export function applyCollection(project: Project, outcome: CollectOutcome, bound
       sources: zoningLayers.filter((o) => o.state === 'ok').map((o) => layerSource[o.layer.id]),
       human_validation_required: true,
     })
-  } else if (zoningLayers.every((o) => o.state === 'empty')) {
+  } else if (zoningLayers.length > 0 && zoningLayers.every((o) => o.state === 'empty')) {
     drafts.push({
       auto_key: 'zoning-missing',
       type: 'UNKNOWN',
@@ -505,15 +476,25 @@ export function applyCollection(project: Project, outcome: CollectOutcome, bound
   })
 
   // 법규 확인 안내 (요청서 2.2: 실무적 법규 검토와 창의적 해석을 분리)
-  drafts.push({
-    auto_key: 'legal-check',
-    type: 'UNKNOWN',
-    topic: '용도지역',
-    text: '용도지역·지구·구역 정보는 참고용이다. 건폐율·용적률·높이 제한 등 실제 규제는 토지이음 토지이용계획확인원과 조례로 확인해야 한다.',
-    sources: [],
-    confidence: 'low',
-    human_validation_required: true,
-  })
+  if (outcome.selection.includes('zoning') || outcome.selection.includes('land')) {
+    drafts.push({
+      auto_key: 'legal-check',
+      type: 'UNKNOWN',
+      topic: '용도지역',
+      text: '용도지역·지구·구역 정보는 참고용이다. 건폐율·용적률·높이 제한 등 실제 규제는 토지이음 토지이용계획확인원과 조례로 확인해야 한다.',
+      sources: [],
+      confidence: 'low',
+      human_validation_required: true,
+    })
+  }
+
+  // 확장 수집: 토지(브이월드 부동산), 건축물대장, SGIS
+  const ctx: FactContext = { project, newSource, push: fact, boundary, areaValue, radiusM }
+  if (outcome.land) addLandFacts(ctx, outcome.land)
+  if (outcome.register) addRegisterFacts(ctx, outcome.register)
+  if (outcome.sgis) addSgisFacts(ctx, outcome.sgis)
+  project.dataSelection = outcome.selection
+  if (log) project.collectLog = log.map((p) => ({ ...p }))
 
   // 실패한 수집
   for (const o of outcome.layers.filter((x) => x.state === 'error')) {
