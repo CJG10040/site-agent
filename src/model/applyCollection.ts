@@ -9,6 +9,7 @@ import { sunSummaries } from '../lib/sun'
 import type { CollectOutcome, CollectProgress, LayerOutcome } from '../sources/collect'
 import { SOURCE_NAME } from '../sources/vworld'
 import { addLandFacts, addRegisterFacts, addSgisFacts } from './applyExtended'
+import { addClimateFacts, addNearbyLayerFacts, addPoiFacts, addStoreFacts, addTransitFacts } from './applyNearby'
 import { jimokName, useName } from './codes'
 import { makeCard, nextNumber, nowIso, siteKey } from './project'
 import { cleanNames, fmt, listText, median, pct, str, uniq } from './textUtil'
@@ -493,6 +494,11 @@ export function applyCollection(project: Project, outcome: CollectOutcome, bound
   if (outcome.land) addLandFacts(ctx, outcome.land)
   if (outcome.register) addRegisterFacts(ctx, outcome.register)
   if (outcome.sgis) addSgisFacts(ctx, outcome.sgis)
+  addNearbyLayerFacts(ctx, outcome.layers, layerSource)
+  if (outcome.transit) addTransitFacts(ctx, outcome.transit)
+  if (outcome.climate) addClimateFacts(ctx, outcome.climate)
+  if (outcome.stores) addStoreFacts(ctx, outcome.stores)
+  if (outcome.poi) addPoiFacts(ctx, outcome.poi)
   project.dataSelection = outcome.selection
   if (log) project.collectLog = log.map((p) => ({ ...p }))
 

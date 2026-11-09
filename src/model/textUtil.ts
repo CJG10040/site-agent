@@ -61,3 +61,11 @@ export function countBy(values: string[]): [string, number][] {
   for (const v of values) m.set(v, (m.get(v) ?? 0) + 1)
   return [...m.entries()].sort((a, b) => b[1] - a[1])
 }
+
+/** 받침에 맞춰 조사를 붙인다: josa('역', '이', '가') → '역이', josa('마트', '이', '가') → '마트가' */
+export function josa(word: string, withFinal: string, withoutFinal: string): string {
+  const last = word.trim().slice(-1)
+  const code = last.charCodeAt(0)
+  if (code >= 0xac00 && code <= 0xd7a3) return `${word}${(code - 0xac00) % 28 > 0 ? withFinal : withoutFinal}`
+  return `${word}${withFinal}(${withoutFinal})`
+}

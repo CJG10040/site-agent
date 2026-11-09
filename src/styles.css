@@ -2997,3 +2997,85 @@ dl {
     padding: 6px 7px;
   }
 }
+
+/* ───────── 데이터 확장 (Phase 6) ───────── */
+.block-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.block-head h3 {
+  margin: 0;
+}
+
+.map-legend {
+  max-height: calc(100% - 120px);
+  overflow-y: auto;
+}
+
+.map-legend i.legend-shape.circle {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border-color: #fff;
+}
+
+.map-legend i.legend-shape.square {
+  width: 10px;
+  height: 10px;
+  border-radius: 1px;
+  border-color: #fff;
+}
+
+.map-legend i.legend-shape.area {
+  border-width: 1.5px;
+  border-style: solid;
+}
+
+.map-info {
+  position: absolute;
+  left: 12px;
+  bottom: 28px;
+  max-width: min(360px, calc(100% - 24px));
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  padding: 8px 10px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  font-size: 13px;
+  z-index: 5;
+}
+
+.map-info .link-btn {
+  margin-left: auto;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.site-links ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.site-links li {
+  display: grid;
+  gap: 2px;
+}
+
+.site-links a {
+  font-weight: 600;
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.site-links a:hover {
+  text-decoration: underline;
+}

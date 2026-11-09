@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import MapView, { type MapFit } from '../components/MapView'
 import MapToolbar from '../components/MapToolbar'
-import { DensityLegend, FloorLegend, SunLegend } from '../components/Legends'
+import { DensityLegend, FloorLegend, OverlayLegend, SunLegend } from '../components/Legends'
+import { buildOverlays, type OverlayId } from '../components/overlays'
+import SiteLinks from '../components/SiteLinks'
 import { areaM2, centerOf, radiusCircle, siteBoundary } from '../lib/geo'
 import { sunPathFeatures } from '../lib/sun'
 import { applyCollection } from '../model/applyCollection'
@@ -33,9 +35,9 @@ const STATE_LABEL: Record<CollectProgress['state'], string> = {
   error: '오류',
 }
 
-const GROUP_ORDER = ['행정', '규제', '토지', '건물', '교통', '시설', '인구·사업체']
+const GROUP_ORDER = ['행정', '규제', '토지', '건물', '교통', '시설', '인구·사업체', '재해·하천', '공공·교육', '상권', '대중교통·기후', '주변 시설']
 
-const KEY_LABEL: Record<KeyNeed, string> = { vworld: '브이월드', sgis: 'SGIS', dataGoKr: '공공데이터포털' }
+const KEY_LABEL: Record<KeyNeed, string> = { vworld: '브이월드', sgis: 'SGIS', dataGoKr: '공공데이터포털', kakao: '카카오' }
 
 function fmt(n: number): string {
   return Math.round(n).toLocaleString('ko-KR')
@@ -53,6 +55,8 @@ export default function DataStep(props: Props) {
   const [running, setRunning] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [fit, setFit] = useState<MapFit | null>(null)
+  const [shown, setShown] = useState<OverlayId[]>([])
+  const [info, setInfo] = useState<{ name: string; sub: string } | null>(null)
 
   const boundary = useMemo(() => siteBoundary(site), [site])
   const center = useMemo(() => (boundary ? centerOf(boundary) : null), [boundary])
@@ -65,6 +69,13 @@ export default function DataStep(props: Props) {
   const roads = (project.collected.LT_L_MOCTLINK?.features ?? []) as GeoFeature[]
   const statsAreas = (project.collected['sgis:statsarea']?.features ?? []) as GeoFeature[]
   const statsYear = statsAreas[0]?.properties?.year as number | undefined
+  // collected는 프로젝트를 고쳐도 같은 객체로 유지되므로(useProject) 다시 수집할 때만 새로 만든다
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const overlays = useMemo(() => buildOverlays(project), [project.collected])
+  const visible = useMemo(() => overlays.filter((o) => shown.includes(o.id) && o.count > 0), [overlays, shown])
+  const overlayAreas = useMemo(() => visible.flatMap((o) => o.areas), [visible])
+  const overlayPoints = useMemo(() => visible.flatMap((o) => o.points), [visible])
+  const toggleOverlay = (id: OverlayId) => setShown((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]))
 
   const fitted = useRef(false)
   useEffect(() => {
@@ -78,9 +89,15 @@ export default function DataStep(props: Props) {
     vworld: !!config.key.trim(),
     sgis: !!(keys.sgisKey.trim() && keys.sgisSecret.trim()),
     dataGoKr: !!keys.dataGoKr.trim(),
+    kakao: !!keys.kakaoRest.trim(),
   }
   const runnable = selection.filter((c) => hasKey[DATA_CATEGORIES.find((d) => d.id === c)!.needs])
   const skippedForKey = selection.filter((c) => !runnable.includes(c))
+
+  const setAll = (on: boolean) =>
+    update((d) => {
+      d.dataSelection = on ? [...ALL_CATEGORIES] : []
+    })
 
   const toggleCategory = (c: DataCategory) =>
     update((d) => {
@@ -152,7 +169,16 @@ export default function DataStep(props: Props) {
             )}
 
             <section className="block">
-              <h3>수집할 자료</h3>
+              <div className="block-head">
+                <h3>수집할 자료</h3>
+                <span className="spacer" />
+                <button type="button" className="link-btn" onClick={() => setAll(true)}>
+                  전체 선택
+                </button>
+                <button type="button" className="link-btn" onClick={() => setAll(false)}>
+                  전체 해제
+                </button>
+              </div>
               <ul className="category-list">
                 {DATA_CATEGORIES.map((c) => {
                   const on = selection.includes(c.id)
@@ -225,6 +251,8 @@ export default function DataStep(props: Props) {
           </section>
         )}
 
+        {boundary && <SiteLinks site={site} />}
+
         {project.collectedAt && !running && (
           <div className="panel-foot">
             <p className="muted small">사실 카드 초안 {drafts}개가 확인을 기다립니다.</p>
@@ -249,9 +277,12 @@ export default function DataStep(props: Props) {
             roads: showRoads ? roads : [],
             statsAreas: showStats ? statsAreas : [],
             sun,
+            overlayAreas,
+            overlayPoints,
           }}
           fit={fit}
           mode="click"
+          onOverlayClick={setInfo}
         >
           <MapToolbar
             baseMap={baseMap}
@@ -275,13 +306,32 @@ export default function DataStep(props: Props) {
                 disabled: statsAreas.length === 0,
               },
               { id: 'sun', label: '태양 궤적', on: showSun, onToggle: () => setShowSun((v) => !v), disabled: !center },
+              ...overlays.map((o) => ({
+                id: `ov:${o.id}`,
+                label: `${o.label} ${o.count ? `${fmt(o.count)}` : ''}`,
+                on: shown.includes(o.id),
+                onToggle: () => toggleOverlay(o.id),
+                disabled: o.count === 0,
+              })),
             ]}
           />
-          {((showBuildings && buildings.length > 0) || (showStats && statsAreas.length > 0) || (showSun && center)) && (
+          {info && (
+            <div className="map-info" role="status">
+              <strong>{info.name || '이름 없음'}</strong>
+              {info.sub && <span className="muted small">{info.sub}</span>}
+              <button type="button" className="link-btn" onClick={() => setInfo(null)} aria-label="닫기">
+                ×
+              </button>
+            </div>
+          )}
+          {((showBuildings && buildings.length > 0) || (showStats && statsAreas.length > 0) || (showSun && center) || visible.length > 0) && (
             <div className="map-legend">
               {showBuildings && buildings.length > 0 && <FloorLegend />}
               {showStats && statsAreas.length > 0 && <DensityLegend year={statsYear} />}
               {showSun && center && <SunLegend />}
+              {visible.map((o) => (
+                <OverlayLegend key={o.id} title={o.label} entries={o.legend} />
+              ))}
             </div>
           )}
         </MapView>

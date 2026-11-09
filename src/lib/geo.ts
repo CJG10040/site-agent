@@ -126,3 +126,39 @@ export function isLinear(g: Geometry | null | undefined): g is LineString | Mult
 export function intersects(a: Geometry, b: Geometry): boolean {
   return booleanIntersects(feature(a), feature(b))
 }
+
+/** 점과 대지 경계 사이의 최소 거리(m). 대지 안이면 0 */
+export function pointToAreaDistanceM(p: Position, area_: Areal): number {
+  const pt = point(p)
+  if (booleanIntersects(pt, feature(area_))) return 0
+  let min = Infinity
+  for (const ring of ringsOf(area_)) {
+    if (ring.length < 2) continue
+    min = Math.min(min, pointToLineDistance(pt, lineString(ring), { units: 'meters' }))
+  }
+  return min
+}
+
+/** 점·선·면 어느 도형이든 대지 경계까지의 최소 거리(m). 계산할 수 없으면 null */
+export function geometryToAreaDistanceM(g: Geometry | null | undefined, area_: Areal): number | null {
+  if (!g) return null
+  try {
+    if (g.type === 'Point') return pointToAreaDistanceM(g.coordinates, area_)
+    if (g.type === 'MultiPoint') return Math.min(...g.coordinates.map((c) => pointToAreaDistanceM(c, area_)))
+    if (isLinear(g)) return lineToAreaDistanceM(g, area_)
+    if (isAreal(g)) return areaToAreaDistanceM(g, area_)
+  } catch {
+    return null
+  }
+  return null
+}
+
+/** 두 경위도 사이의 거리(m, 구면 근사) */
+export function distanceM(a: [number, number], b: [number, number]): number {
+  const R = 6371008.8
+  const toRad = (d: number) => (d * Math.PI) / 180
+  const dLat = toRad(b[1] - a[1])
+  const dLon = toRad(b[0] - a[0])
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a[1])) * Math.cos(toRad(b[1])) * Math.sin(dLon / 2) ** 2
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)))
+}

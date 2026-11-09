@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import FactLinker from '../components/FactLinker'
+import SiteLinks from '../components/SiteLinks'
 import MapView, { type MapFit, type MapObservation } from '../components/MapView'
 import MapToolbar from '../components/MapToolbar'
 import { PhotoThumb, PhotoViewer } from '../components/PhotoThumb'
@@ -378,6 +379,10 @@ export default function ObserveStep({ project, update, config, baseMap, onBaseMa
               <button type="button" className="btn small" onClick={() => mergeRef.current?.click()}>
                 다른 기기의 관찰 합치기
               </button>
+            </details>
+            <details className="advanced">
+              <summary>현장 가기 전에: 로드뷰·토지이음·과거 항공사진</summary>
+              <SiteLinks site={project.site} title="바로가기" />
             </details>
           </>
         ) : (

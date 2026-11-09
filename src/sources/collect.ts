@@ -20,7 +20,11 @@ import {
   type SgisRegion,
   type StatsAreaFeature,
 } from './sgis'
-import { COLLECT_LAYERS, layerCategory, type CollectLayer } from './vworldLayers'
+import { climateNear, type ClimateResult } from './climate'
+import { poisAround, type PoiCategoryResult } from './kakao'
+import { storesAround, type StoresResult } from './stores'
+import { busStopsAround, type TransitResult } from './transit'
+import { ALL_LAYERS, layerCategory, type CollectLayer } from './vworldLayers'
 import { LAND_DATASETS, nedForParcel } from './vworldLand'
 import { PARCEL_LAYER, queryFeatures, reverseGeocode, VWorldError, type GeoFeature, type VWorldConfig } from './vworld'
 
@@ -82,6 +86,13 @@ export interface SgisOutcome {
   errors: { part: 'population' | 'statsArea' | 'business'; message: string }[]
 }
 
+/** 공공데이터포털·카카오 수집 결과 (실패하면 error에 사유) */
+export interface ApiOutcome<T> {
+  retrievedAt: string
+  result: T | null
+  error: string | null
+}
+
 export interface CollectOutcome {
   radiusM: number
   center: [number, number]
@@ -92,6 +103,10 @@ export interface CollectOutcome {
   land?: LandOutcome
   register?: RegisterOutcome
   sgis?: SgisOutcome
+  transit?: ApiOutcome<TransitResult>
+  climate?: ApiOutcome<ClimateResult>
+  stores?: ApiOutcome<StoresResult>
+  poi?: ApiOutcome<PoiCategoryResult[]>
   selection: DataCategory[]
   finishedAt: string
 }
@@ -134,7 +149,7 @@ export async function collectSiteData(input: CollectInput, onProgress: (p: Colle
   const radiusWkt = queryPolygonWkt(radiusCircle(center, radiusM), 70)
   const pointWkt = `POINT(${center[0].toFixed(7)} ${center[1].toFixed(7)})`
 
-  const layers = COLLECT_LAYERS.filter((l) => {
+  const layers = ALL_LAYERS.filter((l) => {
     const c = layerCategory(l)
     return c === null || want(c)
   })
@@ -147,6 +162,10 @@ export async function collectSiteData(input: CollectInput, onProgress: (p: Colle
     progress.push({ id: 'sgis:statsarea', label: '반경 안 집계구 분포', group: '인구·사업체', state: 'pending' })
   }
   if (want('business')) progress.push({ id: 'sgis:business', label: '사업체·산업 구조', group: '인구·사업체', state: 'pending' })
+  if (want('transit')) progress.push({ id: 'tago:stops', label: '버스정류소·경유 노선', group: '대중교통·기후', state: 'pending' })
+  if (want('climate')) progress.push({ id: 'kma:asos', label: '가까운 관측소 기후 (최근 3년)', group: '대중교통·기후', state: 'pending' })
+  if (want('stores')) progress.push({ id: 'sbiz:stores', label: '상가업소 업종', group: '상권', state: 'pending' })
+  if (want('poi')) progress.push({ id: 'kakao:poi', label: '주변 생활 시설 (카카오)', group: '주변 시설', state: 'pending' })
 
   const report = () => onProgress(progress.map((p) => ({ ...p })))
   const set = (id: string, patch: Partial<CollectProgress>) => {
@@ -346,7 +365,63 @@ export async function collectSiteData(input: CollectInput, onProgress: (p: Colle
     return out
   })()
 
-  const [, land, register, sgis] = await Promise.all([layerTask, landTask, registerTask, sgisTask])
+  // ── 공공데이터포털·카카오 (서로 독립)
+  async function apiTask<T>(
+    on: boolean,
+    id: string,
+    fetcher: () => Promise<T>,
+    summarize: (r: T) => Pick<CollectProgress, 'state' | 'count' | 'message'>,
+  ): Promise<ApiOutcome<T> | undefined> {
+    if (!on) return undefined
+    set(id, { state: 'running' })
+    const retrievedAt = new Date().toISOString()
+    try {
+      const result = await fetcher()
+      set(id, summarize(result))
+      return { retrievedAt, result, error: null }
+    } catch (e) {
+      set(id, { state: 'error', message: errorText(e) })
+      return { retrievedAt, result: null, error: errorText(e) }
+    }
+  }
+  const [lon, lat] = center
+  const transitTask = apiTask(want('transit'), 'tago:stops', () => busStopsAround(keys, lon, lat), (r) => ({
+    state: r.stops.length ? 'ok' : 'empty',
+    count: r.stops.length,
+    message: r.stops.length ? `가장 가까운 ${r.stops[0].nodenm} 약 ${Math.round(r.stops[0].distance)}m` : undefined,
+  }))
+  const climateTask = apiTask(want('climate'), 'kma:asos', () => climateNear(keys, lon, lat), (r) => ({
+    state: 'ok',
+    count: r.rows.length,
+    message: `${r.station.name} 관측소 (약 ${r.distanceKm.toFixed(1)}km) · ${r.years[0]}~${r.years.at(-1)}년`,
+  }))
+  const storesTask = apiTask(want('stores'), 'sbiz:stores', () => storesAround(keys, lon, lat, radiusM), (r) => ({
+    state: r.stores.length ? 'ok' : 'empty',
+    count: r.stores.length,
+    message: [r.radiusM < radiusM ? `반경 ${r.radiusM}m까지만 조회` : '', r.truncated ? `전체 ${r.total}곳 중 ${r.stores.length}곳` : '']
+      .filter(Boolean)
+      .join(' · ') || undefined,
+  }))
+  const poiTask = apiTask(want('poi'), 'kakao:poi', () => poisAround(keys, lon, lat, radiusM), (r) => {
+    const failed = r.filter((c) => c.error)
+    const total = r.reduce((n, c) => n + c.total, 0)
+    return {
+      state: failed.length === r.length ? 'error' : total > 0 ? 'ok' : 'empty',
+      count: total,
+      message: failed.length ? `${failed.length}개 분류 오류: ${failed[0].error}` : `${r.length}개 분류`,
+    }
+  })
+
+  const [, land, register, sgis, transit, climate, stores, poi] = await Promise.all([
+    layerTask,
+    landTask,
+    registerTask,
+    sgisTask,
+    transitTask,
+    climateTask,
+    storesTask,
+    poiTask,
+  ])
 
   let address: CollectOutcome['address'] = null
   let addressError: string | null = null
@@ -357,7 +432,7 @@ export async function collectSiteData(input: CollectInput, onProgress: (p: Colle
     addressError = errorText(e)
   }
 
-  layerOutcomes.sort((a, b) => COLLECT_LAYERS.indexOf(a.layer) - COLLECT_LAYERS.indexOf(b.layer))
+  layerOutcomes.sort((a, b) => ALL_LAYERS.indexOf(a.layer) - ALL_LAYERS.indexOf(b.layer))
 
   return {
     radiusM,
@@ -369,6 +444,10 @@ export async function collectSiteData(input: CollectInput, onProgress: (p: Colle
     land,
     register,
     sgis,
+    transit,
+    climate,
+    stores,
+    poi,
     selection,
     finishedAt: new Date().toISOString(),
   }

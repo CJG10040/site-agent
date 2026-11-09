@@ -1,18 +1,22 @@
 import { useState } from 'react'
+import { runKeyDiagnostics } from '../sources/keyDiagnostics'
+import type { ApiKeys } from '../sources/keys'
 import { effectiveDomain, runDiagnostics, type CheckResult, type VWorldConfig } from '../sources/vworld'
 
 interface Props {
   config: VWorldConfig
+  keys: ApiKeys
 }
 
-export default function DiagnosticsPanel({ config }: Props) {
+export default function DiagnosticsPanel({ config, keys }: Props) {
   const [results, setResults] = useState<CheckResult[] | null>(null)
   const [busy, setBusy] = useState(false)
   const [ranAt, setRanAt] = useState<Date | null>(null)
 
   const run = async () => {
     setBusy(true)
-    setResults(await runDiagnostics(config))
+    const [vworld, others] = await Promise.all([runDiagnostics(config), runKeyDiagnostics(keys)])
+    setResults([...vworld, ...others])
     setRanAt(new Date())
     setBusy(false)
   }
@@ -22,8 +26,8 @@ export default function DiagnosticsPanel({ config }: Props) {
   return (
     <div className="panel-body">
       <p className="help">
-        브이월드 인증키로 지도·검색·주소·데이터 API가 실제로 응답하는지 확인합니다. 키를 바꾸거나 서비스 URL을
-        수정한 뒤 다시 실행하세요.
+        브이월드 지도·검색·주소·데이터 API와 SGIS·공공데이터포털(서비스별)·카카오 키가 실제로 응답하는지 확인합니다.
+        키를 바꾸거나 활용신청이 승인된 뒤 다시 실행하세요.
       </p>
 
       <dl className="env">

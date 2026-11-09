@@ -42,3 +42,24 @@ export function FloorLegend() {
     </div>
   )
 }
+
+/** 덧그린 수집 자료의 범례 (색 + 모양) */
+export function OverlayLegend({ title, entries }: { title: string; entries: { color: string; label: string; shape?: 'square' | 'circle' | 'area' }[] }) {
+  if (entries.length === 0) return null
+  return (
+    <div className="legend-item">
+      <p className="legend-title">{title}</p>
+      <ul className="legend-list">
+        {entries.map((e) => (
+          <li key={e.label}>
+            <i
+              className={`legend-shape ${e.shape ?? 'area'}`}
+              style={e.shape === 'area' || !e.shape ? { background: `${e.color}33`, borderColor: e.color } : { background: e.color }}
+            />{' '}
+            {e.label}
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}

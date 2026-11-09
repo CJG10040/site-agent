@@ -180,7 +180,7 @@ export default function App() {
                 닫기
               </button>
             </div>
-            <DiagnosticsPanel config={config} />
+            <DiagnosticsPanel config={config} keys={keys} />
           </div>
         </div>
       )}

@@ -32,7 +32,8 @@ const TYPE_LABEL: Record<string, string> = {
 const CONFIDENCE_LABEL: Record<Card['confidence'], string> = { high: '신뢰 높음', medium: '신뢰 보통', low: '신뢰 낮음' }
 
 const RELIABILITY_LABEL: Record<SourceRecord['reliability'], string> = {
-  official: '공식 공간정보',
+  official: '공공기관 공개 자료',
+  secondary: '민간 지도 서비스',
   computed: '프로그램 계산값',
   user: '사용자 입력 자료',
 }

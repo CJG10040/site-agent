@@ -13,7 +13,7 @@ import Draw from 'ol/interaction/Draw'
 import Modify from 'ol/interaction/Modify'
 import { fromLonLat, toLonLat } from 'ol/proj'
 import { defaults as defaultControls, ScaleLine } from 'ol/control'
-import { Circle as CircleStyle, Fill, Stroke, Style, Text } from 'ol/style'
+import { Circle as CircleStyle, Fill, RegularShape, Stroke, Style, Text } from 'ol/style'
 import type { Geometry as OlGeometry } from 'ol/geom'
 import 'ol/ol.css'
 import type { Geometry, Polygon } from 'geojson'
@@ -41,6 +41,9 @@ export interface MapData {
   roads?: GeoFeature[]
   statsAreas?: GeoFeature[]
   sun?: GeoFeature[]
+  /** 수집 자료 덧그림 (속성 _c 색, _shape 모양, _r 반지름) */
+  overlayAreas?: GeoFeature[]
+  overlayPoints?: GeoFeature[]
   marker?: [number, number] | null
   observations?: MapObservation[]
 }
@@ -72,6 +75,8 @@ interface Props {
   onDrawEnd?: (polygon: Polygon) => void
   onModifyEnd?: (polygon: Polygon) => void
   onObservationClick?: (id: string) => void
+  /** 덧그린 자료(시설·정류소 등)를 눌렀을 때 — 아무것도 없는 곳이면 null */
+  onOverlayClick?: (info: { name: string; sub: string } | null) => void
   children?: ReactNode
 }
 
@@ -115,6 +120,7 @@ export default function MapView({
   onDrawEnd,
   onModifyEnd,
   onObservationClick,
+  onOverlayClick,
   children,
 }: Props) {
   const targetRef = useRef<HTMLDivElement>(null)
@@ -124,8 +130,8 @@ export default function MapView({
   const wmsRefs = useRef(new Map<string, TileLayer<TileWMS>>())
   const sources = useRef<Record<string, VectorSource>>({})
   const editSourceRef = useRef<VectorSource | null>(null)
-  const handlers = useRef({ onMapClick, onDrawEnd, onModifyEnd, onObservationClick, mode })
-  handlers.current = { onMapClick, onDrawEnd, onModifyEnd, onObservationClick, mode }
+  const handlers = useRef({ onMapClick, onDrawEnd, onModifyEnd, onObservationClick, onOverlayClick, mode })
+  handlers.current = { onMapClick, onDrawEnd, onModifyEnd, onObservationClick, onOverlayClick, mode }
 
   // ── 지도 생성 (한 번)
   useEffect(() => {
@@ -162,6 +168,32 @@ export default function MapView({
       return s
     }, 15)
     const roads = make(new Style({ stroke: new Stroke({ color: 'rgba(60,64,70,0.75)', width: 2.5 }) }), 25)
+    const overlayStyles = new Map<string, Style>()
+    const overlayAreas = make((f) => {
+      const c = String(f.get('_c') ?? '#868e96')
+      let st = overlayStyles.get(`a${c}`)
+      if (!st) {
+        st = new Style({ fill: new Fill({ color: `${c}33` }), stroke: new Stroke({ color: c, width: 1.6 }) })
+        overlayStyles.set(`a${c}`, st)
+      }
+      return st
+    }, 18)
+    const overlayPoints = make((f) => {
+      const c = String(f.get('_c') ?? '#868e96')
+      const shape = f.get('_shape') === 'square' ? 'square' : 'circle'
+      const r = Number(f.get('_r')) || 4.5
+      const key = `p${c}${shape}${r}`
+      let st = overlayStyles.get(key)
+      if (!st) {
+        const fill = new Fill({ color: c })
+        const stroke = new Stroke({ color: '#ffffff', width: 1.2 })
+        st = new Style({
+          image: shape === 'square' ? new RegularShape({ points: 4, radius: r + 1.5, angle: Math.PI / 4, fill, stroke }) : new CircleStyle({ radius: r, fill, stroke }),
+        })
+        overlayStyles.set(key, st)
+      }
+      return st
+    }, 35)
     const radius = make(
       new Style({ stroke: new Stroke({ color: 'rgba(80,76,68,0.9)', width: 1.5, lineDash: [8, 6] }) }),
       30,
@@ -235,7 +267,7 @@ export default function MapView({
 
     const map = new OlMap({
       target: targetRef.current,
-      layers: [base, label, statsAreas.layer, buildings.layer, roads.layer, radius.layer, parcels.layer, boundary.layer, sun.layer, marker.layer, observations.layer, edit.layer],
+      layers: [base, label, statsAreas.layer, overlayAreas.layer, buildings.layer, roads.layer, radius.layer, overlayPoints.layer, parcels.layer, boundary.layer, sun.layer, marker.layer, observations.layer, edit.layer],
       view: new View({ center: fromLonLat([START.lon, START.lat]), zoom: START.zoom, minZoom: 6, maxZoom: 21 }),
       controls: defaultControls({ attributionOptions: { collapsible: true } }).extend([new ScaleLine()]),
     })
@@ -249,6 +281,14 @@ export default function MapView({
           return
         }
       }
+      if (handlers.current.onOverlayClick) {
+        const hit = map.forEachFeatureAtPixel(
+          evt.pixel,
+          (f, layer) => (layer === overlayPoints.layer || layer === overlayAreas.layer ? f : undefined),
+          { hitTolerance: 5 },
+        )
+        handlers.current.onOverlayClick(hit ? { name: String(hit.get('_name') ?? ''), sub: String(hit.get('_sub') ?? '') } : null)
+      }
       const [lon, lat] = toLonLat(evt.coordinate)
       handlers.current.onMapClick?.(lon, lat)
     })
@@ -260,6 +300,8 @@ export default function MapView({
       statsAreas: statsAreas.source,
       buildings: buildings.source,
       roads: roads.source,
+      overlayAreas: overlayAreas.source,
+      overlayPoints: overlayPoints.source,
       radius: radius.source,
       parcels: parcels.source,
       boundary: boundary.source,
@@ -354,6 +396,8 @@ export default function MapView({
     setMany('roads', data.roads)
     setMany('statsAreas', data.statsAreas)
     setMany('sun', data.sun)
+    setMany('overlayAreas', data.overlayAreas)
+    setMany('overlayPoints', data.overlayPoints)
     s.marker?.clear()
     if (data.marker) s.marker?.addFeature(new Feature(new Point(fromLonLat(data.marker))))
     s.observations?.clear()
@@ -362,7 +406,7 @@ export default function MapView({
       f.setProperties({ id: o.id, label: o.label, kind: o.kind, selected: o.selected })
       s.observations?.addFeature(f)
     }
-  }, [data.boundary, data.radius, data.parcels, data.buildings, data.roads, data.statsAreas, data.sun, data.marker, data.observations])
+  }, [data.boundary, data.radius, data.parcels, data.buildings, data.roads, data.statsAreas, data.sun, data.overlayAreas, data.overlayPoints, data.marker, data.observations])
 
   // ── 이동·맞춤
   useEffect(() => {
