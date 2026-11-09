@@ -9,12 +9,15 @@ export interface ApiKeys {
   sgisSecret: string
   /** 공공데이터포털 일반 인증키 */
   dataGoKr: string
+  /** 카카오 디벨로퍼스 REST API 키 (주변 시설 검색) */
+  kakaoRest: string
 }
 
 const STORAGE: Record<keyof ApiKeys, string> = {
   sgisKey: 'site-agent:sgis-key',
   sgisSecret: 'site-agent:sgis-secret',
   dataGoKr: 'site-agent:datagokr-key',
+  kakaoRest: 'site-agent:kakao-rest-key',
 }
 
 export function loadKeys(): ApiKeys {
@@ -22,6 +25,7 @@ export function loadKeys(): ApiKeys {
     sgisKey: readSetting(STORAGE.sgisKey) ?? '',
     sgisSecret: readSetting(STORAGE.sgisSecret) ?? '',
     dataGoKr: readSetting(STORAGE.dataGoKr) ?? '',
+    kakaoRest: readSetting(STORAGE.kakaoRest) ?? '',
   }
 }
 

@@ -50,7 +50,7 @@ export default function App() {
     const ok2 = saveKeys(nextKeys)
     setStorageBlocked(!(ok1 && ok2))
     setConfig({ key: next.key.trim(), domain: next.domain.trim() })
-    setKeys({ sgisKey: nextKeys.sgisKey.trim(), sgisSecret: nextKeys.sgisSecret.trim(), dataGoKr: nextKeys.dataGoKr.trim() })
+    setKeys({ sgisKey: nextKeys.sgisKey.trim(), sgisSecret: nextKeys.sgisSecret.trim(), dataGoKr: nextKeys.dataGoKr.trim(), kakaoRest: nextKeys.kakaoRest.trim() })
     setSettingsOpen(false)
   }
   const closeSettings = useCallback(() => setSettingsOpen(false), [])

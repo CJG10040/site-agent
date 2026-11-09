@@ -145,7 +145,7 @@ export default function SettingsDialog({ initial, initialKeys, onSave, onClose }
           </fieldset>
 
           <fieldset className="settings-group">
-            <legend>공공데이터포털 (건축물대장)</legend>
+            <legend>공공데이터포털 (건축물대장·버스정류소·기후·상가정보)</legend>
             <div className="field">
               <label htmlFor="datagokr-key" className="label">
                 일반 인증키
@@ -156,6 +156,22 @@ export default function SettingsDialog({ initial, initialKeys, onSave, onClose }
                 onChange={(v) => setK('dataGoKr', v)}
                 placeholder="마이페이지 › 개발계정 › 일반 인증키 (Encoding·Decoding 둘 다 가능)"
               />
+            </div>
+          </fieldset>
+
+          <fieldset className="settings-group">
+            <legend>카카오 (주변 시설 검색)</legend>
+            <div className="field">
+              <label htmlFor="kakao-key" className="label">
+                REST API 키
+              </label>
+              <SecretInput
+                id="kakao-key"
+                value={keys.kakaoRest}
+                onChange={(v) => setK('kakaoRest', v)}
+                placeholder="카카오 디벨로퍼스 › 내 애플리케이션 › 앱 키 › REST API 키"
+              />
+              <p className="help">카카오 디벨로퍼스에서 앱의 '카카오맵' 사용 설정을 켜야 검색이 됩니다.</p>
             </div>
           </fieldset>
 
