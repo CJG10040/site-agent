@@ -2343,6 +2343,408 @@ input[type='datetime-local'] {
   }
 }
 
+/* ───────── 리포트 (Phase 5) ───────── */
+
+.report-page {
+  padding: 20px 24px 60px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  align-items: center;
+}
+
+.report-toolbar {
+  width: 100%;
+  max-width: 1100px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+}
+
+.report-toolbar .label {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.report {
+  width: 100%;
+  background: #ffffff;
+  color: #1d1d1b;
+  padding: 36px 40px;
+  border-radius: 6px;
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+  font-size: 13px;
+  line-height: 1.6;
+  --r-muted: #5c5a55;
+  --r-line: #dedad2;
+}
+
+.report.a4 {
+  max-width: 820px;
+}
+
+.report.a3 {
+  max-width: 1400px;
+}
+
+.report .muted {
+  color: var(--r-muted);
+}
+
+.report-cover {
+  border-bottom: 3px solid #d9480f;
+  padding-bottom: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.report-cover h1 {
+  font-size: 26px;
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+
+.cover-meta {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  gap: 2px 12px;
+}
+
+.cover-meta dt,
+.report .kv dt {
+  color: var(--r-muted);
+  font-weight: 600;
+}
+
+.cover-meta dd,
+.report .kv dd {
+  margin: 0;
+}
+
+.report .kv {
+  display: grid;
+  grid-template-columns: 160px 1fr;
+  gap: 4px 12px;
+}
+
+.report-sec {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.report-sec h2 {
+  font-size: 16px;
+  margin: 0;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--r-line);
+  break-after: avoid;
+}
+
+.sec-num {
+  display: inline-block;
+  min-width: 22px;
+  color: #d9480f;
+}
+
+.report-sec h3 {
+  font-size: 13px;
+  margin: 6px 0 2px;
+  color: var(--r-muted);
+}
+
+.summary-text {
+  font-size: 14.5px;
+  line-height: 1.75;
+  padding: 12px 14px;
+  background: #fdf3ee;
+  border-left: 4px solid #d9480f;
+  white-space: pre-wrap;
+}
+
+.rid {
+  font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--r-muted);
+  white-space: nowrap;
+}
+
+.report-refs {
+  font-size: 11px;
+  color: var(--r-muted);
+  margin-left: 4px;
+}
+
+.report-list {
+  margin: 0;
+  padding-left: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.report-list li {
+  break-inside: avoid;
+}
+
+.report .tag {
+  display: inline-block;
+  padding: 0 6px;
+  border-radius: 4px;
+  background: #f1efea;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.report .tag.teal {
+  background: #e3f6f8;
+  color: #0c8599;
+}
+
+.report-maps {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+}
+
+.report.a3 .report-maps {
+  grid-template-columns: 1fr 1fr;
+}
+
+.report-map {
+  margin: 0;
+  break-inside: avoid;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.report-map img {
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--r-line);
+}
+
+.report-map figcaption {
+  font-size: 11.5px;
+  color: var(--r-muted);
+}
+
+.map-missing {
+  aspect-ratio: 10 / 7;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  text-align: center;
+  border: 1px dashed var(--r-line);
+  color: var(--r-muted);
+}
+
+.report-obs {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+.report.a3 .report-obs {
+  grid-template-columns: 1fr 1fr;
+}
+
+.obs-entry {
+  break-inside: avoid;
+  padding: 8px 10px;
+  border: 1px solid var(--r-line);
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.obs-photos {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.report-photo {
+  width: 150px;
+  height: 112px;
+  object-fit: cover;
+  border-radius: 4px;
+  border: 1px solid var(--r-line);
+}
+
+.report-photo.placeholder {
+  display: inline-block;
+  background: #f1efea;
+}
+
+.report-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.report-table th,
+.report-table td {
+  border: 1px solid var(--r-line);
+  padding: 5px 7px;
+  text-align: left;
+  vertical-align: top;
+  white-space: pre-wrap;
+}
+
+.report-table thead th {
+  background: #f4f2ed;
+}
+
+.report-table tr {
+  break-inside: avoid;
+}
+
+.report-table.hyp tbody th {
+  width: 100px;
+  background: #f4f2ed;
+}
+
+.report-table.hyp thead th {
+  background: #e9f6ec;
+}
+
+.report-hyp-scroll {
+  overflow-x: auto;
+}
+
+.report-buckets {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.report.a3 .report-buckets {
+  grid-template-columns: repeat(4, 1fr);
+}
+
+.report-bucket {
+  break-inside: avoid;
+  padding: 8px 10px;
+  border: 1px solid var(--r-line);
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.report-bucket h3 {
+  margin: 0;
+}
+
+.report-questions {
+  margin: 0;
+  padding-left: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.report.a3 .fact-group,
+.report.a3 .report-list {
+  column-gap: 28px;
+}
+
+.report.a3 .report-sec > .fact-group {
+  break-inside: avoid;
+}
+
+/* 휴대폰 화면에서만 (A4 인쇄 폭 약 703px에 적용되지 않도록 screen 한정) */
+@media screen and (max-width: 760px) {
+  .report-page {
+    padding: 12px;
+  }
+  .report {
+    padding: 18px 16px;
+  }
+  .report .kv,
+  .cover-meta {
+    grid-template-columns: 1fr;
+  }
+  .report-buckets {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ───────── 인쇄 ───────── */
+
+@media print {
+  html,
+  body,
+  #root {
+    height: auto;
+    background: #ffffff !important;
+  }
+
+  .topbar,
+  .stepper,
+  .banner,
+  .no-print,
+  .dialog-backdrop {
+    display: none !important;
+  }
+
+  .app,
+  .workspace,
+  .workspace-main {
+    display: block;
+    height: auto;
+    overflow: visible;
+  }
+
+  .report-page {
+    padding: 0;
+    display: block;
+  }
+
+  .report {
+    max-width: none !important;
+    box-shadow: none;
+    padding: 0;
+    border-radius: 0;
+    gap: 18px;
+  }
+
+  .report-cover {
+    break-after: avoid;
+  }
+
+  .report-hyp-scroll {
+    overflow: visible;
+  }
+
+  .report-table.hyp {
+    font-size: 10.5px;
+  }
+
+  .report-photo {
+    width: 120px;
+    height: 90px;
+  }
+
+  * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}
+
 /* ───────── 연결 진단 ───────── */
 
 dl {

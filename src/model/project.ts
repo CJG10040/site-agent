@@ -135,6 +135,8 @@ export function stepStatus(project: Project, step: StepId): { done: boolean; not
       const h = live.filter((c) => c.type === 'HYPOTHESIS').length
       return { done: rel >= 5 && ten >= 3 && q >= 3 && h >= 3, note: live.length ? `가설 ${h} · 질문 ${q}` : '' }
     }
+    case 'report':
+      return { done: !!project.reportPrintedAt, note: project.reportPrintedAt ? '인쇄함' : '' }
     default:
       return { done: false, note: '' }
   }

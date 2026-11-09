@@ -8,13 +8,13 @@ import { exportProjectFile } from './model/transfer'
 import type { StepId } from './model/types'
 import { useProject, type SaveState } from './model/useProject'
 import BriefStep from './screens/BriefStep'
-import ComingSoon from './screens/ComingSoon'
 import DataStep from './screens/DataStep'
 import FactsStep from './screens/FactsStep'
 import Home from './screens/Home'
 import InterpretStep from './screens/InterpretStep'
 import ObserveStep from './screens/ObserveStep'
 import QuestionStep from './screens/QuestionStep'
+import ReportStep from './screens/ReportStep'
 import SiteStep from './screens/SiteStep'
 import { loadKeys, saveKeys, type ApiKeys } from './sources/keys'
 import { loadConfig, saveConfig, type BaseMap, type VWorldConfig } from './sources/vworld'
@@ -163,7 +163,7 @@ export default function App() {
                   <ObserveStep project={project} update={update} config={config} baseMap={baseMap} onBaseMap={setBaseMap} onGoFacts={() => go('facts')} />
                 )}
                 {step === 'interpret' && <InterpretStep project={project} update={update} />}
-                {step === 'report' && <ComingSoon step={step} />}
+                {step === 'report' && <ReportStep project={project} update={update} config={config} />}
               </main>
             </div>
           )}

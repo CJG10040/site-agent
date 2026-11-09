@@ -184,4 +184,6 @@ export interface Project {
   chatLog?: ChatSession[]
   /** 패널용 대지해석 요약문 (⑤ 단계 답변) */
   panelSummary?: string
+  /** 리포트를 마지막으로 인쇄(PDF 저장)한 시각 */
+  reportPrintedAt?: string
 }
