@@ -158,7 +158,7 @@ export function speedText(d: DiagramData, snaps: SpeedSnapshot[]): string | null
     const lenAll = known.reduce((x, y) => x + y.len, 0)
     const lenSlow = known.filter((x) => (x.v as number) < 15).reduce((x, y) => x + y.len, 0)
     const radius = known.length ? `반경 안 속도가 나온 차도 ${fmt(known.length)}구간 중 시속 15km 미만(막힘)이 길이로 ${pctText(lenAll ? lenSlow / lenAll : 0)}` : '반경 안 차도에 속도 자료가 없음'
-    return `${head} ${adj.length ? `대지에 붙은 차도는 ${listText(adj, 4, '')}, ` : '대지에 붙은 차도는 속도 자료 없음, '}${radius}`
+    return `${head} ${adj.length ? `대지에 붙은 차도는 ${listText(adj, 4)}, ` : '대지에 붙은 차도는 속도 자료 없음, '}${radius}`
   })
   return `국가교통정보센터 실시간 통행 속도(구간별 추정값)로 본 대지 주변 차도: ${parts.join(' / ')}. 받은 순간의 장면이라 시간대·요일에 따라 달라진다.`
 }
@@ -188,7 +188,14 @@ function networkDrafts(d: DiagramData, r: NetworkResult, src: string): DraftFact
       return k >= 0 ? d.links[k].name : ''
     }),
   )
-  const dirs = cleanNames(top.slice(0, 8).map((t) => `대지 ${dir8(bearingOf(t.m))}쪽 ${distText(Math.hypot(t.m[0], t.m[1]))}`))
+  // 방향별로 가장 가까운 거리 하나씩
+  const byDir = new Map<string, number>()
+  for (const t of top) {
+    const k = dir8(bearingOf(t.m))
+    const dd = Math.hypot(t.m[0], t.m[1])
+    if (!byDir.has(k) || dd < (byDir.get(k) as number)) byDir.set(k, dd)
+  }
+  const dirs = [...byDir.entries()].sort((a, b) => a[1] - b[1]).map(([k, dd]) => `${k}쪽 ${distText(dd)}`)
   if (bw !== null || bwide !== null) {
     const walkTxt = bw !== null ? `걷는 규모(반경 ${WALK_R}m 안 이동)로는 반경 안 길의 상위 ${pctText(topShare(v.nachWalk, v.inDisplay, bw))}` : ''
     const wideTxt = bwide !== null ? `넓은 규모(반경 ${r.displayR}m 전체 이동)로는 상위 ${pctText(topShare(v.nachWide, v.inDisplay, bwide))}` : ''
@@ -196,7 +203,7 @@ function networkDrafts(d: DiagramData, r: NetworkResult, src: string): DraftFact
       auto_key: 'network-choice',
       type: 'FACT',
       topic: '길의 연결',
-      text: `길의 배치만으로 계산한 선택도(공간구문론: 여러 곳을 오갈 때 지나가기 쉬운 길)에서 대지에 붙은 길 중 가장 높은 길은 ${[walkTxt, wideTxt].filter(Boolean).join(', ')}이다. 넓은 규모에서 선택도가 가장 높은 길(상위 5%)은 ${names.length ? `${listText(names, 4, '')} 등으로, ` : ''}${listText(dirs, 3, '')} 등에 있다.`,
+      text: `길의 배치만으로 계산한 선택도(공간구문론: 여러 곳을 오갈 때 지나가기 쉬운 길)에서 대지에 붙은 길 중 가장 높은 길은 ${[walkTxt, wideTxt].filter(Boolean).join(', ')}이다. 넓은 규모에서 선택도가 가장 높은 길(상위 5%)은 ${names.length ? `${listText(names, 4)} 등으로, ` : ''}대지 ${dirs.slice(0, 3).join(', ')} 등에 있다.`,
       sources: [src],
       confidence: 'medium',
       human_validation_required: false,

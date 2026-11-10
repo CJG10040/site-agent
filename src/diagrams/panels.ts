@@ -697,7 +697,7 @@ export const PANELS: PanelDef[] = [
       const adj = rs
         .filter((r) => {
           try {
-            return lineToAreaDistanceM(r.geom, c.d.boundary) <= (r.width ?? 4) / 2 + 3
+            return lineToAreaDistanceM(r.geom, c.d.boundary) <= (r.width ?? 4) / 2 + 8
           } catch {
             return false
           }

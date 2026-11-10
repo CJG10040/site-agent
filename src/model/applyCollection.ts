@@ -581,6 +581,7 @@ function mergeDrafts(project: Project, drafts: DraftFact[], prune = true): void 
     } else if (existing.origin === 'data' && existing.status !== 'rejected' && !existing.edited) {
       if (existing.text !== d.text) existing.history.push({ at: t, text: existing.text })
       existing.status = 'confirmed'
+      existing.type = d.type
       existing.text = d.text
       existing.topic = d.topic
       existing.related_source_ids = d.sources

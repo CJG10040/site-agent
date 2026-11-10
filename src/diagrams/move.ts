@@ -183,9 +183,10 @@ export function encView(d: DiagramData): EncView | null {
     const site = siteRingsXY(d)
     const adjRoads = new Set<number>()
     roads.forEach((l, i) => {
-      if (lineToRingsDist(l, site) <= (widths[i] ?? 4) / 2 + 3) adjRoads.add(i)
+      // 대지에 붙은 길: 길 가장자리에서 8m 안 (보도·건축선 후퇴 포함)
+      if (lineToRingsDist(l, site) <= (widths[i] ?? 4) / 2 + 8) adjRoads.add(i)
     })
-    const front = samples.filter((s) => adjRoads.has(s.road) && pointToRingsDist(s.p, site) <= (widths[s.road] ?? 4) / 2 + 12)
+    const front = samples.filter((s) => adjRoads.has(s.road) && pointToRingsDist(s.p, site) <= (widths[s.road] ?? 4) / 2 + 15)
     return { roads, widths, samples, front }
   })
 }
