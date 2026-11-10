@@ -359,10 +359,14 @@ export function addMoveFacts(ctx: FactContext, o: MoveOutcome, enclosure: boolea
 export function appendSpeedSnapshot(project: Project, snap: SpeedSnapshot, radiusM: number, upsert: (p: Project, drafts: DraftFact[]) => void): void {
   const prev = (project.collected['its:speed']?.features ?? []).map((f) => f.properties as unknown as SpeedSnapshot)
   const snaps = [...prev, snap].slice(-12)
-  project.collected['its:speed'] = {
-    dataset_id: 'its:speed',
-    retrieved_at: snap.at,
-    features: snaps.map((s) => ({ type: 'Feature' as const, geometry: null, properties: s as unknown as Record<string, unknown> })),
+  // collected는 이전 상태와 함께 쓰는 객체라 고치지 않고 새로 만든다 (그래야 도판이 다시 그려짐)
+  project.collected = {
+    ...project.collected,
+    'its:speed': {
+      dataset_id: 'its:speed',
+      retrieved_at: snap.at,
+      features: snaps.map((s) => ({ type: 'Feature' as const, geometry: null, properties: s as unknown as Record<string, unknown> })),
+    },
   }
   const d = buildDiagramData(project)
   const text = d ? speedText(d, snaps) : null
