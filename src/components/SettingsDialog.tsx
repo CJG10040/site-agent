@@ -175,6 +175,21 @@ export default function SettingsDialog({ initial, initialKeys, onSave, onClose }
             </div>
           </fieldset>
 
+          <fieldset className="settings-group">
+            <legend>국가교통정보센터 (실시간 도로 속도)</legend>
+            <div className="field">
+              <label htmlFor="its-key" className="label">
+                Open API 인증키
+              </label>
+              <SecretInput
+                id="its-key"
+                value={keys.itsKey}
+                onChange={(v) => setK('itsKey', v)}
+                placeholder="its.go.kr › 오픈데이터 › 교통소통정보 › 인증키 신청으로 받은 키"
+              />
+            </div>
+          </fieldset>
+
           <div className="dialog-actions">
             <span className="spacer" />
             <button type="button" className="btn ghost" onClick={onClose}>

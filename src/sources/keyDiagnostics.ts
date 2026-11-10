@@ -1,15 +1,17 @@
-// 브이월드 외 키(SGIS·공공데이터포털 서비스별·카카오)가 실제로 응답하는지 확인한다.
+// 브이월드 외 키(SGIS·공공데이터포털 서비스별·카카오·국가교통정보센터)가 실제로 응답하는지 확인한다.
 // 공공데이터포털은 키가 하나여도 서비스마다 활용신청 승인이 따로 필요하므로 서비스별로 본다.
 
 import { registerForParcel } from './buildingRegister'
 import { dataGoKrGet, standardItems } from './dataGoKr'
 import { CLIMATE_SERVICE } from './climate'
+import { itsProbe } from './its'
 import { kakaoProbe } from './kakao'
 import type { ApiKeys } from './keys'
 import { regionAt } from './sgis'
 import { STORES_SERVICE } from './stores'
 import { TRANSIT_SERVICE } from './transit'
 import type { CheckResult } from './vworld'
+import { windProbe } from './wind'
 
 /** 광주광역시청 일대 */
 const PROBE = { lon: 126.8526, lat: 35.16 }
@@ -72,6 +74,7 @@ export async function runKeyDiagnostics(keys: ApiKeys): Promise<CheckResult[]> {
         )
         return `응답 정상 · ${standardItems(data).items.length}건`
       }, approvalHint),
+      timed('asosHr', `공공데이터포털 · 기상 관측 시간자료(바람장미)`, async () => `응답 정상 · ${await windProbe(keys)}시간`, approvalHint),
       timed('sbiz', `공공데이터포털 · 상가(상권)정보`, async () => {
         const data = (await dataGoKrGet(
           keys,
@@ -91,6 +94,14 @@ export async function runKeyDiagnostics(keys: ApiKeys): Promise<CheckResult[]> {
     keys.kakaoRest.trim()
       ? timed('kakao', '카카오 (주변 생활 시설)', async () => `응답 정상 · 반경 500m 편의점 ${await kakaoProbe(keys, PROBE.lon, PROBE.lat)}곳`, "카카오 디벨로퍼스에서 REST API 키와 '카카오맵' 사용 설정을 확인하세요.")
       : Promise.resolve(skipped('kakao', '카카오 (주변 생활 시설)', '카카오 REST 키')),
+    keys.itsKey.trim()
+      ? timed(
+          'its',
+          '국가교통정보센터 (실시간 도로 속도)',
+          async () => `응답 정상 · 광주시청 주변 ${await itsProbe(keys, PROBE.lon, PROBE.lat)}개 도로 구간`,
+          "its.go.kr › 오픈데이터 › 교통소통정보에서 받은 인증키인지 확인하세요.",
+        )
+      : Promise.resolve(skipped('its', '국가교통정보센터 (실시간 도로 속도)', '국가교통정보센터 키')),
   )
   return Promise.all(jobs)
 }

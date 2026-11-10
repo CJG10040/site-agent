@@ -38,7 +38,7 @@ const STATE_LABEL: Record<CollectProgress['state'], string> = {
 
 const GROUP_ORDER = ['행정', '규제', '토지', '건물', '교통', '시설', '인구·사업체', '재해·하천', '공공·교육', '상권', '대중교통·기후', '주변 시설']
 
-const KEY_LABEL: Record<KeyNeed, string> = { vworld: '브이월드', sgis: 'SGIS', dataGoKr: '공공데이터포털', kakao: '카카오', none: '' }
+const KEY_LABEL: Record<KeyNeed, string> = { vworld: '브이월드', sgis: 'SGIS', dataGoKr: '공공데이터포털', kakao: '카카오', its: '국가교통정보센터', none: '' }
 
 function fmt(n: number): string {
   return Math.round(n).toLocaleString('ko-KR')
@@ -120,6 +120,7 @@ export default function DataStep(props: Props) {
     sgis: !!(keys.sgisKey.trim() && keys.sgisSecret.trim()),
     dataGoKr: !!keys.dataGoKr.trim(),
     kakao: !!keys.kakaoRest.trim(),
+    its: !!keys.itsKey.trim(),
     none: true,
   }
   const runnable = selection.filter((c) => hasKey[DATA_CATEGORIES.find((d) => d.id === c)!.needs])

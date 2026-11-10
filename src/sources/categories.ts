@@ -18,7 +18,7 @@ export type DataCategory =
   | 'stores'
   | 'poi'
 
-export type KeyNeed = 'vworld' | 'sgis' | 'dataGoKr' | 'kakao' | 'none'
+export type KeyNeed = 'vworld' | 'sgis' | 'dataGoKr' | 'kakao' | 'its' | 'none'
 
 export interface CategoryDef {
   id: DataCategory
