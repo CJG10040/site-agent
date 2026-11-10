@@ -6,3 +6,8 @@ dist/
 .DS_Store
 .claude/
 *.tsbuildinfo
+
+# 지형 원자료 (수 GB, 저장소에 올리지 않음)
+terrain-raw/
+tools/terrain/.venv/
+tools/terrain/work/
