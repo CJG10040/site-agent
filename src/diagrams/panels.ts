@@ -15,6 +15,7 @@ import { esc, type PanelLayer, type PanelOutput } from './compose'
 import type { Bld, DiagramData, Pt } from './data'
 import { centroidOf, dir8, MAP_CX, MAP_CY, MAP_R, type Frame } from './frame'
 import { mix, shades, steps, zoningColor, type Palette } from './palette'
+import { ENV_PANELS } from './panelsEnv'
 import { MOVE_PANELS } from './panelsMove'
 
 export interface PanelCtx {
@@ -1151,7 +1152,7 @@ export const TERRAIN_PANELS: PanelDef[] = [
 export const PANEL_GROUP_ORDER: PanelGroup[] = ['위치', '땅의 조건', '지형', '주변 현황', '연계와 접근', '환경', '사회·경제', '현장']
 
 /** 보고서 배치 순서 (위치 → 땅의 조건 → 지형 → 주변 현황 → 연계와 접근 → 환경 → 사회·현장) */
-export const ORDERED_PANELS: PanelDef[] = PANEL_GROUP_ORDER.flatMap((g) => [...PANELS, ...TERRAIN_PANELS, ...MOVE_PANELS].filter((p) => p.group === g))
+export const ORDERED_PANELS: PanelDef[] = PANEL_GROUP_ORDER.flatMap((g) => [...PANELS, ...TERRAIN_PANELS, ...MOVE_PANELS, ...ENV_PANELS].filter((p) => p.group === g))
 
 export function panelNumber(id: string): number {
   return ORDERED_PANELS.findIndex((p) => p.id === id) + 1

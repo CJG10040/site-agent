@@ -32,6 +32,8 @@ export interface PanelOutput {
   empty?: string
   /** 대지 표시를 그리지 않음 (예: 항공사진은 위에 따로) */
   hideBase?: boolean
+  /** 축척 막대를 그리지 않음 (지도가 아닌 그림) */
+  noScale?: boolean
 }
 
 export const FONT = "Pretendard, 'Pretendard Variable', 'Malgun Gothic', 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif"
@@ -160,7 +162,7 @@ export function composePanel(meta: ComposeMeta, out: PanelOutput, frame: Frame, 
       : `<rect id="틀" x="${MAP_CX - MAP_R}" y="${MAP_CY - MAP_R}" width="${MAP_R * 2}" height="${MAP_R * 2}" fill="none" stroke="${pal.ink}" stroke-opacity="0.45" stroke-width="1.5"/>`,
     emptyNote,
     north,
-    scale,
+    out.noScale ? '' : scale,
     `<g id="제목"><text x="40" y="1012" font-size="34" font-weight="700" fill="${pal.ink}"><tspan fill="${pal.subtle}" font-weight="400">${String(meta.number).padStart(2, '0')}  </tspan>${esc(meta.title)}</text>`,
     `<text x="40" y="1046" font-size="17" fill="${pal.subtle}">${esc(meta.subtitle)}</text></g>`,
     `<g id="범례">${out.legendTitle ? `<text x="40" y="${legendTop - 10}" font-size="16" font-weight="700" fill="${pal.ink}">${esc(out.legendTitle)}</text>` : ''}${legendSvg}</g>`,

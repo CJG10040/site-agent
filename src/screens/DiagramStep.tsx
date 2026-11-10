@@ -303,7 +303,7 @@ export default function DiagramStep({ project, update, config, keys, onGoData, o
           <span className="muted small">층 이하</span>
         </label>
         <Seg
-          label="그림자 날짜"
+          label="그림자·일조 날짜"
           value={settings.sunDay}
           options={[
             { v: 'winter', label: '동지' },
@@ -316,6 +316,13 @@ export default function DiagramStep({ project, update, config, keys, onGoData, o
           <span className="label">그림자 시각 {settings.sunHour}시</span>
           <input type="range" min={7} max={18} step={1} value={settings.sunHour} onChange={(e) => setSettings({ sunHour: Number(e.target.value) })} />
         </label>
+        {data?.env && (
+          <label className="num-field">
+            <span className="label">계획 층수 (가시권)</span>
+            <input type="number" min={1} max={80} value={settings.planFloors} onChange={(e) => setSettings({ planFloors: Math.max(1, Math.min(80, Number(e.target.value) || 5)) })} />
+            <span className="muted small">층 × 3m</span>
+          </label>
+        )}
         {data?.wind && (
           <Seg label="바람장미" value={settings.windSeason} options={SEASONS.map((s, i) => ({ v: i, label: s }))} onChange={(v) => setSettings({ windSeason: v })} />
         )}

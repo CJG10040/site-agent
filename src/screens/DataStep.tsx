@@ -8,10 +8,12 @@ import SiteLinks from '../components/SiteLinks'
 import { areaM2, centerOf, radiusCircle, siteBoundary } from '../lib/geo'
 import { sunPathFeatures } from '../lib/sun'
 import { applyCollection } from '../model/applyCollection'
+import { applyEnv } from '../model/applyEnv'
 import { siteKey } from '../model/project'
 import type { Project } from '../model/types'
 import { ALL_CATEGORIES, DATA_CATEGORIES, type DataCategory, type KeyNeed } from '../sources/categories'
 import { collectSiteData, type CollectProgress } from '../sources/collect'
+import { computeEnv } from '../sources/env'
 import type { ApiKeys } from '../sources/keys'
 import { effectiveDomain, type BaseMap, type GeoFeature, type VWorldConfig } from '../sources/vworld'
 
@@ -36,7 +38,7 @@ const STATE_LABEL: Record<CollectProgress['state'], string> = {
   error: '오류',
 }
 
-const GROUP_ORDER = ['행정', '규제', '토지', '건물', '교통', '시설', '인구·사업체', '재해·하천', '공공·교육', '상권', '대중교통·기후', '주변 시설']
+const GROUP_ORDER = ['행정', '규제', '토지', '건물', '교통', '시설', '인구·사업체', '재해·하천', '공공·교육', '상권', '대중교통·기후', '주변 시설', '환경 계산']
 
 const KEY_LABEL: Record<KeyNeed, string> = { vworld: '브이월드', sgis: 'SGIS', dataGoKr: '공공데이터포털', kakao: '카카오', its: '국가교통정보센터', none: '' }
 
@@ -154,9 +156,40 @@ export default function DataStep(props: Props) {
           setProgress(p)
         },
       )
-      update((d) => applyCollection(d, outcome, boundary, last))
+      let after = null as Project | null
+      update((d) => {
+        applyCollection(d, outcome, boundary, last)
+        after = d
+      })
       setShowBuildings(true)
       if (outcome.sgis?.statsAreas.length) setShowStats(false)
+      // 환경 계산: 수집한 건물·지형·기후로 (몇 초~1분)
+      if (runnable.includes('env') && after) {
+        const setEnv = (patch: Partial<CollectProgress>) => {
+          last = last.map((p) => (p.id === 'env' ? { ...p, ...patch } : p))
+          setProgress(last)
+        }
+        const t0 = performance.now()
+        setEnv({ state: 'running', message: '계산 준비' })
+        try {
+          const r = await computeEnv(after, config, (text) => setEnv({ state: 'running', message: text }))
+          setEnv({
+            state: 'ok',
+            message: `${Math.round((performance.now() - t0) / 1000)}초${r.trees ? ` · 위성영상 ${r.treeTiles}장${r.treeFailed ? `(${r.treeFailed}장 실패)` : ''}` : ''}${r.thermal ? '' : ' · 열쾌적은 기후·바람 필요'}`,
+          })
+          update((d) => {
+            applyEnv(d, r, null)
+            d.collectLog = last.map((p) => ({ ...p }))
+          })
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e)
+          setEnv({ state: 'error', message: msg })
+          update((d) => {
+            applyEnv(d, null, msg)
+            d.collectLog = last.map((p) => ({ ...p }))
+          })
+        }
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     } finally {

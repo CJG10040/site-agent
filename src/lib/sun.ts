@@ -125,3 +125,10 @@ export function sunAt(lon: number, lat: number, day: SunDayKey, hour: number, ye
   const pos = SunCalc.getPosition(kst(year, d.month, d.day, h, Math.round((hour - h) * 60)), lat, lon)
   return { altitude: deg(pos.altitude), azimuth: compassBearing(pos.azimuth) }
 }
+
+/** 아무 날짜(한국 시각)의 태양 고도·방위 */
+export function sunAtDate(lon: number, lat: number, month: number, day: number, hour: number, year = new Date().getFullYear()): { altitude: number; azimuth: number } {
+  const h = Math.floor(hour)
+  const pos = SunCalc.getPosition(kst(year, month, day, h, Math.round((hour - h) * 60)), lat, lon)
+  return { altitude: deg(pos.altitude), azimuth: compassBearing(pos.azimuth) }
+}

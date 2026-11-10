@@ -38,6 +38,8 @@ function settingsKey(id: string, s: DiagramSettings): string {
   if (id === 'sun') return `${common}|${s.sunDay}|${s.sunHour}`
   if (id === 'wind') return `${common}|${s.windSeason}`
   if (id === 'speed') return `${common}|${s.speedSnap}`
+  if (id === 'sunSite' || id === 'sunWide') return `${common}|${s.sunDay}`
+  if (id === 'viewshed') return `${common}|${s.planFloors}`
   return common
 }
 
@@ -49,7 +51,9 @@ export function useDiagrams(project: Project, vworldKey: string, only?: string[]
       return `${o.id}:${d.location ? `${d.location.lon.toFixed(6)},${d.location.lat.toFixed(6)}` : ''}:${d.discovery ? 1 : 0}:${d.links.some((l) => l.relation === 'differ') ? 1 : 0}`
     })
     .join('|')
-  const dataSig = `${project.collectedAt ?? ''}|${siteKey(project.site)}|${project.collectedRadiusM ?? project.site.radiusM}|${obsSig}`
+  // 환경 계산은 수집 뒤에 따로 끝나므로 그 시각도 넣는다
+  const envSig = project.collected['env:result']?.retrieved_at ?? ''
+  const dataSig = `${project.collectedAt ?? ''}|${envSig}|${siteKey(project.site)}|${project.collectedRadiusM ?? project.site.radiusM}|${obsSig}`
   // 결론을 고칠 때마다 프로젝트 객체가 바뀌므로, 자료가 실제로 바뀐 때만 다시 만든다
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const data: DiagramData | null = useMemo(() => buildDiagramData(project), [dataSig, project.collected])

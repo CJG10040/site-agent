@@ -28,6 +28,17 @@ export interface RoseTable {
   meanSpeed: number
 }
 
+/** 여름 오후(7~8월 14~16시) 조건 — 열쾌적 실험용 */
+export interface HotAfternoon {
+  /** 더운 쪽 10% 날 평균 */
+  ta: number
+  rh: number
+  ws: number
+  days: number
+  /** 모든 날 평균 */
+  all: { ta: number; rh: number; ws: number; days: number }
+}
+
 export interface WindResult {
   station: Station
   distanceKm: number
@@ -37,6 +48,15 @@ export interface WindResult {
   /** 받은 달 수 / 자료가 있었던 달 수 */
   months: number
   note: string | null
+  /** 여름 오후 조건 (Phase 10, 이전 수집에는 없음) */
+  hot?: HotAfternoon | null
+}
+
+interface HotRow {
+  day: string
+  ta: number
+  rh: number
+  ws: number
 }
 
 function emptyTable(): RoseTable {
@@ -52,7 +72,7 @@ function seasonOf(month: number): number {
 
 const pad = (n: number) => String(n).padStart(2, '0')
 
-async function monthRows(keys: ApiKeys, stnId: string, year: number, month: number): Promise<{ m: number; ws: number; wd: number }[]> {
+async function monthRows(keys: ApiKeys, stnId: string, year: number, month: number): Promise<{ rows: { m: number; ws: number; wd: number }[]; hot: HotRow[] }> {
   const last = new Date(year, month, 0).getDate()
   const data = await dataGoKrGet(
     keys,
@@ -72,13 +92,47 @@ async function monthRows(keys: ApiKeys, stnId: string, year: number, month: numb
     WIND_SERVICE,
   )
   const out: { m: number; ws: number; wd: number }[] = []
+  const hot: HotRow[] = []
   for (const it of standardItems(data).items) {
     const ws = Number(String(it.ws ?? '').trim())
     const wdRaw = String(it.wd ?? '').trim()
     if (!Number.isFinite(ws) || wdRaw === '') continue
     out.push({ m: month, ws, wd: Number(wdRaw) })
+    if (month === 7 || month === 8) {
+      const tm = String(it.tm ?? '')
+      const h = Number(tm.slice(11, 13))
+      const ta = Number(String(it.ta ?? '').trim())
+      const rh = Number(String(it.hm ?? '').trim())
+      if (h >= 14 && h <= 16 && Number.isFinite(ta) && Number.isFinite(rh) && String(it.ta ?? '').trim() !== '' && String(it.hm ?? '').trim() !== '')
+        hot.push({ day: tm.slice(0, 10), ta, rh, ws })
+    }
   }
-  return out
+  return { rows: out, hot }
+}
+
+/** 날마다 14~16시 평균 → 더운 쪽 10% 날과 전체 평균 */
+export function hotAfternoon(rows: HotRow[]): HotAfternoon | null {
+  const byDay = new Map<string, HotRow[]>()
+  for (const r of rows) {
+    const l = byDay.get(r.day)
+    if (l) l.push(r)
+    else byDay.set(r.day, [r])
+  }
+  const days = [...byDay.values()].map((l) => ({
+    ta: l.reduce((a, b) => a + b.ta, 0) / l.length,
+    rh: l.reduce((a, b) => a + b.rh, 0) / l.length,
+    ws: l.reduce((a, b) => a + b.ws, 0) / l.length,
+  }))
+  if (days.length < 20) return null
+  const mean = (l: typeof days) => ({
+    ta: l.reduce((a, b) => a + b.ta, 0) / l.length,
+    rh: l.reduce((a, b) => a + b.rh, 0) / l.length,
+    ws: l.reduce((a, b) => a + b.ws, 0) / l.length,
+    days: l.length,
+  })
+  const sorted = [...days].sort((a, b) => b.ta - a.ta)
+  const top = sorted.slice(0, Math.max(3, Math.round(days.length * 0.1)))
+  return { ...mean(top), all: mean(days) }
 }
 
 /** 동시에 n개씩 */
@@ -127,8 +181,8 @@ export async function windNear(keys: ApiKeys, lon: number, lat: number, now = ne
   for (const [i, c] of candidates.entries()) {
     try {
       const parts = await pool(months, 3, ([y, m]) => monthRows(keys, c.station.id, y, m))
-      const rows = parts.flat()
-      const filled = parts.filter((p) => p.length > 0).length
+      const rows = parts.flatMap((p) => p.rows)
+      const filled = parts.filter((p) => p.rows.length > 0).length
       if (rows.length < 24 * 300) continue
       return {
         station: c.station,
@@ -136,6 +190,7 @@ export async function windNear(keys: ApiKeys, lon: number, lat: number, now = ne
         years,
         tables: buildTables(rows),
         months: filled,
+        hot: hotAfternoon(parts.flatMap((p) => p.hot)),
         note: i > 0 ? `가장 가까운 ${candidates[0].station.name} 관측소 시간자료가 부족해 ${c.station.name} 관측소를 썼다.` : null,
       }
     } catch (e) {

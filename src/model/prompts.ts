@@ -95,6 +95,15 @@ const PANEL_TITLES: Record<string, string> = {
   walkshed: '도보권',
   speed: '실시간 도로 속도',
   wind: '바람장미',
+  sunSite: '일조시간 (대지 주변)',
+  sunWide: '일조시간 (반경 전체)',
+  skyMap: '개방감',
+  skyDome: '대지에서 올려다본 하늘',
+  viewshed: '높이별 가시권',
+  trees: '수목',
+  windSummer: '바람 흐름 실험 (여름)',
+  windWinter: '바람 흐름 실험 (겨울)',
+  heat: '여름 열쾌적 실험',
 }
 
 function panelTitle(id: string): string {

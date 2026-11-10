@@ -6,6 +6,7 @@ import { centerOf, isAreal, isLinear, siteBoundary, type Areal } from '../lib/ge
 import { jimokOf } from '../model/codes'
 import { observationsOf } from '../model/observations'
 import type { Project } from '../model/types'
+import type { EnvResult } from '../sources/env'
 import type { SpeedSnapshot } from '../sources/its'
 import type { NetworkResult } from '../sources/network'
 import type { WindResult } from '../sources/wind'
@@ -94,6 +95,8 @@ export interface DiagramData {
   network: NetworkResult | null
   /** 바람장미 집계 */
   wind: WindResult | null
+  /** 환경 계산 결과 (일조·개방감·가시권·수목·바람·열쾌적) */
+  env: EnvResult | null
   /** 어떤 자료가 수집되었는지 */
   has: Record<string, boolean>
 }
@@ -355,6 +358,7 @@ export function buildDiagramData(project: Project): DiagramData | null {
   const speedSnaps = feats('its:speed').map((f) => f.properties as unknown as SpeedSnapshot)
   const network = (feats('network:graph')[0]?.properties as unknown as NetworkResult | undefined) ?? null
   const wind = (feats('kma:wind')[0]?.properties as unknown as WindResult | undefined) ?? null
+  const env = (feats('env:result')[0]?.properties as unknown as EnvResult | undefined) ?? null
 
   const observations: Pt[] = observationsOf(project)
     .filter((o) => o.observation?.location)
@@ -387,6 +391,7 @@ export function buildDiagramData(project: Project): DiagramData | null {
     speedSnaps,
     network,
     wind,
+    env,
     has,
   }
 }

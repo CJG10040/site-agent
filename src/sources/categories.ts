@@ -19,6 +19,7 @@ export type DataCategory =
   | 'poi'
   | 'traffic'
   | 'network'
+  | 'env'
 
 export type KeyNeed = 'vworld' | 'sgis' | 'dataGoKr' | 'kakao' | 'its' | 'none'
 
@@ -175,6 +176,14 @@ export const DATA_CATEGORIES: CategoryDef[] = [
     source: '국가교통정보센터 교통소통정보 + 표준노드링크',
     scope: '반경을 감싼 사각형',
     needs: 'its',
+  },
+  {
+    id: 'env',
+    label: '환경 계산',
+    detail: "일조시간(동지·춘추분·하지), 개방감·대지에서 본 하늘, 높이별 가시권, 수목(위성영상), 실험: 바람 흐름·여름 열쾌적. '주변 건물'이 필요하고, 바람·열쾌적은 '기후·바람'도 필요 (수집 끝에 몇 초~1분 계산)",
+    source: '수집한 건물·지형·기후 → 앱에서 계산 + 브이월드 위성영상',
+    scope: '반경 (일조 세부는 대지 주변 200m)',
+    needs: 'vworld',
   },
 ]
 

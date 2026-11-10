@@ -214,6 +214,8 @@ export interface DiagramSettings {
   windSeason: number
   /** 실시간 도로 속도 장면 번호 (-1 = 가장 최근) */
   speedSnap: number
+  /** 가시권에서 강조할 계획 층수 */
+  planFloors: number
 }
 
 /** 도판 하나의 결론 */

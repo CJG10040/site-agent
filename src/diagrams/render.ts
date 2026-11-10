@@ -20,6 +20,7 @@ export const DEFAULT_SETTINGS: DiagramSettings = {
   pngWidth: 2000,
   windSeason: 0,
   speedSnap: -1,
+  planFloors: 5,
 }
 
 export function settingsOf(project: Project): DiagramSettings {
