@@ -103,7 +103,7 @@ function choicePanel(scale: 'walk' | 'wide'): PanelDef {
         for (let i = 1; i < RANK_BINS.length; i++) if (x >= cut[i]) k = i
         return k
       }
-      const colors = c.pal.id === 'mono' ? shades('#111111', RANK_BINS.length) : [mix('#ffffff', c.pal.seq[1], 0.7), ...steps(c.pal, RANK_BINS.length + 1).slice(2)]
+      const colors = c.pal.id === 'mono' ? shades('#111111', RANK_BINS.length) : steps(c.pal, RANK_BINS.length + 1).slice(1)
       const widths = [1.2, 2, 3, 4.5, 6.5]
       const items: { d: string; color: string; width: number }[] = []
       const frameM = c.f.R + 100
@@ -142,7 +142,7 @@ function choicePanel(scale: 'walk' | 'wide'): PanelDef {
           `가장 높은 길(상위 3%)은 대지 ${dirs.slice(0, 3).join('·')}쪽에 있음`,
           scale === 'walk'
             ? `각 길에서 길을 따라 ${WALK_R}m 안의 모든 길로 오갈 때를 셈 (걸어 다니는 동네 규모)`
-            : `반경 ${fmt(r.displayR + r.wideBuffer)}m 안 길 사이의 모든 이동을 셈 (큰길 위계)`,
+            : `수집 반경 ${fmt(r.displayR)}m에 여유 ${fmt(r.wideBuffer)}m를 더한 범위 안 길 사이의 모든 이동을 셈 (큰길 위계)`,
         ],
         caption: `공간구문론 각도 선택도(정규화, NACH) · 국토지리정보원 도로중심선(브이월드) ${c.date} 수집 → 앱에서 계산${origins < total ? ` (출발 길 ${fmt(origins)}개를 뽑아 환산)` : ''} · 길의 배치만으로 계산한 값이며 실제 사람·차의 수가 아님`,
       }
@@ -197,7 +197,7 @@ export const MOVE_PANELS: PanelDef[] = [
           b.site ? `대지가 속한 가구: 약 ${fmt(Math.round(ringArea(b.site.ring) / 10) * 10)}㎡` : '대지 중심이 길 위에 있거나 가구가 닫히지 않아 대지 가구를 정하지 못함',
           inR.length ? `반경 안 가구 ${fmt(inR.length)}개 · 면적 중앙값 약 ${fmt(Math.round(median(inR.map((f) => f.area)) / 10) * 10)}㎡` : '',
         ].filter(Boolean),
-        caption: `국토지리정보원 도로중심선(브이월드) ${c.date} 수집 → 길로 둘러싸인 면을 계산 · 면적은 도로 중심선까지 넣은 값 · 막다른 골목도 가구를 나눔`,
+        caption: `국토지리정보원 도로중심선(브이월드) ${c.date} 수집 → 길로 둘러싸인 면을 계산 · 면적은 도로 중심선까지 넣은 값 · 보행 전용 거리(차 없는 상가 거리 등)는 자료에 없어 가구가 실제보다 클 수 있음`,
       }
     },
   },
@@ -293,7 +293,7 @@ export const MOVE_PANELS: PanelDef[] = [
         .filter((x) => c.f.inside(x.pt.lon, x.pt.lat))
         .map((x) => {
           const [px, py] = c.f.pt(x.pt.lon, x.pt.lat)
-          return `<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="8" fill="#ffffff" stroke="${c.pal.ink}" stroke-width="3"/><text x="${(px + 12).toFixed(1)}" y="${(py + 5).toFixed(1)}" font-size="15" font-weight="700" fill="${c.pal.ink}" stroke="#ffffff" stroke-width="4" paint-order="stroke">${esc(x.pt.name.replace(/\s.*$/, ''))}</text>`
+          return `<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="8" fill="${c.pal.ink}" stroke="#ffffff" stroke-width="2"/><text x="${(px + 12).toFixed(1)}" y="${(py + 5).toFixed(1)}" font-size="15" font-weight="700" fill="${c.pal.ink}" stroke="#ffffff" stroke-width="4" paint-order="stroke">${esc(x.pt.name.replace(/\s.*$/, ''))}</text>`
         })
         .join('')
       const ring = (m: number) => `<circle cx="${MAP_CX}" cy="${MAP_CY}" r="${(m * c.f.s).toFixed(1)}" fill="none" stroke="${c.pal.subtle}" stroke-width="1" stroke-dasharray="4 6"/>`
@@ -301,7 +301,7 @@ export const MOVE_PANELS: PanelDef[] = [
         ...WALK_BANDS.map((m, i) => ({ color: colors[i], label: `${m}분 (${fmt(m * WALK_SPEED)}m)`, shape: 'line' as const })),
         { color: c.pal.ink, label: '버스정류소', shape: 'square' },
       ]
-      if (st.length) legend.push({ color: '#ffffff', label: '지하철역', shape: 'dot' })
+      if (st.length) legend.push({ color: c.pal.ink, label: '지하철역', shape: 'dot' })
       return {
         layers: [
           strokes('길', base),
@@ -317,7 +317,7 @@ export const MOVE_PANELS: PanelDef[] = [
           const L = lim[i]
           const ns = bandCount(st, L)
           return `${m}분 안: 버스정류소 ${bandCount(sp, L)}곳${c.d.stations.length ? `, 지하철역 ${ns}곳` : ''}`
-        }).concat(c.d.stops.length ? [] : ['버스정류소 자료가 없음 (대중교통을 함께 수집하면 표시)']),
+        }).concat(c.d.stops.length ? ['버스정류소는 대지 중심 약 500m 안 자료만 있어 10·15분 수는 실제보다 적음'] : ['버스정류소 자료가 없음 (대중교통을 함께 수집하면 표시)']),
         caption: `국토지리정보원 도로중심선(브이월드) ${c.date} 수집 → 대지에 붙은 길에서 길을 따라 잰 거리 · 점선 원은 같은 거리의 직선 · 횡단보도·신호·언덕·보행 전용 길은 반영 안 함 · 정류소: TAGO(대지 중심 약 500m만)`,
       }
     },
@@ -413,9 +413,12 @@ export const MOVE_PANELS: PanelDef[] = [
         petals += `<g id="${esc(`${WIND_BINS[k]}ms_이상`)}"><path d="${d}" fill="${colors[k]}" fill-opacity="0.9" stroke="#ffffff" stroke-width="0.8"/></g>`
       })
       let grid = ''
+      let gridText = ''
       for (let g = gridStep; g <= top + 1e-9; g += gridStep) {
         grid += `<circle cx="${MAP_CX}" cy="${MAP_CY}" r="${rad(g).toFixed(1)}" fill="none" stroke="${c.pal.subtle}" stroke-width="0.8" stroke-dasharray="3 5"/>`
-        grid += `<text x="${MAP_CX + 4}" y="${(MAP_CY - rad(g) - 4).toFixed(1)}" font-size="13" fill="${c.pal.subtle}" stroke="#ffffff" stroke-width="3" paint-order="stroke">${Math.round(g * 100)}%</text>`
+        // 꽃잎이 적은 남남동 쪽(157.5°)에 눈금 글자
+        const th = (157.5 * Math.PI) / 180
+        gridText += `<text x="${(MAP_CX + rad(g) * Math.sin(th)).toFixed(1)}" y="${(MAP_CY - rad(g) * Math.cos(th) + 4).toFixed(1)}" font-size="13" text-anchor="middle" fill="${c.pal.ink}" stroke="#ffffff" stroke-width="3.5" paint-order="stroke">${Math.round(g * 100)}%</text>`
       }
       grid += `<circle cx="${MAP_CX}" cy="${MAP_CY}" r="${r0}" fill="#ffffff" fill-opacity="0.75" stroke="${c.pal.subtle}" stroke-width="0.8"/>`
       const labels = DIR16.map((name, i) => {
@@ -432,7 +435,7 @@ export const MOVE_PANELS: PanelDef[] = [
         })
         .filter(Boolean)
       return {
-        layers: [faintBuildings(c, 0.35), { id: '눈금', svg: grid }, { id: '바람장미', svg: petals }, { id: '방위', svg: labels, noClip: true }],
+        layers: [faintBuildings(c, 0.35), { id: '눈금', svg: grid }, { id: '바람장미', svg: petals }, { id: '눈금_글자', svg: gridText }, { id: '방위', svg: labels, noClip: true }],
         legend: WIND_BINS.map((b, k) => ({ color: colors[k], label: k < WIND_BINS.length - 1 ? `${b}~${WIND_BINS[k + 1]}m/s` : `${b}m/s 이상` })),
         legendTitle: `${SEASONS[si]} · 꽃잎 길이 = 그 방향에서 불어온 시간 비율`,
         summary: [
