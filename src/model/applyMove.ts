@@ -206,7 +206,7 @@ function networkDrafts(d: DiagramData, r: NetworkResult, src: string): DraftFact
       auto_key: 'network-choice',
       type: 'UNKNOWN',
       topic: '길의 연결',
-      text: '대지 경계 15m 안을 지나는 도로중심선이 없어 대지에 붙은 길의 선택도를 셀 수 없다. 대지로 드나드는 길(골목·사유 통로)을 현장에서 확인해야 한다.',
+      text: '대지 경계 가까이(길 가장자리에서 8m 안) 지나는 도로중심선이 없어 대지에 붙은 길의 선택도를 셀 수 없다. 대지로 드나드는 길(골목·사유 통로)을 현장에서 확인해야 한다.',
       sources: [src],
       confidence: 'low',
       human_validation_required: true,

@@ -37,7 +37,7 @@ export interface NetView {
   nachWide: (number | null)[]
   /** 수집 반경 안(길 가운데 기준)인 길 */
   inDisplay: Uint8Array
-  /** 대지에 붙은 길 (15m 안) */
+  /** 대지에 붙은 길 (길 가장자리에서 8m 안) */
   adjacent: number[]
 }
 
@@ -52,10 +52,19 @@ export function netView(d: DiagramData): NetView | null {
     const site = siteRingsXY(d)
     const inDisplay = new Uint8Array(net.edges.length)
     const adjacent: number[] = []
+    // 같은 도로중심선(속성 있는 반경 안 자료)에서 길 폭을 찾는다: 꼭짓점이 겹치면 같은 길
+    const widthAt = new Map<string, number>()
+    const vkey = ([x, y]: XY) => `${Math.round(x)},${Math.round(y)}`
+    for (const r of d.roads)
+      if (r.width)
+        for (const l of r.geom.type === 'LineString' ? [r.geom.coordinates] : r.geom.coordinates) for (const c of l) widthAt.set(vkey(toXY(p, c)), r.width)
     net.edges.forEach((e, i) => {
       const m = midpoint(e)
       if (Math.hypot(m[0], m[1]) <= d.R) inDisplay[i] = 1
-      if (Math.hypot(m[0], m[1]) <= d.R + 200 && lineToRingsDist(e.coords, site) <= 15) adjacent.push(i)
+      if (Math.hypot(m[0], m[1]) > d.R + 200) return
+      // 대지에 붙은 길: 길 가장자리에서 8m 안 (폭을 모르면 중심선에서 15m)
+      const w = e.coords.map((c) => widthAt.get(vkey(c))).find((x) => x !== undefined)
+      if (lineToRingsDist(e.coords, site) <= (w ? w / 2 + 8 : 15)) adjacent.push(i)
     })
     return { net, shift, nachWalk: r.nachWalk, nachWide: r.nachWide, inDisplay, adjacent }
   })

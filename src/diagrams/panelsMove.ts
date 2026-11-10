@@ -138,7 +138,7 @@ function choicePanel(scale: 'walk' | 'wide'): PanelDef {
         legend: RANK_BINS.map((b, i) => ({ color: colors[i], label: b.label, shape: 'line' as const })),
         legendTitle: '반경 안 길 중 순위',
         summary: [
-          bestAdj !== null ? `대지에 붙은 길 중 가장 높은 길: 반경 안 길의 상위 ${pctText(topShare(vals, v.inDisplay, bestAdj))}` : '대지 경계 15m 안에 도로중심선이 없음 (골목·통로는 현장 확인)',
+          bestAdj !== null ? `대지에 붙은 길 중 가장 높은 길: 반경 안 길의 상위 ${pctText(topShare(vals, v.inDisplay, bestAdj))}` : '대지에 붙은 도로중심선이 없음 (골목·통로는 현장 확인)',
           `가장 높은 길(상위 3%)은 대지 ${dirs.slice(0, 3).join('·')}쪽에 있음`,
           scale === 'walk'
             ? `각 길에서 길을 따라 ${WALK_R}m 안의 모든 길로 오갈 때를 셈 (걸어 다니는 동네 규모)`
