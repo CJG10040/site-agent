@@ -72,7 +72,7 @@ export const DATA_CATEGORIES: CategoryDef[] = [
   {
     id: 'facilities',
     label: '도시계획시설',
-    detail: '주차장·철도 등 교통시설, 도시자연공원구역',
+    detail: '공원·광장, 주차장·철도 등 교통시설',
     source: '브이월드 2D 데이터',
     scope: '반경',
     needs: 'vworld',

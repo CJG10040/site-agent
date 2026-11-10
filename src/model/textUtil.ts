@@ -44,9 +44,9 @@ export function median(values: number[]): number {
   return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2
 }
 
-export function listText(items: string[], max = 6): string {
+export function listText(items: string[], max = 6, unit = '곳'): string {
   const shown = items.slice(0, max).join(', ')
-  return items.length > max ? `${shown} 외 ${items.length - max}곳` : shown
+  return items.length > max ? `${shown} 외 ${items.length - max}${unit}` : shown
 }
 
 /** 원 단위 금액을 "836만 원" 식으로 */

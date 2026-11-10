@@ -61,8 +61,10 @@ function namedFeatures(o: LayerOutcome, ctx: FactContext): Named[] {
   const byKey = new Map<string, Named>()
   for (const f of o.features) {
     const p = f.properties
-    const name = str(p[o.layer.nameField]) || o.layer.label
-    const type = o.layer.typeField ? str(p[o.layer.typeField]) : ''
+    // 주요상권처럼 한 구역을 '이름_1', '이름_2'로 나눈 경우 하나로 묶는다
+    const name = (str(p[o.layer.nameField]) || o.layer.label).replace(/_\d+$/, '')
+    const rawType = o.layer.typeField ? str(p[o.layer.typeField]) : ''
+    const type = /^(미분류|기타|-)$/.test(rawType) ? '' : rawType
     const details = (o.layer.detailFields ?? [])
       .map((d) => {
         const v = str(p[d.field])
@@ -261,7 +263,7 @@ export function addTransitFacts(ctx: FactContext, o: ApiOutcome<TransitResult>):
       topic: '대중교통',
       text:
         routes.size > 0
-          ? `가까운 정류소 ${checked.length}곳을 지나는 버스 노선은 모두 ${routes.size}개다 (${types.map(([t, n]) => `${t} ${n}`).join(', ')}). 노선 번호: ${listText(nos, 12)}.`
+          ? `가까운 정류소 ${checked.length}곳을 지나는 버스 노선은 모두 ${routes.size}개다 (${types.map(([t, n]) => `${t} ${n}`).join(', ')}). 노선 번호: ${listText(nos, 12, '개')}.`
           : `가까운 정류소 ${checked.length}곳을 지나는 버스 노선 정보가 비어 있다.`,
       sources: [src],
     })
@@ -439,6 +441,17 @@ export function addClimateFacts(ctx: FactContext, o: ApiOutcome<ClimateResult>):
 
 // ───────────────────────── 상가업소 ─────────────────────────
 
+/** 상권업종 중분류 중 이름만으로 뜻이 잘 안 보이는 것 (2023년 개편 분류) */
+const MCLS_GLOSS: Record<string, string> = {
+  비알코올: '비알코올 음료점(카페 등)',
+  '기타 간이': '기타 간이음식(분식·빵·패스트푸드 등)',
+  주점: '주점',
+}
+
+function mclsName(v: string): string {
+  return MCLS_GLOSS[v] ?? v
+}
+
 function floorClass(v: string): 'ground' | 'upper' | 'basement' | null {
   const t = v.replace(/\s+/g, '')
   if (!t) return null
@@ -506,7 +519,7 @@ export function addStoreFacts(ctx: FactContext, o: ApiOutcome<StoresResult>): vo
       .join(', ')} 순이다.`,
     sources: [src],
   })
-  const mcls = countBy(r.stores.map((s) => s.mcls).filter(Boolean))
+  const mcls = countBy(r.stores.map((s) => mclsName(s.mcls)).filter(Boolean))
   if (mcls.length > 0) {
     push({
       auto_key: 'stores-mcls',
@@ -530,7 +543,7 @@ export function addStoreFacts(ctx: FactContext, o: ApiOutcome<StoresResult>): vo
     })
   }
   const near = r.stores.filter((s) => pointToAreaDistanceM([s.lon, s.lat], ctx.boundary) <= 50)
-  const nearTypes = countBy(near.map((s) => s.mcls || s.lcls).filter(Boolean))
+  const nearTypes = countBy(near.map((s) => mclsName(s.mcls) || s.lcls).filter(Boolean))
   push({
     auto_key: 'stores-near',
     topic: '상권',

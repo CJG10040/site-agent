@@ -154,7 +154,8 @@ export const COLLECT_LAYERS: CollectLayer[] = [
   },
   {
     id: 'LT_C_UQ162',
-    label: '도시자연공원구역',
+    // 레퍼런스에는 '도시자연공원구역'으로 적혀 있으나, 실제 응답(광주 충장로)은 공원·광장 등 도시계획시설이다
+    label: '도시계획시설(공원·광장 등)',
     group: '시설',
     scope: 'radius',
     geometry: false,
