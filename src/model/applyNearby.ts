@@ -6,7 +6,7 @@
 
 import { geometryToAreaDistanceM, pointToAreaDistanceM } from '../lib/geo'
 import { CLIMATE_PUBLIC_URL, CLIMATE_SERVICE, type ClimateResult, type DailyRow } from '../sources/climate'
-import type { ApiOutcome, LayerOutcome } from '../sources/collect'
+import type { ApiOutcome, LandAreaOutcome, LayerOutcome } from '../sources/collect'
 import { KAKAO_PUBLIC_URL, KAKAO_SOURCE, POI_CATEGORIES, type PoiCategoryResult } from '../sources/kakao'
 import { STORES_PUBLIC_URL, STORES_SERVICE, type StoresResult } from '../sources/stores'
 import { TRANSIT_PUBLIC_URL, TRANSIT_SERVICE, type TransitResult } from '../sources/transit'
@@ -630,5 +630,62 @@ export function addPoiFacts(ctx: FactContext, o: ApiOutcome<PoiCategoryResult[]>
     else if (def?.widenTo) text = `대지 중심 ${fmt(def.widenTo / 1000, 1)}km 안에 카카오맵에 등록된 ${josa(c.label, '이', '가')} 없다.`
     if (!text) continue
     push({ auto_key: `poi:${c.code}`, topic, text, sources: [src], confidence: 'medium' })
+  }
+}
+
+// ───────────────────────── 반경 안 필지의 토지특성 ─────────────────────────
+
+export function addLandAreaFacts(ctx: FactContext, o: LandAreaOutcome): void {
+  const { project, push, radiusM } = ctx
+  const rows = Object.entries(o.byPnu)
+  const years = rows.map(([, r]) => r.year).filter(Boolean).sort()
+  const src = ctx.newSource(
+    apiSource({
+      source_name: '브이월드 부동산 개방데이터 (국토교통부)',
+      dataset_name: '토지특성 — 반경 안 필지 전체 (법정동 단위 조회)',
+      dataset_id: 'ned:landCharArea',
+      retrieved_at: o.retrievedAt,
+      geometry: `반경 ${radiusM}m 안 필지`,
+      spatial_scale: '필지',
+      time_range: years.length ? `${years[0]}~${years.at(-1)}년` : null,
+      raw_ref: rows.length ? 'ned:landCharArea' : null,
+      license: '브이월드 오픈API 이용약관에 따름 (출처 표기 필요)',
+      limitations: '개별공시지가 산정을 위한 토지특성 조사 자료. 지형높이는 주변과 비교한 등급(저지·평지·완경사·급경사·고지)이라 실제 경사도(°)가 아님.',
+      original_url: o.url,
+      feature_count: rows.length,
+      status: o.error ? 'error' : rows.length ? 'ok' : 'empty',
+      error: o.error,
+    }),
+  )
+  project.collected['ned:landCharArea'] = {
+    dataset_id: 'ned:landCharArea',
+    retrieved_at: o.retrievedAt,
+    features: rows.map(([pnu, r]) => ({ type: 'Feature' as const, geometry: null, properties: { pnu, ...r } })),
+  }
+  if (rows.length < 10) return
+  const hg = countBy(rows.map(([, r]) => r.hg).filter(Boolean))
+  const n = hg.reduce((a, [, c]) => a + c, 0)
+  if (n > 0) {
+    push({
+      auto_key: 'landarea-height',
+      topic: '지형',
+      text: `반경 ${radiusM}m 안 필지 ${fmt(n)}곳의 지형높이(토지특성 조사 등급)는 ${hg
+        .slice(0, 5)
+        .map(([k, c]) => `${k} ${pct(c, n)}%`)
+        .join(', ')}이다.`,
+      sources: [src],
+      confidence: 'medium',
+    })
+  }
+  const roads = rows.map(([, r]) => r.road).filter(Boolean)
+  const landlocked = roads.filter((r) => r.startsWith('맹지')).length
+  if (roads.length > 0) {
+    push({
+      auto_key: 'landarea-road',
+      topic: '도로',
+      text: `반경 안 필지 중 도로에 접하지 않은 맹지는 ${fmt(landlocked)}곳(${pct(landlocked, roads.length)}%)이다 (토지특성의 도로접면 기준, ${fmt(roads.length)}필지).`,
+      sources: [src],
+      confidence: 'medium',
+    })
   }
 }

@@ -250,7 +250,7 @@ export default function ObserveStep({ project, update, config, baseMap, onBaseMa
     <div className="split">
       <aside className="split-panel">
         <header className="panel-head">
-          <p className="eyebrow">⑥ 현장 관찰</p>
+          <p className="eyebrow">⑦ 현장 관찰</p>
           <h2>현장에서 본 것, 느낀 것</h2>
         </header>
 

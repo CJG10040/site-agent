@@ -61,7 +61,37 @@ export function cardTitle(c: Card): string {
 
 // ───────────── 재료 ─────────────
 
-function contextBlock(project: Project): string {
+/** 도판 id → 제목 (prompts가 diagrams 모듈을 불러오지 않도록 이름만 따로 둔다) */
+const PANEL_TITLES: Record<string, string> = {
+  aerial: '항공사진',
+  zoning: '용도지역',
+  districts: '구역·지구',
+  facilities: '도시계획시설',
+  cadastral: '지적',
+  plotsize: '필지 규모',
+  terrainClass: '필지 지형등급',
+  figure: '건물',
+  use: '건축물 용도',
+  age: '준공 연대',
+  height: '건축물 높이',
+  high: '고층',
+  low: '저층',
+  density: '밀도',
+  green: '공원·녹지·하천',
+  roads: '도로 위계',
+  transit: '지하철·버스',
+  sun: '태양 궤적·그림자',
+  population: '집계구 인구밀도',
+  stores: '상가 업종',
+  poi: '생활 시설',
+  observations: '현장 관찰 위치',
+}
+
+function panelTitle(id: string): string {
+  return PANEL_TITLES[id] ?? id
+}
+
+export function contextBlock(project: Project): string {
   const b = project.brief
   const q = project.question
   const lines: string[] = ['## 과제 맥락']
@@ -132,6 +162,13 @@ function materialsBlock(project: Project): string {
   if (differ.length || match.length) {
     lines.push('', '## 자료와 현장의 비교 (학생 판단)')
     lines.push(...differ, ...match)
+  }
+
+  // Phase 7: 학생이 도판마다 적은 결론 (도판에서 읽은 판단)
+  const panelNotes = Object.entries(project.diagrams?.panels ?? {}).filter(([, n]) => n.conclusion.trim())
+  if (panelNotes.length) {
+    lines.push('', '## 도판에서 읽은 결론 (학생이 도판마다 고르거나 쓴 판단)')
+    for (const [id, n] of panelNotes) lines.push(`- [도판 ${panelTitle(id)}] ${n.conclusion.trim()}`)
   }
 
   // 챗봇이 만든 미확인 카드는 '앞 단계 결과'에 들어가므로 여기서는 자료·학생 것만

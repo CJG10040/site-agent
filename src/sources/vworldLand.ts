@@ -66,6 +66,10 @@ export interface NedResult {
 }
 
 async function nedOnce(config: VWorldConfig, path: string, params: Record<string, string>): Promise<Record<string, unknown>[]> {
+  return (await nedPage(config, path, params)).items
+}
+
+async function nedPage(config: VWorldConfig, path: string, params: Record<string, string>): Promise<{ items: Record<string, unknown>[]; total: number }> {
   let data: Record<string, unknown>
   try {
     data = await jsonp<Record<string, unknown>>(`${API}${path}`, {
@@ -80,15 +84,49 @@ async function nedOnce(config: VWorldConfig, path: string, params: Record<string
   }
   const firstKey = Object.keys(data ?? {})[0]
   const body = (firstKey ? data[firstKey] : null) as Record<string, unknown> | null
-  if (!body) return []
+  if (!body) return { items: [], total: 0 }
   const code = String(body.resultCode ?? '')
   const list = body.field ?? body[firstKey]
   if (code && code !== 'OK' && code !== 'INFO-000' && !Array.isArray(list)) {
     throw new VWorldError(code, String(body.resultMsg ?? '오류'))
   }
-  if (Array.isArray(list)) return list as Record<string, unknown>[]
-  if (list && typeof list === 'object') return [list as Record<string, unknown>]
-  return []
+  const items = Array.isArray(list) ? (list as Record<string, unknown>[]) : list && typeof list === 'object' ? [list as Record<string, unknown>] : []
+  return { items, total: Number(body.totalCount ?? items.length) || items.length }
+}
+
+/**
+ * 법정동 단위(PNU 앞 10자리)로 동 안의 모든 필지를 한 번에 조회한다 (2026-11-10 확인: 충장로3가 312건).
+ * 통합 전 옛 코드로만 나오는 자료가 있어, 결과가 없으면 옛 코드로 다시 조회하고
+ * 돌려받은 PNU의 앞 10자리를 요청한 새 코드로 바꿔 돌려준다.
+ */
+export async function nedByDong(
+  config: VWorldConfig,
+  path: string,
+  dongPrefix: string,
+  sampleAddr: string,
+  maxRows = 5000,
+): Promise<{ items: Record<string, unknown>[]; usedPrefix: string; url: string }> {
+  const candidates = [dongPrefix, ...alternatePnus(`${dongPrefix}000000000`, sampleAddr).map((p) => p.slice(0, 10))]
+  for (const prefix of candidates) {
+    const items: Record<string, unknown>[] = []
+    for (let page = 1; page <= Math.ceil(maxRows / 1000); page++) {
+      const r = await nedPage(config, path, { numOfRows: '1000', pageNo: String(page), pnu: prefix })
+      items.push(...r.items)
+      if (items.length >= r.total || r.items.length < 1000) break
+    }
+    if (items.length > 0) {
+      return {
+        items: items.map((it) => {
+          const clean = stripOwnership(it)
+          const p = String(clean.pnu ?? '')
+          return p.startsWith(prefix) ? { ...clean, pnu: dongPrefix + p.slice(10) } : clean
+        }),
+        usedPrefix: prefix,
+        url: publicUrl(path, { numOfRows: '1000', pageNo: '1', pnu: prefix, format: 'json' }),
+      }
+    }
+  }
+  return { items: [], usedPrefix: dongPrefix, url: publicUrl(path, { numOfRows: '1000', pageNo: '1', pnu: dongPrefix, format: 'json' }) }
 }
 
 /** 필지 하나에 대해 NED API를 부르고, 결과가 없으면 옛 PNU로 다시 부른다. */

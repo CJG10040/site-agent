@@ -9,6 +9,7 @@ import type { StepId } from './model/types'
 import { useProject, type SaveState } from './model/useProject'
 import BriefStep from './screens/BriefStep'
 import DataStep from './screens/DataStep'
+import DiagramStep from './screens/DiagramStep'
 import FactsStep from './screens/FactsStep'
 import Home from './screens/Home'
 import InterpretStep from './screens/InterpretStep'
@@ -159,6 +160,9 @@ export default function App() {
                   />
                 )}
                 {step === 'facts' && <FactsStep project={project} update={update} onGoData={() => go('data')} />}
+                {step === 'diagrams' && (
+                  <DiagramStep project={project} update={update} config={config} onGoData={() => go('data')} onNext={() => go('observe')} />
+                )}
                 {step === 'observe' && (
                   <ObserveStep project={project} update={update} config={config} baseMap={baseMap} onBaseMap={setBaseMap} onGoFacts={() => go('facts')} />
                 )}

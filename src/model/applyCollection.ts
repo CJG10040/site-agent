@@ -4,12 +4,12 @@
 //  3) 사실(FACT)·미확인(UNKNOWN) 카드 초안 생성 — 사용자가 확인해야 확정됨
 // 원칙: 데이터가 없으면 지어내지 않고 UNKNOWN으로 남긴다. 계산값은 계산값이라고 밝힌다.
 
-import { lineToAreaDistanceM, areaToAreaDistanceM, areaM2, isAreal, isLinear, type Areal } from '../lib/geo'
+import { lineToAreaDistanceM, areaToAreaDistanceM, areaM2, isAreal, isLinear, overlapsSite, type Areal } from '../lib/geo'
 import { sunSummaries } from '../lib/sun'
 import type { CollectOutcome, CollectProgress, LayerOutcome } from '../sources/collect'
 import { SOURCE_NAME } from '../sources/vworld'
 import { addLandFacts, addRegisterFacts, addSgisFacts } from './applyExtended'
-import { addClimateFacts, addNearbyLayerFacts, addPoiFacts, addStoreFacts, addTransitFacts } from './applyNearby'
+import { addClimateFacts, addLandAreaFacts, addNearbyLayerFacts, addPoiFacts, addStoreFacts, addTransitFacts } from './applyNearby'
 import { jimokName, useName } from './codes'
 import { makeCard, nextNumber, nowIso, siteKey } from './project'
 import { cleanNames, fmt, listText, median, pct, str, uniq } from './textUtil'
@@ -229,9 +229,12 @@ export function applyCollection(project: Project, outcome: CollectOutcome, bound
     confidence: 'medium',
   })
 
+  // Phase 7부터 규제 레이어는 반경 전체를 도형과 함께 받으므로, 대지와 실제로 겹치는 것만 대지의 사실로 쓴다
+  const siteFeatures = (o: LayerOutcome) => o.features.filter((f) => !f.geometry || !isAreal(f.geometry) || overlapsSite(f.geometry, boundary))
+
   // 용도지역
   const zoningLayers = outcome.layers.filter((o) => o.layer.kind === 'zoning')
-  const zoningNames = uniq(zoningLayers.flatMap((o) => o.features.map((f) => str(f.properties.uname)).filter(Boolean)))
+  const zoningNames = uniq(zoningLayers.flatMap((o) => siteFeatures(o).map((f) => str(f.properties.uname)).filter(Boolean)))
   if (zoningNames.length === 1) {
     fact({
       auto_key: 'zoning',
@@ -247,7 +250,7 @@ export function applyCollection(project: Project, outcome: CollectOutcome, bound
       sources: zoningLayers.filter((o) => o.state === 'ok').map((o) => layerSource[o.layer.id]),
       human_validation_required: true,
     })
-  } else if (zoningLayers.length > 0 && zoningLayers.every((o) => o.state === 'empty')) {
+  } else if (zoningLayers.length > 0 && zoningLayers.every((o) => o.state !== 'error')) {
     drafts.push({
       auto_key: 'zoning-missing',
       type: 'UNKNOWN',
@@ -262,7 +265,7 @@ export function applyCollection(project: Project, outcome: CollectOutcome, bound
   // 용도지구·구역
   for (const o of outcome.layers.filter((x) => x.layer.kind === 'district' && x.state === 'ok')) {
     const byName = new Map<string, string[]>()
-    for (const f of o.features) {
+    for (const f of siteFeatures(o)) {
       const name = str(f.properties[o.layer.nameField])
       if (!name) continue
       const year = str(f.properties.dyear)
@@ -284,7 +287,7 @@ export function applyCollection(project: Project, outcome: CollectOutcome, bound
   // 보호구역
   for (const o of outcome.layers.filter((x) => x.layer.kind === 'protect' && x.state === 'ok')) {
     const byName = new Map<string, string[]>()
-    for (const f of o.features) {
+    for (const f of siteFeatures(o)) {
       const name = str(f.properties[o.layer.nameField])
       if (!name) continue
       const remark = o.layer.remarkField ? str(f.properties[o.layer.remarkField]) : ''
@@ -443,7 +446,7 @@ export function applyCollection(project: Project, outcome: CollectOutcome, bound
   }
 
   // 도시계획시설
-  for (const id of ['LT_C_UQ162', 'LT_C_UPISUQ152']) {
+  for (const id of ['LT_C_UQ162', 'LT_C_UPISUQ152', 'LT_C_UPISUQ153', 'LT_C_UPISUQ154', 'LT_C_UPISUQ158', 'LT_C_UPISUQ159']) {
     const o = layer(id)
     if (o?.state !== 'ok') continue
     const names = cleanNames(o.features.map((f) => str(f.properties[o.layer.nameField])))
@@ -492,6 +495,7 @@ export function applyCollection(project: Project, outcome: CollectOutcome, bound
   if (outcome.register) addRegisterFacts(ctx, outcome.register)
   if (outcome.sgis) addSgisFacts(ctx, outcome.sgis)
   addNearbyLayerFacts(ctx, outcome.layers, layerSource)
+  if (outcome.landArea) addLandAreaFacts(ctx, outcome.landArea)
   if (outcome.transit) addTransitFacts(ctx, outcome.transit)
   if (outcome.climate) addClimateFacts(ctx, outcome.climate)
   if (outcome.stores) addStoreFacts(ctx, outcome.stores)

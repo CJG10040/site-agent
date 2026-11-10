@@ -25,7 +25,7 @@ import { poisAround, type PoiCategoryResult } from './kakao'
 import { storesAround, type StoresResult } from './stores'
 import { busStopsAround, type TransitResult } from './transit'
 import { ALL_LAYERS, layerCategory, type CollectLayer } from './vworldLayers'
-import { LAND_DATASETS, nedForParcel } from './vworldLand'
+import { LAND_DATASETS, nedByDong, nedForParcel } from './vworldLand'
 import { PARCEL_LAYER, queryFeatures, reverseGeocode, VWorldError, type GeoFeature, type VWorldConfig } from './vworld'
 
 export type CollectState = 'pending' | 'running' | 'ok' | 'empty' | 'error'
@@ -65,6 +65,23 @@ export interface LandOutcome {
   datasets: Record<string, { url: string; parcels: LandParcelResult[] }>
 }
 
+/** 반경 안 모든 필지의 토지특성 (지형높이·형상·도로접면·이용상황) — 도판용 */
+export interface LandAreaParcel {
+  hg: string
+  frm: string
+  road: string
+  use: string
+  year: string
+}
+
+export interface LandAreaOutcome {
+  retrievedAt: string
+  url: string
+  dongs: number
+  byPnu: Record<string, LandAreaParcel>
+  error: string | null
+}
+
 export interface RegisterOutcome {
   retrievedAt: string
   parcels: RegisterParcel[]
@@ -101,6 +118,7 @@ export interface CollectOutcome {
   addressAt: string
   layers: LayerOutcome[]
   land?: LandOutcome
+  landArea?: LandAreaOutcome
   register?: RegisterOutcome
   sgis?: SgisOutcome
   transit?: ApiOutcome<TransitResult>
@@ -156,6 +174,7 @@ export async function collectSiteData(input: CollectInput, onProgress: (p: Colle
 
   const progress: CollectProgress[] = layers.map((l) => ({ id: l.id, label: l.label, group: l.group, state: 'pending' }))
   if (want('land')) for (const d of LAND_DATASETS) progress.push({ id: d.id, label: d.label, group: '토지', state: 'pending' })
+  if (want('land')) progress.push({ id: 'ned:landCharArea', label: '반경 안 필지의 지형·도로접면 (토지특성)', group: '토지', state: 'pending' })
   if (want('register')) progress.push({ id: 'hub:register', label: '건축물대장 (대지 + 맞닿은 필지)', group: '건물', state: 'pending' })
   if (want('population')) {
     progress.push({ id: 'sgis:population', label: '행정동 인구·가구 추이', group: '인구·사업체', state: 'pending' })
@@ -229,6 +248,55 @@ export async function collectSiteData(input: CollectInput, onProgress: (p: Colle
           .join(' · ') || undefined,
       })
     }
+    return out
+  })()
+
+  // ── 반경 안 필지 전체의 토지특성 (연속지적도 결과의 법정동별로 한 번씩)
+  const landAreaTask = (async (): Promise<LandAreaOutcome | undefined> => {
+    if (!want('land')) return undefined
+    await layerTask
+    const cad = layerOutcomes.find((o) => o.layer.kind === 'cadastral')
+    const out: LandAreaOutcome = { retrievedAt: new Date().toISOString(), url: '', dongs: 0, byPnu: {}, error: null }
+    if (!cad || cad.state !== 'ok') {
+      set('ned:landCharArea', { state: cad?.state === 'error' ? 'error' : 'empty', message: '반경 안 필지를 받지 못해 건너뜀' })
+      return out
+    }
+    set('ned:landCharArea', { state: 'running' })
+    const dongs = new Map<string, string>()
+    for (const f of cad.features) {
+      const pnu = String(f.properties.pnu ?? '')
+      if (pnu.length === 19 && !dongs.has(pnu.slice(0, 10))) dongs.set(pnu.slice(0, 10), String(f.properties.addr ?? ''))
+    }
+    out.dongs = dongs.size
+    const errors: string[] = []
+    await runPool([...dongs.entries()], 3, async ([prefix, addr]) => {
+      try {
+        const r = await nedByDong(config, '/ned/data/getLandCharacteristics', prefix, addr)
+        out.url = out.url || r.url
+        for (const it of r.items) {
+          const pnu = String(it.pnu ?? '')
+          const year = String(it.stdrYear ?? '')
+          const prev = out.byPnu[pnu]
+          if (prev && prev.year >= year) continue
+          out.byPnu[pnu] = {
+            hg: String(it.tpgrphHgCodeNm ?? ''),
+            frm: String(it.tpgrphFrmCodeNm ?? ''),
+            road: String(it.roadSideCodeNm ?? ''),
+            use: String(it.ladUseSittnNm ?? ''),
+            year,
+          }
+        }
+      } catch (e) {
+        errors.push(errorText(e))
+      }
+    })
+    const n = Object.keys(out.byPnu).length
+    if (errors.length === dongs.size && dongs.size > 0) out.error = errors[0]
+    set('ned:landCharArea', {
+      state: out.error ? 'error' : n > 0 ? 'ok' : 'empty',
+      count: n,
+      message: [`법정동 ${dongs.size}곳`, errors.length ? `${errors.length}곳 오류: ${errors[0]}` : ''].filter(Boolean).join(' · '),
+    })
     return out
   })()
 
@@ -412,9 +480,10 @@ export async function collectSiteData(input: CollectInput, onProgress: (p: Colle
     }
   })
 
-  const [, land, register, sgis, transit, climate, stores, poi] = await Promise.all([
+  const [, land, landArea, register, sgis, transit, climate, stores, poi] = await Promise.all([
     layerTask,
     landTask,
+    landAreaTask,
     registerTask,
     sgisTask,
     transitTask,
@@ -442,6 +511,7 @@ export async function collectSiteData(input: CollectInput, onProgress: (p: Colle
     addressAt,
     layers: layerOutcomes,
     land,
+    landArea,
     register,
     sgis,
     transit,

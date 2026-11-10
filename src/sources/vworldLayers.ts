@@ -5,7 +5,7 @@
 
 import type { DataCategory } from './categories'
 
-export type LayerGroup = '행정' | '규제' | '건물' | '교통' | '시설' | '재해·하천' | '공공·교육' | '상권'
+export type LayerGroup = '행정' | '규제' | '토지' | '건물' | '교통' | '시설' | '재해·하천' | '공공·교육' | '상권'
 
 /** 레이어가 속한 데이터 묶음 (행정은 위치 확인에 늘 필요하므로 null = 항상 수집) */
 export function layerCategory(layer: CollectLayer): DataCategory | null {
@@ -17,7 +17,12 @@ export function layerCategory(layer: CollectLayer): DataCategory | null {
     case 'protect':
       return 'zoning'
     case 'buildings':
+    case 'buildingsAddr':
       return 'buildings'
+    case 'cadastral':
+      return 'land'
+    case 'roadsDetail':
+      return 'roads'
     case 'roads':
     case 'planRoads':
       return 'roads'
@@ -47,7 +52,23 @@ export interface CollectLayer {
   namePrefix?: string
   /** 사실 문장에 덧붙일 관련 대상 속성 (예: 학교명) */
   remarkField?: string
-  kind: 'admin' | 'zoning' | 'district' | 'protect' | 'buildings' | 'roads' | 'planRoads' | 'facilities' | 'hazard' | 'river' | 'civic' | 'school' | 'commerce'
+  kind:
+    | 'admin'
+    | 'zoning'
+    | 'district'
+    | 'protect'
+    | 'buildings'
+    | 'buildingsAddr'
+    | 'cadastral'
+    | 'roads'
+    | 'roadsDetail'
+    | 'planRoads'
+    | 'facilities'
+    | 'hazard'
+    | 'river'
+    | 'civic'
+    | 'school'
+    | 'commerce'
   /** 이름 옆에 붙일 분류 속성 (예: 시설분류명) */
   typeField?: string
   /** 사실 문장에 덧붙일 속성 (예: 전통시장 점포 수) */
@@ -59,12 +80,14 @@ export interface CollectLayer {
 const PLAN_LIMIT =
   '도시계획 정보는 참고용이며 법적 효력이 없음. 경계 부근은 오차가 있을 수 있어 토지이음 토지이용계획확인원으로 확인해야 함.'
 
+// Phase 7: 규제 레이어도 도판(용도지역·구역·지구 지도)에 쓰려고 반경 전체를 도형과 함께 받는다.
+// 대지에 걸치는지는 받은 뒤 대지 경계와 실제로 겹치는지로 따진다 (applyCollection의 siteFeatures).
 const district = (code: string, label: string): CollectLayer => ({
   id: `LT_C_${code}`,
   label,
   group: '규제',
-  scope: 'site',
-  geometry: false,
+  scope: 'radius',
+  geometry: true,
   nameField: 'uname',
   kind: 'district',
   limitations: PLAN_LIMIT,
@@ -147,7 +170,7 @@ export const COLLECT_LAYERS: CollectLayer[] = [
     label: '도시계획시설(교통시설)',
     group: '시설',
     scope: 'radius',
-    geometry: false,
+    geometry: true,
     nameField: 'dgm_nm',
     kind: 'facilities',
     limitations: PLAN_LIMIT,
@@ -158,7 +181,7 @@ export const COLLECT_LAYERS: CollectLayer[] = [
     label: '도시계획시설(공원·광장 등)',
     group: '시설',
     scope: 'radius',
-    geometry: false,
+    geometry: true,
     nameField: 'uname',
     kind: 'facilities',
     limitations: PLAN_LIMIT,
@@ -234,7 +257,65 @@ export const NEARBY_LAYERS: CollectLayer[] = [
   point('BUSIINCUBATOR', '창업보육센터', '상권', 'commerce', 'bui_nam', { typeField: 'mainpart' }),
 ]
 
-export const LAYER_GROUP_ORDER: LayerGroup[] = ['행정', '규제', '건물', '교통', '시설', '재해·하천', '공공·교육', '상권']
+const facility = (code: string, label: string): CollectLayer => ({
+  id: `LT_C_${code}`,
+  label,
+  group: '시설',
+  scope: 'radius',
+  geometry: true,
+  nameField: 'dgm_nm',
+  typeField: 'scl_nam',
+  kind: 'facilities',
+  limitations: PLAN_LIMIT,
+})
+
+/**
+ * Phase 7 도판용 레이어 (2026-11-10 실제 키로 응답 확인).
+ * - 연속지적도: 지적·필지 규모·필지 지형등급 도판
+ * - 도로중심선(국토지리정보원): 도로 폭(rvwd, m)·차로 수(rdln)·일방통행(onsd) — 폭 1.5m 골목까지 있음
+ * - 도로명주소 건물: GIS건물통합정보에 빠진 건물 보강, 지상층수(gro_flo_co) 있음
+ */
+export const PANEL_LAYERS: CollectLayer[] = [
+  facility('UPISUQ153', '도시계획시설(공간시설)'),
+  facility('UPISUQ154', '도시계획시설(유통공급시설)'),
+  facility('UPISUQ158', '도시계획시설(환경기초시설)'),
+  facility('UPISUQ159', '도시계획시설(기타기반시설)'),
+  {
+    id: 'LP_PA_CBND_BUBUN',
+    label: '연속지적도 (반경 안 필지)',
+    group: '토지',
+    scope: 'radius',
+    geometry: true,
+    nameField: 'jibun',
+    kind: 'cadastral',
+    maxFeatures: 12000,
+    limitations: '연속지적도는 지적도를 이어 붙인 참고 도면으로, 실제 측량 경계·면적과 다를 수 있음.',
+  },
+  {
+    id: 'LT_L_N3A0020000',
+    label: '도로중심선 (폭·차로)',
+    group: '교통',
+    scope: 'radius',
+    geometry: true,
+    nameField: 'rdnm',
+    kind: 'roadsDetail',
+    maxFeatures: 8000,
+    limitations: '국토지리정보원 수치지형도의 도로중심선. 도로 폭은 지형도 기준이라 실제 폭과 다를 수 있고, 이름은 대부분 비어 있음.',
+  },
+  {
+    id: 'LT_C_SPBD',
+    label: '도로명주소 건물',
+    group: '건물',
+    scope: 'radius',
+    geometry: true,
+    nameField: 'buld_nm',
+    kind: 'buildingsAddr',
+    maxFeatures: 12000,
+    limitations: '도로명주소용 건물 도형. 용도·사용승인일은 없고 지상층수만 있음. GIS건물통합정보에 없는 건물을 보강하는 데 씀.',
+  },
+]
+
+export const LAYER_GROUP_ORDER: LayerGroup[] = ['행정', '규제', '토지', '건물', '교통', '시설', '재해·하천', '공공·교육', '상권']
 
 /** 수집 순서대로 모든 브이월드 레이어 */
-export const ALL_LAYERS: CollectLayer[] = [...COLLECT_LAYERS, ...NEARBY_LAYERS]
+export const ALL_LAYERS: CollectLayer[] = [...COLLECT_LAYERS, ...NEARBY_LAYERS, ...PANEL_LAYERS]

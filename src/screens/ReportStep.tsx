@@ -1,15 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { usePhotoUrl } from '../components/PhotoThumb'
-import { DENSITY_CLASSES, DENSITY_UNKNOWN, FLOOR_CLASSES, FLOOR_UNKNOWN } from '../components/mapStyles'
-import { areaM2, centerOf, radiusCircle, siteBoundary } from '../lib/geo'
-import { dataUrlToBlob, renderAnalysisMap, type AnalysisMapSpec } from '../lib/mapRender'
+import { areaM2, siteBoundary } from '../lib/geo'
+import { svgToPng } from '../diagrams/export'
+import { ORDERED_PANELS, panelNumber } from '../diagrams/panels'
+import { panelFileName } from '../diagrams/render'
+import { useDiagrams } from '../diagrams/useDiagrams'
 import { formatObservedAt, timeBand } from '../lib/photos'
-import { sunPathFeatures } from '../lib/sun'
 import { observationsOf } from '../model/observations'
 import { downloadBlob, nowIso } from '../model/project'
 import { cardTitle, isRelation, REACTION_LABEL, ROUNDS } from '../model/prompts'
 import type { Card, Project } from '../model/types'
-import type { GeoFeature, VWorldConfig } from '../sources/vworld'
+import type { VWorldConfig } from '../sources/vworld'
 
 interface Props {
   project: Project
@@ -19,16 +20,6 @@ interface Props {
 
 type Paper = 'a4' | 'a3'
 type Scope = 'all' | 'confirmed'
-
-interface MapImage {
-  key: string
-  title: string
-  caption: string
-  dataUrl: string | null
-  error: string | null
-  empty: string | null
-  withBase: boolean
-}
 
 const HYP_ROWS = ['해석', '해결하려는 긴장', '공간적 행동', '예상 경험', '장점', '위험', '추가 조사', '스케일']
 const DIRECTIONS = ['보존할 것', '드러낼 것', '피할 것', '변환할 것']
@@ -52,12 +43,8 @@ function Refs({ ids }: { ids: string[] }) {
 export default function ReportStep({ project, update, config }: Props) {
   const [paper, setPaper] = useState<Paper>('a4')
   const [scope, setScope] = useState<Scope>('all')
-  const [maps, setMaps] = useState<MapImage[] | null>(null)
-  const [rendering, setRendering] = useState(false)
 
   const boundary = useMemo(() => siteBoundary(project.site), [project.site])
-  const center = useMemo(() => (boundary ? centerOf(boundary) : null), [boundary])
-  const radius = useMemo(() => (center ? radiusCircle(center, project.site.radiusM) : null), [center, project.site.radiusM])
 
   const include = useCallback(
     (c: Card) => c.status !== 'rejected' && (scope === 'all' || c.status === 'confirmed' || c.type === 'OBSERVATION'),
@@ -80,129 +67,10 @@ export default function ReportStep({ project, update, config }: Props) {
   const addr = project.site.address?.road || project.site.address?.parcel || project.site.parcels[0]?.addr || ''
   const officialArea = facts.find((f) => f.auto_key === 'land-official-area')?.text
 
-  // ── 분석 지도
-  const renderMaps = useCallback(async () => {
-    if (!boundary || !radius || !center) {
-      setMaps([])
-      return
-    }
-    setRendering(true)
-    const size = { width: 1000, height: 700 }
-    const buildings = (project.collected.LT_C_BLDGINFO?.features ?? []) as GeoFeature[]
-    const statsAreas = (project.collected['sgis:statsarea']?.features ?? []) as GeoFeature[]
-    const statsYear = statsAreas[0]?.properties?.year
-    const sunR = Math.min(project.site.radiusM * 0.6, 220)
-    const sun = sunPathFeatures(center[0], center[1], sunR) as GeoFeature[]
-    const sunExtent = radiusCircle(center, sunR * 1.15)
-    const obsMarks = observations
-      .filter((o) => o.observation!.location)
-      .map((o) => ({
-        lon: o.observation!.location!.lon,
-        lat: o.observation!.location!.lat,
-        label: String(Number(o.id.split('-')[1])),
-        kind: o.observation!.links.some((l) => l.relation === 'differ') ? ('differ' as const) : o.observation!.discovery ? ('discovery' as const) : ('normal' as const),
-      }))
-    const name = project.brief.projectName || '대지'
-    const specs: { key: string; caption: string; empty: string | null; spec: AnalysisMapSpec }[] = [
-      {
-        key: 'buildings',
-        caption: `대지(주황)와 반경 ${project.site.radiusM}m 안 건물의 지상층수. 출처: 브이월드 GIS건물통합정보.`,
-        empty: buildings.length ? null : '수집한 건물 자료가 없습니다 (④ 공간정보에서 주변 건물을 수집하세요).',
-        spec: {
-          ...size,
-          title: '대지와 주변 건물 층수',
-          subtitle: name,
-          vworldKey: config.key,
-          boundary,
-          radius,
-          buildings,
-          fitTo: radius,
-          legendTitle: '건물 지상층수',
-          legend: [...FLOOR_CLASSES, FLOOR_UNKNOWN].map((c) => ({ color: c.color, label: c.label })),
-        },
-      },
-      {
-        key: 'observations',
-        caption: '현장 관찰 위치. 숫자는 관찰 번호(O-번호), 빨강은 자료와 현장이 다른 곳, 청록은 자료에 없던 새로운 발견.',
-        empty: obsMarks.length ? null : '위치가 있는 현장 관찰이 없습니다 (⑥ 현장 관찰).',
-        spec: {
-          ...size,
-          title: '현장 관찰 위치',
-          subtitle: name,
-          vworldKey: config.key,
-          boundary,
-          radius,
-          observations: obsMarks,
-          fitTo: radius,
-          legendTitle: '현장 관찰',
-          legend: [
-            { color: '#343a40', label: '관찰', shape: 'dot' },
-            { color: '#c92a2a', label: '자료와 다름', shape: 'dot' },
-            { color: '#0c8599', label: '새로운 발견', shape: 'dot' },
-          ],
-        },
-      },
-      {
-        key: 'density',
-        caption: `반경에 걸친 집계구의 인구밀도(명/㎢${statsYear ? `, ${statsYear}년` : ''}). 출처: 통계청 SGIS. 집계구가 반경에 일부만 걸쳐도 전체를 표시.`,
-        empty: statsAreas.length ? null : '집계구 자료가 없습니다 (④ 공간정보에서 인구·가구를 수집하세요).',
-        spec: {
-          ...size,
-          title: '집계구 인구밀도',
-          subtitle: `${name}${statsYear ? ` · ${statsYear}년` : ''}`,
-          vworldKey: config.key,
-          boundary,
-          radius,
-          statsAreas,
-          fitTo: radius,
-          legendTitle: '인구밀도 (명/㎢)',
-          legend: [...DENSITY_CLASSES, DENSITY_UNKNOWN].map((c) => ({ color: c.color, label: c.label })),
-        },
-      },
-      {
-        key: 'sun',
-        caption: '대지 중심의 평면 태양 궤적도. 바깥 원이 지평선, 안쪽 원이 고도 30°·60°이며 시각은 한국 표준시. 주변 건물의 그림자는 반영하지 않음.',
-        empty: null,
-        spec: {
-          ...size,
-          title: '태양 궤적 (하지·춘추분·동지)',
-          subtitle: name,
-          vworldKey: config.key,
-          boundary,
-          radius: null,
-          sun,
-          fitTo: sunExtent,
-          legendTitle: '태양 궤적',
-          legend: [
-            { color: '#e8590c', label: '하지', shape: 'line' },
-            { color: '#e0a100', label: '춘·추분', shape: 'line' },
-            { color: '#1c7ed6', label: '동지', shape: 'line' },
-          ],
-        },
-      },
-    ]
-    const out: MapImage[] = []
-    for (const s of specs) {
-      if (s.empty) {
-        out.push({ key: s.key, title: s.spec.title, caption: s.caption, dataUrl: null, error: null, empty: s.empty, withBase: false })
-        continue
-      }
-      try {
-        const r = await renderAnalysisMap(s.spec)
-        out.push({ key: s.key, title: s.spec.title, caption: s.caption, dataUrl: r.dataUrl, error: null, empty: null, withBase: r.withBase })
-      } catch (e) {
-        out.push({ key: s.key, title: s.spec.title, caption: s.caption, dataUrl: null, error: e instanceof Error ? e.message : String(e), empty: null, withBase: false })
-      }
-      setMaps([...out])
-    }
-    setMaps(out)
-    setRendering(false)
-    // 관찰·수집 자료가 바뀐 뒤에는 [지도 다시 그리기]로 새로 그린다
-  }, [boundary, radius, center, project.collected, project.site.radiusM, project.brief.projectName, observations, config.key])
-
-  useEffect(() => {
-    if (maps === null && !rendering) void renderMaps()
-  }, [maps, rendering, renderMaps])
+  // ── 도판 (⑥ 도판 단계에서 '리포트에 넣기'로 고른 것)
+  const includedIds = ORDERED_PANELS.filter((p) => project.diagrams?.panels[p.id]?.include !== false).map((p) => p.id)
+  const { panels: diagramPanels, busy: diagramsBusy, settings: diagramSettings } = useDiagrams(project, config.key, includedIds)
+  const diagrams = ORDERED_PANELS.filter((p) => includedIds.includes(p.id) && diagramPanels[p.id] && !diagramPanels[p.id].out.empty)
 
   useEffect(() => {
     const onAfter = () =>
@@ -249,10 +117,7 @@ export default function ReportStep({ project, update, config }: Props) {
             </button>
           </div>
           <span className="spacer" />
-          <button type="button" className="btn" onClick={() => void renderMaps()} disabled={rendering}>
-            {rendering ? '지도 그리는 중…' : '지도 다시 그리기'}
-          </button>
-          <button type="button" className="btn primary" onClick={() => window.print()} disabled={rendering}>
+          <button type="button" className="btn primary" onClick={() => window.print()} disabled={diagramsBusy}>
             인쇄 / PDF로 저장
           </button>
         </div>
@@ -354,30 +219,36 @@ export default function ReportStep({ project, update, config }: Props) {
         </section>
 
         <section className="report-sec">
-          {H('분석 지도')}
-          {maps === null && <p className="muted no-print">지도를 그리는 중…</p>}
-          <div className="report-maps">
-            {(maps ?? []).map((m, i) => (
-              <figure key={m.key} className="report-map">
-                {m.dataUrl ? <img src={m.dataUrl} alt={m.title} /> : <div className="map-missing">{m.empty ?? `그리지 못했습니다: ${m.error}`}</div>}
-                <figcaption>
-                  <strong>
-                    그림 {i + 1}. {m.title}
-                  </strong>{' '}
-                  {m.caption}
-                  {m.dataUrl && !m.withBase && ' (배경지도 없이 그림)'}
-                  {m.dataUrl && (
+          {H(`도판 (${diagrams.length})`)}
+          {diagramsBusy && <p className="muted no-print">도판을 그리는 중…</p>}
+          {!diagramsBusy && diagrams.length === 0 && <p className="muted">넣을 도판이 없습니다 (⑥ 도판 단계에서 '리포트에 넣기'를 고르세요).</p>}
+          <div className="report-diagrams">
+            {diagrams.map((def) => {
+              const dp = diagramPanels[def.id]
+              const note = project.diagrams?.panels[def.id]?.conclusion?.trim()
+              return (
+                <figure key={def.id} className="report-diagram">
+                  <img src={dp.url} alt={def.title} />
+                  <figcaption>
+                    <strong>
+                      도판 {panelNumber(def.id)}. {def.title}
+                    </strong>
+                    {note ? <span className="diagram-conclusion"> — {note}</span> : <span className="muted"> — 결론 미작성</span>}
                     <button
                       type="button"
                       className="link-btn no-print"
-                      onClick={() => downloadBlob(`${project.brief.projectName || '대지'}_${m.title}.png`, dataUrlToBlob(m.dataUrl!))}
+                      onClick={() =>
+                        void svgToPng(dp.svg, diagramSettings.pngWidth, diagramSettings.background === 'white' ? '#ffffff' : null).then((blob) =>
+                          downloadBlob(panelFileName(project, def, 'png'), blob),
+                        )
+                      }
                     >
-                      PNG 내려받기
+                      PNG
                     </button>
-                  )}
-                </figcaption>
-              </figure>
-            ))}
+                  </figcaption>
+                </figure>
+              )
+            })}
           </div>
         </section>
 

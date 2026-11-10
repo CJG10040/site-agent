@@ -76,6 +76,7 @@ export const STEPS: { id: StepId; label: string; phase: number }[] = [
   { id: 'site', label: '대지', phase: 1 },
   { id: 'data', label: '공간정보', phase: 1 },
   { id: 'facts', label: '사실 카드', phase: 1 },
+  { id: 'diagrams', label: '도판', phase: 7 },
   { id: 'observe', label: '현장 관찰', phase: 3 },
   { id: 'interpret', label: '해석·가설', phase: 4 },
   { id: 'report', label: '리포트', phase: 5 },
@@ -121,6 +122,10 @@ export function stepStatus(project: Project, step: StepId): { done: boolean; not
       const confirmed = project.cards.filter((c) => c.type === 'FACT' && c.status === 'confirmed').length
       const drafts = project.cards.filter((c) => c.status === 'draft').length
       return { done: confirmed >= 5, note: confirmed || drafts ? `확인 ${confirmed}${drafts ? ` · 검토 ${drafts}` : ''}` : '' }
+    }
+    case 'diagrams': {
+      const notes = Object.values(project.diagrams?.panels ?? {}).filter((n) => n.conclusion.trim()).length
+      return { done: notes >= 5, note: notes ? `결론 ${notes}` : '' }
     }
     case 'observe': {
       const obs = project.cards.filter((c) => c.type === 'OBSERVATION' && c.status !== 'rejected' && c.text.trim())

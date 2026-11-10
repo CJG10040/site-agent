@@ -10,6 +10,7 @@ import {
   convex,
   feature,
   featureCollection,
+  intersect,
   lineString,
   point,
   pointToLineDistance,
@@ -161,4 +162,21 @@ export function distanceM(a: [number, number], b: [number, number]): number {
   const dLon = toRad(b[0] - a[0])
   const h = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a[1])) * Math.cos(toRad(b[1])) * Math.sin(dLon / 2) ** 2
   return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)))
+}
+
+/**
+ * 면 도형이 대지와 실제로 겹치는지 (경계선만 맞닿은 경우는 제외).
+ * 용도지역처럼 도로 중심에서 나뉘는 구역이 대지에 '닿기만' 한 것을 걸친 것으로 세지 않기 위함.
+ */
+export function overlapsSite(g: Areal, site: Areal): boolean {
+  if (!booleanIntersects(feature(g), feature(site))) return false
+  try {
+    const inter = intersect(featureCollection([feature(g), feature(site)]))
+    if (!inter) return false
+    const a = area(inter)
+    // 1㎡ 이상 또는 대지 면적의 0.5% 이상 겹치면 걸친 것으로 본다
+    return a >= 1 || a >= areaM2(site) * 0.005
+  } catch {
+    return true
+  }
 }

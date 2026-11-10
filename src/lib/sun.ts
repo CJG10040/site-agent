@@ -117,3 +117,11 @@ export function sunPathFeatures(lon: number, lat: number, radiusM: number, year 
   }
   return out
 }
+
+/** 정해진 날(하지·춘추분·동지)의 KST 시각에 태양 고도(°)와 나침반 방위(°, 북=0 시계방향) */
+export function sunAt(lon: number, lat: number, day: SunDayKey, hour: number, year = new Date().getFullYear()): { altitude: number; azimuth: number } {
+  const d = SUN_DAYS.find((x) => x.key === day) ?? SUN_DAYS[2]
+  const h = Math.floor(hour)
+  const pos = SunCalc.getPosition(kst(year, d.month, d.day, h, Math.round((hour - h) * 60)), lat, lon)
+  return { altitude: deg(pos.altitude), azimuth: compassBearing(pos.azimuth) }
+}

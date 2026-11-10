@@ -5,7 +5,7 @@ import type { Geometry, Polygon, MultiPolygon } from 'geojson'
 
 export const SCHEMA_VERSION = 1
 
-export type StepId = 'brief' | 'question' | 'site' | 'data' | 'facts' | 'observe' | 'interpret' | 'report'
+export type StepId = 'brief' | 'question' | 'site' | 'data' | 'facts' | 'diagrams' | 'observe' | 'interpret' | 'report'
 
 /** F-02 과제 맥락 + 6.1 시작 입력 */
 export interface Brief {
@@ -186,4 +186,54 @@ export interface Project {
   panelSummary?: string
   /** 리포트를 마지막으로 인쇄(PDF 저장)한 시각 */
   reportPrintedAt?: string
+  /** Phase 7 도판: 그리기 설정과 도판별 결론 */
+  diagrams?: DiagramState
+}
+
+// ───────────────────────── Phase 7 도판 ─────────────────────────
+
+export type FrameShape = 'circle' | 'square'
+export type PaletteId = 'default' | 'cvd' | 'mono'
+export type SiteMark = 'outline' | 'fill' | 'dot'
+
+export interface DiagramSettings {
+  frame: FrameShape
+  palette: PaletteId
+  background: 'white' | 'none'
+  siteMark: SiteMark
+  /** 고층 도판: 이 층수 이상 */
+  highFloors: number
+  /** 저층 도판: 이 층수 이하 */
+  lowFloors: number
+  sunDay: 'summer' | 'equinox' | 'winter'
+  /** 그림자 시각 (한국 표준시, 시) */
+  sunHour: number
+  /** PNG 가로 픽셀 */
+  pngWidth: number
+}
+
+/** 도판 하나의 결론 */
+export interface PanelNote {
+  conclusion: string
+  /** 챗봇이 제안한 결론 후보 */
+  suggestions: string[]
+  /** 리포트에 넣을지 */
+  include: boolean
+  /** 지금 결론이 어디서 왔는지 */
+  source: 'user' | 'chatbot' | null
+  updatedAt: string
+}
+
+export interface DiagramChat {
+  at: string
+  chatbot: string
+  prompt: string
+  answer: string
+  matched: number
+}
+
+export interface DiagramState {
+  settings: DiagramSettings
+  panels: Record<string, PanelNote>
+  chatLog?: DiagramChat[]
 }
