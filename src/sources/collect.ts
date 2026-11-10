@@ -504,7 +504,6 @@ export async function collectSiteData(input: CollectInput, onProgress: (p: Colle
     },
     (r) => ({
       state: r.coverage > 0 ? 'ok' : 'empty',
-      count: Math.round(r.coverage * 100),
       message: `${r.source === 'ngii' ? `국토지리정보원 10m 격자 ${r.version ?? ''}` : '대체 자료(AWS Terrain Tiles)'} · 자료 있는 칸 ${Math.round(r.coverage * 100)}%`,
     }),
   )

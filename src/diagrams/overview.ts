@@ -1,7 +1,7 @@
 // 대지 개요: 대지와 같은 반경 안의 주요 숫자를 한눈에.
 
 import { overlapsSite, areaM2 } from '../lib/geo'
-import type { TerrainAnalysis } from '../lib/terrainSite'
+import { rangeText, type TerrainAnalysis } from '../lib/terrainSite'
 import { useName } from '../model/codes'
 import type { Project } from '../model/types'
 import type { DiagramData } from './data'
@@ -108,7 +108,7 @@ export function siteOverview(project: Project, d: DiagramData, terrain: TerrainA
     const sign = (v: number) => `${v > 0 ? '+' : ''}${fmt(v, 0)}`
     site.push({
       label: '대지 안 높낮이 차',
-      value: `${fmt(terrain.site.range, 1)}m`,
+      value: rangeText(terrain.site.range).replace(' (10m 격자 기준)', '').replace('약 ', ''),
       note: `평균 경사 ${fmt(terrain.site.meanSlope, 1)}°${terrain.grid.source === 'ngii' ? '' : ' · 대체 자료'}`,
     })
     if (terrain.high && terrain.low)

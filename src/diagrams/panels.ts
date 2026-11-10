@@ -7,7 +7,7 @@ import type { Position } from 'geojson'
 import { geometryToAreaDistanceM, lineToAreaDistanceM, overlapsSite, pointToAreaDistanceM, radiusCircle, type Areal } from '../lib/geo'
 import { wgs84ToUtmk } from '../lib/proj'
 import { sunAt, sunPathFeatures, SUN_DAYS } from '../lib/sun'
-import { contourInterval, contourLines, FLAT_DEG, SLOPE_BINS, type TerrainAnalysis } from '../lib/terrainSite'
+import { contourInterval, contourLines, FLAT_DEG, rangeText, SLOPE_BINS, type TerrainAnalysis } from '../lib/terrainSite'
 import type { DiagramSettings } from '../model/types'
 import { ALL_LAYERS } from '../sources/vworldLayers'
 import { aerialImage } from './aerial'
@@ -1075,7 +1075,7 @@ export const TERRAIN_PANELS: PanelDef[] = [
           `대지 중심을 0m로 하면 반경 안 높이는 ${signed(lo)} ~ ${signed(hi)}m (기복 약 ${fmt(relief, 0)}m)`,
           t.high && hb ? `가장 높은 곳: ${dir8(hb.bearing)}쪽 ${dist(hb.d)}, ${signed(t.high.rel)}m / 가장 낮은 곳: ${lb ? `${dir8(lb.bearing)}쪽 ${dist(lb.d)}, ${signed(t.low!.rel)}m` : '—'}` : '',
           relief >= 3 ? `등고선 간격 ${iv}m (굵은 선은 ${iv * 5}m마다)` : '기복이 3m 미만인 평지라 등고선을 그리지 않음 (레벨 계획 부담이 적다는 근거)',
-          `대지 안 높낮이 차 약 ${fmt(t.site.range, 1)}m`,
+          `대지 안 높낮이 차 ${rangeText(t.site.range)}`,
         ].filter(Boolean),
         caption: terrainCaption(t),
       }

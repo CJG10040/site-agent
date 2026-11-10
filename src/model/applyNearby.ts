@@ -5,6 +5,7 @@
 // 원칙: 자료에 있는 것만 문장으로 쓰고, 계산한 값은 기준(대지 중심·직선거리 등)을 밝힌다.
 
 import { centerOf, geometryToAreaDistanceM, pointToAreaDistanceM } from '../lib/geo'
+import { rangeText } from '../lib/terrainSite'
 import { CLIMATE_PUBLIC_URL, CLIMATE_SERVICE, type ClimateResult, type DailyRow } from '../sources/climate'
 import type { ApiOutcome, LandAreaOutcome, LayerOutcome, TerrainSummary } from '../sources/collect'
 import { KAKAO_PUBLIC_URL, KAKAO_SOURCE, POI_CATEGORIES, type PoiCategoryResult } from '../sources/kakao'
@@ -756,7 +757,7 @@ export function addTerrainFacts(ctx: FactContext, o: ApiOutcome<TerrainSummary>)
   push({
     auto_key: 'terrain-site',
     topic: '지형',
-    text: `대지 안 높낮이 차는 약 ${fmt(s.range, 1)}m이고, 평균 경사는 약 ${fmt(s.meanSlope, 1)}°(${slopeWord(s.meanSlope)})이다${
+    text: `대지 안 높낮이 차는 ${rangeText(s.range)}이고, 평균 경사는 약 ${fmt(s.meanSlope, 1)}°(${slopeWord(s.meanSlope)})이다${
       s.aspect === null ? '. 비탈 방향은 뚜렷하지 않다' : `. 대지는 ${dirName8(s.aspect)}쪽으로 낮아지는 비탈에 있다`
     } (50m 평활).`,
     sources: [src],

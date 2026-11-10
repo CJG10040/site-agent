@@ -10,6 +10,11 @@ export const SLOPE_BINS = [5, 10, 15, 20] // 경계(°): 0–5, 5–10, 10–15,
 export const FLAT_DEG = 3 // 이보다 완만하면 경사 방향을 칠하지 않음
 const DIR8 = ['북', '북동', '동', '남동', '남', '남서', '서', '북서']
 
+/** 대지 안 높낮이 차 표현 (10m 격자로는 1m 미만 차이를 가리기 어려움) */
+export function rangeText(m: number): string {
+  return m < 1 ? '1m 미만 (10m 격자 기준)' : `약 ${m.toLocaleString('ko-KR', { maximumFractionDigits: 1 })}m`
+}
+
 export function dir8(bearing: number): string {
   return DIR8[Math.round(bearing / 45) % 8]
 }
