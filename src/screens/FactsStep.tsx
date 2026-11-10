@@ -12,10 +12,11 @@ interface Props {
 type Filter = 'draft' | 'confirmed' | 'rejected' | 'all'
 
 const FILTERS: { id: Filter; label: string }[] = [
-  { id: 'draft', label: '검토 대기' },
+  { id: 'all', label: '전체' },
   { id: 'confirmed', label: '확인됨' },
   { id: 'rejected', label: '제외' },
-  { id: 'all', label: '전체' },
+  // 이전 버전에서 만든 프로젝트에만 남아 있는 상태
+  { id: 'draft', label: '검토 대기' },
 ]
 
 const TYPE_LABEL: Record<string, string> = {
@@ -203,33 +204,29 @@ function FactCard({
       )}
 
       <footer className="card-actions">
-        {card.status !== 'confirmed' && (
+        {card.status === 'draft' && (
           <button type="button" className="btn small primary" onClick={() => onStatus('confirmed')}>
             {isUnknown ? '추가조사로 남기기' : '확인'}
           </button>
         )}
-        {card.status === 'confirmed' && (
-          <button type="button" className="btn small ghost" onClick={() => onStatus('draft')}>
-            검토로 되돌리기
-          </button>
-        )}
-        {!editing && (
+        {!editing && card.status !== 'rejected' && (
           <button type="button" className="btn small ghost" onClick={() => setEditing(true)}>
             수정
           </button>
         )}
-        {!noteOpen && (
+        {!noteOpen && card.status !== 'rejected' && (
           <button type="button" className="btn small ghost" onClick={() => setNoteOpen(true)}>
             메모
           </button>
         )}
         <span className="spacer" />
+        {card.status === 'rejected' && <span className="muted small">{isUnknown ? '해당 없음으로 뺐습니다' : '제외했습니다'}</span>}
         {card.status !== 'rejected' ? (
           <button type="button" className="btn small ghost danger" onClick={() => onStatus('rejected')}>
             {isUnknown ? '해당 없음' : '제외'}
           </button>
         ) : (
-          <button type="button" className="btn small ghost" onClick={() => onStatus('draft')}>
+          <button type="button" className="btn small ghost" onClick={() => onStatus('confirmed')}>
             되돌리기
           </button>
         )}
@@ -318,7 +315,7 @@ interface NewFact {
 }
 
 export default function FactsStep({ project, update, onGoData }: Props) {
-  const [filter, setFilter] = useState<Filter>('draft')
+  const [filter, setFilter] = useState<Filter>('all')
   const sources = useMemo(() => new Map(project.sources.map((s) => [s.source_id, s])), [project.sources])
   const observedBy = useMemo(() => linksByFact(project), [project])
 
@@ -330,6 +327,7 @@ export default function FactsStep({ project, update, onGoData }: Props) {
     all: cards.length,
   }
   const confirmedFacts = cards.filter((c) => c.type === 'FACT' && c.status === 'confirmed').length
+  const rejectedFacts = cards.filter((c) => c.type === 'FACT' && c.status === 'rejected').length
   const unknownOpen = cards.filter((c) => c.type === 'UNKNOWN' && c.status !== 'rejected').length
 
   const shown = filter === 'all' ? cards : cards.filter((c) => c.status === filter)
@@ -393,8 +391,9 @@ export default function FactsStep({ project, update, onGoData }: Props) {
         <p className="eyebrow">⑤ 사실 카드</p>
         <h2>데이터에서 나온 사실을 확인하기</h2>
         <p className="muted">
-          프로그램이 만든 문장은 <strong>초안</strong>입니다. 출처를 열어 보고 맞으면 확인, 틀리거나 중요하지 않으면 제외, 표현이
-          어색하면 수정하세요. 확인한 사실만 다음 단계(해석·가설)의 근거로 쓰입니다.
+          프로그램이 만든 문장은 <strong>처음부터 확인됨</strong>으로 들어옵니다. 출처를 열어 보면서 틀리거나 중요하지 않은 것은
+          <strong> 제외</strong>, 표현이 어색하면 <strong>수정</strong>하세요. 제외하지 않은 사실이 다음 단계(해석·가설)의 근거로 쓰입니다.
+          <strong> 사람 확인 필요</strong> 표시가 붙은 카드는 특히 출처를 확인하세요.
         </p>
       </header>
 
@@ -404,8 +403,8 @@ export default function FactsStep({ project, update, onGoData }: Props) {
           <span className="meter-label">확인된 사실 (MVP 기준 5개 이상)</span>
         </div>
         <div className="meter">
-          <span className="meter-value">{counts.draft}</span>
-          <span className="meter-label">검토 대기</span>
+          <span className="meter-value">{rejectedFacts}</span>
+          <span className="meter-label">제외한 사실</span>
         </div>
         <div className="meter">
           <span className="meter-value">{unknownOpen}</span>
@@ -415,15 +414,37 @@ export default function FactsStep({ project, update, onGoData }: Props) {
 
       {cards.length === 0 ? (
         <div className="notice">
-          <p>아직 사실 카드가 없습니다. 공간정보를 수집하면 초안이 만들어집니다.</p>
+          <p>아직 사실 카드가 없습니다. 공간정보를 수집하면 사실 카드가 만들어집니다.</p>
           <button type="button" className="btn small" onClick={onGoData}>
             공간정보 수집하러 가기
           </button>
         </div>
       ) : (
         <>
+          {counts.draft > 0 && (
+            <div className="notice">
+              이전 버전에서 만든 검토 대기 카드가 {counts.draft}개 있습니다.{' '}
+              <button
+                type="button"
+                className="btn small"
+                onClick={() =>
+                  update((d) => {
+                    const t = nowIso()
+                    for (const c of d.cards) {
+                      if ((c.type === 'FACT' || c.type === 'UNKNOWN') && c.status === 'draft') {
+                        c.status = 'confirmed'
+                        c.updated_at = t
+                      }
+                    }
+                  })
+                }
+              >
+                모두 확인으로 바꾸기
+              </button>
+            </div>
+          )}
           <div className="segmented" role="tablist" aria-label="카드 상태">
-            {FILTERS.map((f) => (
+            {FILTERS.filter((f) => f.id !== 'draft' || counts.draft > 0).map((f) => (
               <button key={f.id} type="button" role="tab" aria-selected={filter === f.id} className={filter === f.id ? 'on' : ''} onClick={() => setFilter(f.id)}>
                 {f.label} <span className="count">{counts[f.id]}</span>
               </button>

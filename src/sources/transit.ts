@@ -1,7 +1,7 @@
 // 공공데이터포털 — 국토교통부_(TAGO)_버스정류소정보.
 //  getCrdntPrxmtSttnList: 좌표 주변(약 500m) 정류소 목록
 //  getSttnThrghRouteList: 정류소를 지나는 노선 목록
-// 응답 필드 이름은 실제 키로 다시 확인해야 한다 (Phase 6 확인 전).
+// 2026-11-10 실제 키로 확인: CORS 허용, citycode·nodeno는 숫자로 옴, 광주 충장로에서 21곳 응답.
 
 import { distanceM } from '../lib/geo'
 import { dataGoKrGet, standardItems } from './dataGoKr'

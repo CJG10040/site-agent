@@ -458,6 +458,7 @@ export function addStoreFacts(ctx: FactContext, o: ApiOutcome<StoresResult>): vo
       dataset_name: '반경 내 상가업소',
       dataset_id: 'sbiz:storeListInRadius',
       retrieved_at: o.retrievedAt,
+      update_date: r?.stdrYm ? `${r.stdrYm.slice(0, 4)}년 ${Number(r.stdrYm.slice(4, 6))}월 기준` : null,
       spatial_scale: r ? `대지 중심 반경 ${r.radiusM}m` : '대지 중심 반경',
       raw_ref: r?.stores.length ? 'sbiz:stores' : null,
       limitations:
@@ -499,7 +500,7 @@ export function addStoreFacts(ctx: FactContext, o: ApiOutcome<StoresResult>): vo
   push({
     auto_key: 'stores-count',
     topic: '상권',
-    text: `대지 중심 반경 ${r.radiusM}m 안에 상가업소 ${fmt(r.total)}곳이 등록돼 있다. 업종 대분류는 ${lcls
+    text: `대지 중심 반경 ${r.radiusM}m 안에 상가업소 ${fmt(r.total)}곳이 등록돼 있다${r.stdrYm ? ` (${r.stdrYm.slice(0, 4)}년 ${Number(r.stdrYm.slice(4, 6))}월 기준)` : ''}. 업종 대분류는 ${lcls
       .slice(0, 5)
       .map(([k, c]) => `${k} ${pct(c, n)}%`)
       .join(', ')} 순이다.`,

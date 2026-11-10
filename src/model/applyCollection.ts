@@ -42,12 +42,9 @@ export function applyCollection(project: Project, outcome: CollectOutcome, bound
   const site = project.site
   const radiusM = outcome.radiusM
 
-  // ── 0. 기존 출처 정리: 사용자가 손댄 카드가 가리키는 출처와 사용자 입력 출처만 남긴다
-  const keepIds = new Set(
-    project.cards
-      .filter((c) => !(c.origin === 'data' && c.status === 'draft' && !c.edited))
-      .flatMap((c) => c.related_source_ids),
-  )
+  // ── 0. 기존 출처 정리: 다시 만들 자동 카드의 출처만 지우고, 사용자가 손댄 카드·다른 카드가 기대는 카드의 출처는 남긴다
+  const referenced = referencedCardIds(project)
+  const keepIds = new Set(project.cards.filter((c) => !isReplaceable(c, referenced)).flatMap((c) => c.related_source_ids))
   project.sources = project.sources.filter((s) => s.reliability === 'user' || keepIds.has(s.source_id))
 
   const newSource = (s: Omit<SourceRecord, 'source_id'>): string => {
@@ -518,13 +515,30 @@ export function applyCollection(project: Project, outcome: CollectOutcome, bound
   mergeDrafts(project, drafts)
 }
 
-/** 같은 auto_key의 카드는 사용자가 손대지 않았을 때만 새 내용으로 바꾼다. */
+/** 다른 카드(해석·가설의 근거, 현장 관찰의 비교)가 가리키는 카드 */
+function referencedCardIds(project: Project): Set<string> {
+  const ids = new Set<string>()
+  for (const c of project.cards) {
+    for (const r of c.related_card_ids) ids.add(r)
+    for (const l of c.observation?.links ?? []) ids.add(l.cardId)
+  }
+  return ids
+}
+
+/** 사용자가 손대지 않은 자동 카드: 다시 수집하면 새 내용으로 바꾸거나 지워도 되는 카드 */
+function isReplaceable(c: Card, referenced: Set<string>): boolean {
+  return c.origin === 'data' && !!c.auto_key && !c.edited && c.status !== 'rejected' && !c.user_note.trim() && !referenced.has(c.id)
+}
+
+/**
+ * 자동 카드는 처음부터 '확인됨'으로 만든다 (사용자가 보면서 제외·수정).
+ * 같은 auto_key의 카드는 사용자가 고치거나 제외하지 않았을 때만 새 내용으로 바꾼다.
+ */
 function mergeDrafts(project: Project, drafts: DraftFact[]): void {
   const keys = new Set(drafts.map((d) => d.auto_key))
-  // 이번에 만들어지지 않은, 손대지 않은 자동 초안은 지운다
-  project.cards = project.cards.filter(
-    (c) => !(c.origin === 'data' && c.auto_key && !keys.has(c.auto_key) && c.status === 'draft' && !c.edited),
-  )
+  const referenced = referencedCardIds(project)
+  // 이번에 만들어지지 않은, 손대지 않은 자동 카드는 지운다
+  project.cards = project.cards.filter((c) => !(c.auto_key && !keys.has(c.auto_key) && isReplaceable(c, referenced)))
   const t = nowIso()
   for (const d of drafts) {
     const existing = project.cards.find((c) => c.auto_key === d.auto_key)
@@ -539,12 +553,14 @@ function mergeDrafts(project: Project, drafts: DraftFact[]): void {
           origin: 'data',
           confidence: d.confidence,
           human_validation_required: d.human_validation_required,
-          status: 'draft',
+          status: 'confirmed',
           user_note: '',
           auto_key: d.auto_key,
         }),
       )
-    } else if (existing.status === 'draft' && !existing.edited) {
+    } else if (existing.origin === 'data' && existing.status !== 'rejected' && !existing.edited) {
+      if (existing.text !== d.text) existing.history.push({ at: t, text: existing.text })
+      existing.status = 'confirmed'
       existing.text = d.text
       existing.topic = d.topic
       existing.related_source_ids = d.sources

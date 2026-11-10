@@ -134,7 +134,7 @@ export default function DataStep(props: Props) {
 
   const rows: CollectProgress[] = progress ?? project.collectLog ?? []
   const grouped = GROUP_ORDER.map((g) => ({ group: g, rows: rows.filter((r) => r.group === g) })).filter((g) => g.rows.length)
-  const drafts = project.cards.filter((c) => c.status === 'draft').length
+  const autoCards = project.cards.filter((c) => c.origin === 'data' && (c.type === 'FACT' || c.type === 'UNKNOWN') && c.status !== 'rejected').length
 
   return (
     <div className="split">
@@ -255,7 +255,7 @@ export default function DataStep(props: Props) {
 
         {project.collectedAt && !running && (
           <div className="panel-foot">
-            <p className="muted small">사실 카드 초안 {drafts}개가 확인을 기다립니다.</p>
+            <p className="muted small">사실 카드 {autoCards}개가 만들어졌습니다. 보면서 틀린 것은 제외·수정하세요.</p>
             <span className="spacer" />
             <button type="button" className="btn primary" onClick={onNext}>
               사실 카드 확인
