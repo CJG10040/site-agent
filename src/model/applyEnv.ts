@@ -186,7 +186,7 @@ function drafts(d: DiagramData, e: EnvResult, src: string): DraftFact[] {
     if (near.length) parts.push(`${wnd.season} ${windName(wnd.fromAz)}풍일 때 대지 주변 30m는 들어오는 바람의 평균 ${fmt(near.reduce((a, b) => a + b, 0) / near.length, 2)}배`)
   }
   if (parts.length)
-    out.push(F('env-wind', `2D 바람 흐름 실험(격자 볼츠만)에서 ${parts.join(', ')}이다. 건물 위로 넘는 바람이 없는 평면 계산이라 실제 바람과 다를 수 있다.`, 'low'))
+    out.push(F('env-wind', `2D 바람 흐름 실험(격자 볼츠만)에서 ${parts.join(', ')}이다. 높은 건물(20m 이상)만 막고 낮은 건물은 바람이 줄며 지나가게 단순화한 평면 계산이라 실제 바람과 다를 수 있다.`, 'low'))
 
   // 열쾌적 실험
   if (e.coarse.utci && e.thermal) {
