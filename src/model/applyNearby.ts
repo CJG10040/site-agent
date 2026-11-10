@@ -4,15 +4,15 @@
 //  - 카카오 로컬: 주변 생활 시설
 // 원칙: 자료에 있는 것만 문장으로 쓰고, 계산한 값은 기준(대지 중심·직선거리 등)을 밝힌다.
 
-import { geometryToAreaDistanceM, pointToAreaDistanceM } from '../lib/geo'
+import { centerOf, geometryToAreaDistanceM, pointToAreaDistanceM } from '../lib/geo'
 import { CLIMATE_PUBLIC_URL, CLIMATE_SERVICE, type ClimateResult, type DailyRow } from '../sources/climate'
-import type { ApiOutcome, LandAreaOutcome, LayerOutcome } from '../sources/collect'
+import type { ApiOutcome, LandAreaOutcome, LayerOutcome, TerrainSummary } from '../sources/collect'
 import { KAKAO_PUBLIC_URL, KAKAO_SOURCE, POI_CATEGORIES, type PoiCategoryResult } from '../sources/kakao'
 import { STORES_PUBLIC_URL, STORES_SERVICE, type StoresResult } from '../sources/stores'
 import { TRANSIT_PUBLIC_URL, TRANSIT_SERVICE, type TransitResult } from '../sources/transit'
 import type { FactContext } from './applyCollection'
 import { cleanNames, countBy, fmt, josa, listText, pct, str } from './textUtil'
-import type { SourceRecord } from './types'
+import type { Card, SourceRecord } from './types'
 
 const DATA_GO_KR_LICENSE = '공공데이터포털 이용허락범위에 따름 (출처 표기 필요)'
 const KAKAO_LICENSE = '카카오 API 이용약관에 따름 (출처 표기 필요, 상업적 재배포 불가)'
@@ -688,4 +688,116 @@ export function addLandAreaFacts(ctx: FactContext, o: LandAreaOutcome): void {
       confidence: 'medium',
     })
   }
+}
+
+// ───────────────────────── 지형 (대지 중심 = 0m 상대 높이) ─────────────────────────
+
+const DIR8_NAMES = ['북', '북동', '동', '남동', '남', '남서', '서', '북서']
+const dirName8 = (b: number) => DIR8_NAMES[Math.round(b / 45) % 8]
+
+function bearingFrom(center: [number, number], lon: number, lat: number): { d: number; b: number } {
+  const kx = 111320 * Math.cos((center[1] * Math.PI) / 180)
+  const dx = (lon - center[0]) * kx
+  const dy = (lat - center[1]) * 110574
+  return { d: Math.hypot(dx, dy), b: ((Math.atan2(dx, dy) * 180) / Math.PI + 360) % 360 }
+}
+
+function slopeWord(deg: number): string {
+  if (deg < 3) return '거의 평지'
+  if (deg < 8) return '완만한 경사'
+  if (deg < 15) return '경사지'
+  return '급경사지'
+}
+
+export function addTerrainFacts(ctx: FactContext, o: ApiOutcome<TerrainSummary>): void {
+  const { project, push, radiusM } = ctx
+  const r = o.result
+  const ngii = r?.source === 'ngii'
+  const src = ctx.newSource(
+    apiSource({
+      source_name: ngii ? '국토지리정보원 연속수치지형도 (대지해석 에이전트가 10m 격자로 가공)' : 'AWS Terrain Tiles (대체 자료)',
+      dataset_name: ngii ? `등고선·표고점 → 10m 격자 ${r?.version ?? ''}` : '전 세계 지형 타일 (Terrarium)',
+      dataset_id: 'terrain:grid',
+      retrieved_at: o.retrievedAt,
+      geometry: `대지 중심 반경 ${radiusM}m`,
+      spatial_scale: '10m 격자',
+      raw_ref: r ? 'terrain:summary' : null,
+      unit: 'm (대지 중심 = 0m 상대 높이), °',
+      license: ngii ? 'CC BY (출처: 국토지리정보원)' : 'Mapzen/AWS Terrain Tiles 이용 조건에 따름',
+      limitations: ngii
+        ? '5m 등고선과 표고점으로 보간한 10m 격자라 옹벽·계단·작은 둔덕은 나타나지 않음. 경사도·비탈 방향은 50m로 평활한 값. 참고용이며 측량·인허가 근거가 아님.'
+        : '광주·전남·전북 밖이라 전 세계 지형 타일로 대신함. 도심에서는 건물 높이가 섞여 10m 넘게 틀릴 수 있음.',
+      original_url: ngii ? 'https://cjg10040.github.io/site-agent-terrain/' : 'https://registry.opendata.aws/terrain-tiles/',
+      reliability: ngii ? 'computed' : 'secondary',
+      feature_count: null,
+      status: o.error ? 'error' : 'ok',
+      error: o.error,
+    }),
+  )
+  if (!r) {
+    push({
+      auto_key: 'terrain-error',
+      type: 'UNKNOWN',
+      topic: '지형',
+      text: `지형 자료를 가져오지 못했다 (${o.error}). 지형도나 현장에서 높낮이를 확인해야 한다.`,
+      sources: [src],
+      confidence: 'low',
+      human_validation_required: true,
+    })
+    return
+  }
+  project.collected['terrain:summary'] = {
+    dataset_id: 'terrain:summary',
+    retrieved_at: o.retrievedAt,
+    features: [{ type: 'Feature' as const, geometry: null, properties: { ...r, high: r.high ? { ...r.high } : null, low: r.low ? { ...r.low } : null } as unknown as Record<string, unknown> }],
+  }
+  const conf: Card['confidence'] = ngii ? 'medium' : 'low'
+  const s = r.site
+  push({
+    auto_key: 'terrain-site',
+    topic: '지형',
+    text: `대지 안 높낮이 차는 약 ${fmt(s.range, 1)}m이고, 평균 경사는 약 ${fmt(s.meanSlope, 1)}°(${slopeWord(s.meanSlope)})이다${
+      s.aspect === null ? '. 비탈 방향은 뚜렷하지 않다' : `. 대지는 ${dirName8(s.aspect)}쪽으로 낮아지는 비탈에 있다`
+    } (50m 평활).`,
+    sources: [src],
+    confidence: conf,
+  })
+  if (r.high && r.low) {
+    const hi = bearingFrom(centerOfBoundary(ctx), r.high.lon, r.high.lat)
+    const lo = bearingFrom(centerOfBoundary(ctx), r.low.lon, r.low.lat)
+    push({
+      auto_key: 'terrain-relief',
+      topic: '지형',
+      text: `대지 중심을 0m로 하면 반경 ${radiusM}m 안의 높이는 ${fmt(r.low.rel, 0)}m ~ +${fmt(r.high.rel, 0)}m이다. 가장 높은 곳은 ${dirName8(hi.b)}쪽 약 ${fmt(Math.round(hi.d / 10) * 10)}m, 가장 낮은 곳은 ${dirName8(lo.b)}쪽 약 ${fmt(Math.round(lo.d / 10) * 10)}m에 있다.`,
+      sources: [src],
+      confidence: conf,
+    })
+  }
+  const labels = ['5° 미만', '5~10°', '10~15°', '15~20°', '20° 이상']
+  push({
+    auto_key: 'terrain-slope',
+    topic: '지형',
+    text: `반경 안 땅의 경사도는 ${labels
+      .map((l, i) => [l, Math.round(r.slopeShare[i] * 100)] as const)
+      .filter(([, p]) => p > 0)
+      .map(([l, p]) => `${l} ${p}%`)
+      .join(', ')}이다 (50m 평활).`,
+    sources: [src],
+    confidence: conf,
+  })
+  if (!ngii) {
+    push({
+      auto_key: 'terrain-fallback',
+      type: 'UNKNOWN',
+      topic: '지형',
+      text: '이 대지는 국토지리정보원 지형 격자(광주·전남·전북) 밖이라 오차가 큰 대체 자료를 썼다. 도심의 높낮이는 지형도나 현장에서 다시 확인해야 한다.',
+      sources: [src],
+      confidence: 'low',
+      human_validation_required: true,
+    })
+  }
+}
+
+function centerOfBoundary(ctx: FactContext): [number, number] {
+  return centerOf(ctx.boundary)
 }

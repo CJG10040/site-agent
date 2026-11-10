@@ -69,7 +69,7 @@ function Viewer({ panel, def, onClose, onSvg, onPng }: { panel: CachedPanel; def
 }
 
 export default function DiagramStep({ project, update, config, onGoData, onNext }: Props) {
-  const { data, settings, panels, busy } = useDiagrams(project, config.key)
+  const { data, settings, panels, busy, terrain } = useDiagrams(project, config.key)
   const [viewing, setViewing] = useState<string | null>(null)
   const [answer, setAnswer] = useState('')
   const [chatbot, setChatbot] = useState('')
@@ -79,7 +79,7 @@ export default function DiagramStep({ project, update, config, onGoData, onNext 
   // 처음 열 때 결론이 하나도 없으면 챗봇 상자를 펼쳐 둔다 (그 뒤로는 사용자가 연 대로)
   const [chatOpen, setChatOpen] = useState(() => !Object.values(project.diagrams?.panels ?? {}).some((n) => n.conclusion.trim()))
 
-  const overview = useMemo(() => (data ? siteOverview(project, data) : null), [data, project])
+  const overview = useMemo(() => (data ? siteOverview(project, data, terrain) : null), [data, project, terrain])
 
   const setSettings = (patch: Partial<DiagramSettings>) =>
     update((d) => {

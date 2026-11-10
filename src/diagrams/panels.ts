@@ -5,7 +5,9 @@ import { contours } from 'd3-contour'
 import { area, booleanPointInPolygon, feature, featureCollection, intersect, point } from '@turf/turf'
 import type { Position } from 'geojson'
 import { geometryToAreaDistanceM, lineToAreaDistanceM, overlapsSite, pointToAreaDistanceM, radiusCircle, type Areal } from '../lib/geo'
+import { wgs84ToUtmk } from '../lib/proj'
 import { sunAt, sunPathFeatures, SUN_DAYS } from '../lib/sun'
+import { contourInterval, contourLines, FLAT_DEG, SLOPE_BINS, type TerrainAnalysis } from '../lib/terrainSite'
 import type { DiagramSettings } from '../model/types'
 import { ALL_LAYERS } from '../sources/vworldLayers'
 import { aerialImage } from './aerial'
@@ -22,9 +24,11 @@ export interface PanelCtx {
   vworldKey: string
   /** 수집일 (YYYY-MM-DD) */
   date: string
+  /** 지형 분석 (없으면 null) */
+  t: TerrainAnalysis | null
 }
 
-export type PanelGroup = '위치' | '땅의 조건' | '주변 현황' | '연계와 접근' | '환경' | '사회·경제' | '현장'
+export type PanelGroup = '위치' | '땅의 조건' | '지형' | '주변 현황' | '연계와 접근' | '환경' | '사회·경제' | '현장'
 
 export interface PanelDef {
   id: string
@@ -367,7 +371,7 @@ export const PANELS: PanelDef[] = [
   {
     id: 'terrainClass',
     title: '필지 지형등급',
-    group: '땅의 조건',
+    group: '지형',
     needs: "공간정보에서 '토지'를 수집하세요 (반경 안 필지의 토지특성).",
     render: (c) => {
       const ps = c.d.parcels
@@ -942,10 +946,209 @@ export const PANELS: PanelDef[] = [
   },
 ]
 
-export const PANEL_GROUP_ORDER: PanelGroup[] = ['위치', '땅의 조건', '주변 현황', '연계와 접근', '환경', '사회·경제', '현장']
 
-/** 보고서 배치 순서 (위치 → 땅의 조건 → 주변 현황 → 연계와 접근 → 환경 → 사회·현장) */
-export const ORDERED_PANELS: PanelDef[] = PANEL_GROUP_ORDER.flatMap((g) => PANELS.filter((p) => p.group === g))
+// ───────────────────────── 지형 (Phase 8) ─────────────────────────
+
+/** 도판 픽셀 ↔ EPSG:5179 (반경 1km 안에서는 1차 변환으로 충분히 정확) */
+function frameAffine(c: PanelCtx) {
+  const P = (px: number, py: number) => {
+    const [lon, lat] = c.f.inv(px, py)
+    return wgs84ToUtmk(lon, lat)
+  }
+  const p0 = P(MAP_CX, MAP_CY)
+  const pe = P(MAP_CX + 100, MAP_CY)
+  const ps = P(MAP_CX, MAP_CY + 100)
+  const ax = (pe[0] - p0[0]) / 100
+  const bx = (ps[0] - p0[0]) / 100
+  const ay = (pe[1] - p0[1]) / 100
+  const by = (ps[1] - p0[1]) / 100
+  const det = ax * by - bx * ay
+  return {
+    toUtmk: (px: number, py: number): [number, number] => [p0[0] + ax * (px - MAP_CX) + bx * (py - MAP_CY), p0[1] + ay * (px - MAP_CX) + by * (py - MAP_CY)],
+    toPx: (x: number, y: number): [number, number] => {
+      const dx = x - p0[0]
+      const dy = y - p0[1]
+      return [MAP_CX + (by * dx - bx * dy) / det, MAP_CY + (-ay * dx + ax * dy) / det]
+    },
+  }
+}
+
+/** 격자 값마다 색을 칠한 그림 (도판 틀 크기) */
+function terrainRaster(c: PanelCtx, t: TerrainAnalysis, colorAt: (k: number) => string | null): string {
+  const S = MAP_R * 2
+  const canvas = document.createElement('canvas')
+  canvas.width = S
+  canvas.height = S
+  const g = canvas.getContext('2d')
+  if (!g) return ''
+  const img = g.createImageData(S, S)
+  const A = frameAffine(c)
+  const grid = t.grid
+  const cache = new Map<string, number[]>()
+  const rgb = (hex: string) => {
+    let v = cache.get(hex)
+    if (!v) {
+      const h = hex.replace('#', '')
+      v = [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)]
+      cache.set(hex, v)
+    }
+    return v
+  }
+  for (let py = 0; py < S; py++)
+    for (let px = 0; px < S; px++) {
+      const [x, y] = A.toUtmk(px + MAP_CX - MAP_R + 0.5, py + MAP_CY - MAP_R + 0.5)
+      const col = Math.floor((x - grid.x0) / grid.cell)
+      const row = Math.floor((grid.y0 - y) / grid.cell)
+      if (col < 0 || row < 0 || col >= grid.nx || row >= grid.ny) continue
+      const color = colorAt(row * grid.nx + col)
+      if (!color) continue
+      const [r, gg, b] = rgb(color)
+      const o = (py * S + px) * 4
+      img.data[o] = r
+      img.data[o + 1] = gg
+      img.data[o + 2] = b
+      img.data[o + 3] = 255
+    }
+  g.putImageData(img, 0, 0)
+  return `<image href="${canvas.toDataURL('image/png')}" x="${MAP_CX - MAP_R}" y="${MAP_CY - MAP_R}" width="${S}" height="${S}" preserveAspectRatio="none"/>`
+}
+
+function contourSvg(c: PanelCtx, t: TerrainAnalysis, interval?: number): { svg: string; step: number | null } {
+  const lines = contourLines(t, interval)
+  if (!lines.length) return { svg: '', step: null }
+  const A = frameAffine(c)
+  const ring = (r: Position[]) => r.map(([x, y], i) => {
+    const [px, py] = A.toPx(x, y)
+    return `${i === 0 ? 'M' : 'L'}${px.toFixed(1)} ${py.toFixed(1)}`
+  }).join('')
+  const minor = lines.filter((l) => !l.major).map((l) => l.rings.map(ring).join('')).join('')
+  const major = lines.filter((l) => l.major).map((l) => l.rings.map(ring).join('')).join('')
+  const step = lines.length > 1 ? Math.abs(lines[1].level - lines[0].level) : null
+  return {
+    svg: `<g id="등고선"><path d="${minor}" fill="none" stroke="${c.pal.ink}" stroke-opacity="0.45" stroke-width="0.8"/><path d="${major}" fill="none" stroke="${c.pal.ink}" stroke-opacity="0.75" stroke-width="1.6"/></g>`,
+    step,
+  }
+}
+
+function terrainCaption(t: TerrainAnalysis, extra = ''): string {
+  return t.grid.source === 'ngii'
+    ? `국토지리정보원 연속수치지형도 등고선·표고점으로 만든 10m 격자(${t.grid.version ?? ''}) · 높이는 대지 중심 = 0m 상대값${extra} · 옹벽·계단처럼 10m보다 작은 지형은 나타나지 않음 · 참고용`
+    : `대체 자료(AWS Terrain Tiles) — 광주·전남·전북 밖이라 국토지리정보원 격자가 없음, 도심에서는 건물 높이가 섞여 오차가 큼 · 높이는 대지 중심 = 0m 상대값${extra}`
+}
+
+const signed = (v: number) => `${v > 0 ? '+' : ''}${fmt(v, 0)}`
+
+const ASPECT_COLORS = ['#4c78a8', '#72b7b2', '#54a24b', '#eeca3b', '#f58518', '#e45756', '#b279a2', '#9d755d']
+const ASPECT_NAMES = ['북', '북동', '동', '남동', '남', '남서', '서', '북서']
+
+export const TERRAIN_PANELS: PanelDef[] = [
+  {
+    id: 'terrain',
+    title: '지형·등고선',
+    group: '지형',
+    needs: "공간정보에서 '지형'을 수집하거나 대지를 정하면 그려집니다.",
+    render: (c) => {
+      const t = c.t
+      if (!t) return { layers: [], legend: [], summary: [], caption: '', empty: '지형 자료를 받지 못했습니다' }
+      // 높이 범위는 반경 안 값으로 (격자는 반경보다 조금 넓게 받는다)
+      const lo = t.low?.rel ?? 0
+      const hi = t.high?.rel ?? 0
+      const relief = hi - lo
+      const iv = contourInterval(relief)
+      const bandStep = Math.max(iv, Math.ceil(relief / 7 / iv) * iv)
+      const start = Math.floor(lo / bandStep) * bandStep
+      const nb = Math.max(1, Math.ceil((hi - start) / bandStep))
+      const colors = steps(c.pal, Math.max(2, nb))
+      const raster = terrainRaster(c, t, (k) => {
+        const v = t.rel[k]
+        if (Number.isNaN(v)) return null
+        return colors[Math.min(nb - 1, Math.max(0, Math.floor((v - start) / bandStep)))]
+      })
+      const cont = relief >= 3 ? contourSvg(c, t, iv) : { svg: '', step: null }
+      const hb = t.high ? c.f.polar(t.high.lon, t.high.lat) : null
+      const lb = t.low ? c.f.polar(t.low.lon, t.low.lat) : null
+      return {
+        layers: [{ id: '높이_단계', svg: raster }, { id: '등고선', svg: cont.svg }, { id: '바탕_건물', svg: `<path d="${c.d.buildings.map((b) => c.f.path(b.geom, false)).join('')}" fill="none" stroke="${c.pal.ink}" stroke-opacity="0.18" stroke-width="0.5"/>` }],
+        legendTitle: '대지 중심 = 0m',
+        legend: Array.from({ length: nb }, (_, i) => ({ color: colors[i], label: `${signed(start + i * bandStep)} ~ ${signed(start + (i + 1) * bandStep)}m` })),
+        summary: [
+          `대지 중심을 0m로 하면 반경 안 높이는 ${signed(lo)} ~ ${signed(hi)}m (기복 약 ${fmt(relief, 0)}m)`,
+          t.high && hb ? `가장 높은 곳: ${dir8(hb.bearing)}쪽 ${dist(hb.d)}, ${signed(t.high.rel)}m / 가장 낮은 곳: ${lb ? `${dir8(lb.bearing)}쪽 ${dist(lb.d)}, ${signed(t.low!.rel)}m` : '—'}` : '',
+          relief >= 3 ? `등고선 간격 ${iv}m (굵은 선은 ${iv * 5}m마다)` : '기복이 3m 미만인 평지라 등고선을 그리지 않음 (레벨 계획 부담이 적다는 근거)',
+          `대지 안 높낮이 차 약 ${fmt(t.site.range, 1)}m`,
+        ].filter(Boolean),
+        caption: terrainCaption(t),
+      }
+    },
+  },
+  {
+    id: 'slope',
+    title: '경사도',
+    group: '지형',
+    needs: "공간정보에서 '지형'을 수집하거나 대지를 정하면 그려집니다.",
+    render: (c) => {
+      const t = c.t
+      if (!t) return { layers: [], legend: [], summary: [], caption: '', empty: '지형 자료를 받지 못했습니다' }
+      const labels = ['5° 미만', '5~10°', '10~15°', '15~20°', '20° 이상']
+      const colors = steps(c.pal, labels.length)
+      const raster = terrainRaster(c, t, (k) => {
+        const s = t.slope[k]
+        if (Number.isNaN(s)) return null
+        return colors[SLOPE_BINS.filter((b) => s >= b).length]
+      })
+      return {
+        layers: [{ id: '경사도', svg: raster }, { id: '바탕_건물', svg: `<path d="${c.d.buildings.map((b) => c.f.path(b.geom, false)).join('')}" fill="none" stroke="${c.pal.ink}" stroke-opacity="0.18" stroke-width="0.5"/>` }],
+        legend: labels.map((l, i) => ({ color: colors[i], label: l })),
+        summary: [
+          `반경 안 땅의 경사도: ${labels.map((l, i) => [l, Math.round(t.slopeShare[i] * 100)] as const).filter(([, p]) => p > 0).map(([l, p]) => `${l} ${p}%`).join(', ')}`,
+          `대지 평균 경사 약 ${fmt(t.site.meanSlope, 1)}°`,
+        ],
+        caption: terrainCaption(t, ' · 경사는 50m 평활 (조례의 평균경사도 산정과 다름)'),
+      }
+    },
+  },
+  {
+    id: 'aspect',
+    title: '경사 방향',
+    group: '지형',
+    needs: "공간정보에서 '지형'을 수집하거나 대지를 정하면 그려집니다.",
+    render: (c) => {
+      const t = c.t
+      if (!t) return { layers: [], legend: [], summary: [], caption: '', empty: '지형 자료를 받지 못했습니다' }
+      const base = c.pal.id === 'default' ? ASPECT_COLORS : c.pal.id === 'cvd' ? c.pal.cat : shades(c.pal.ink, 8)
+      const counts = new Array(8).fill(0)
+      let sloped = 0
+      const raster = terrainRaster(c, t, (k) => {
+        const s = t.slope[k]
+        const a = t.aspect[k]
+        if (Number.isNaN(s) || Number.isNaN(a) || s < FLAT_DEG) return null
+        const i = Math.round(a / 45) % 8
+        return mix('#ffffff', base[i], Math.min(1, 0.35 + (s - FLAT_DEG) / 20))
+      })
+      for (let k = 0; k < t.slope.length; k++) {
+        const s = t.slope[k]
+        if (Number.isNaN(s) || s < FLAT_DEG) continue
+        sloped++
+        counts[Math.round(t.aspect[k] / 45) % 8]++
+      }
+      const top = counts.map((n, i) => [ASPECT_NAMES[i], n] as const).sort((a, b) => b[1] - a[1])[0]
+      return {
+        layers: [{ id: '경사_방향', svg: raster }, { id: '바탕_건물', svg: `<path d="${c.d.buildings.map((b) => c.f.path(b.geom, false)).join('')}" fill="none" stroke="${c.pal.ink}" stroke-opacity="0.18" stroke-width="0.5"/>` }],
+        legend: ASPECT_NAMES.map((n, i) => ({ color: base[i], label: `${n}향` })),
+        summary: [
+          sloped ? `경사(${FLAT_DEG}° 이상)가 있는 땅에서 가장 많은 비탈 방향: ${top[0]}향 (${pct(top[1], sloped)}%)` : `반경 안이 거의 평지 (${FLAT_DEG}° 미만)`,
+          t.site.aspect === null ? '대지는 평지에 가까워 비탈 방향이 뚜렷하지 않음' : `대지는 ${dir8(t.site.aspect)}향 비탈 (남향은 볕, 북향은 그늘 쪽)`,
+        ],
+        caption: terrainCaption(t, ` · 경사 ${FLAT_DEG}° 미만은 칠하지 않음, 진할수록 가파름 · 50m 평활`),
+      }
+    },
+  },
+]
+
+export const PANEL_GROUP_ORDER: PanelGroup[] = ['위치', '땅의 조건', '지형', '주변 현황', '연계와 접근', '환경', '사회·경제', '현장']
+
+/** 보고서 배치 순서 (위치 → 땅의 조건 → 지형 → 주변 현황 → 연계와 접근 → 환경 → 사회·현장) */
+export const ORDERED_PANELS: PanelDef[] = PANEL_GROUP_ORDER.flatMap((g) => [...PANELS, ...TERRAIN_PANELS].filter((p) => p.group === g))
 
 export function panelNumber(id: string): number {
   return ORDERED_PANELS.findIndex((p) => p.id === id) + 1

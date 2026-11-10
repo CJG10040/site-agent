@@ -20,6 +20,7 @@ import {
   type SgisRegion,
   type StatsAreaFeature,
 } from './sgis'
+import { analyzeTerrain, type TerrainAnalysis } from '../lib/terrainSite'
 import { climateNear, type ClimateResult } from './climate'
 import { poisAround, type PoiCategoryResult } from './kakao'
 import { storesAround, type StoresResult } from './stores'
@@ -103,6 +104,17 @@ export interface SgisOutcome {
   errors: { part: 'population' | 'statsArea' | 'business'; message: string }[]
 }
 
+/** 지형 분석 요약 (격자 자체는 저장하지 않고 도판에서 다시 받는다) */
+export interface TerrainSummary {
+  source: TerrainAnalysis['grid']['source']
+  version: string | null
+  coverage: number
+  high: TerrainAnalysis['high']
+  low: TerrainAnalysis['low']
+  site: TerrainAnalysis['site']
+  slopeShare: number[]
+}
+
 /** 공공데이터포털·카카오 수집 결과 (실패하면 error에 사유) */
 export interface ApiOutcome<T> {
   retrievedAt: string
@@ -125,6 +137,7 @@ export interface CollectOutcome {
   climate?: ApiOutcome<ClimateResult>
   stores?: ApiOutcome<StoresResult>
   poi?: ApiOutcome<PoiCategoryResult[]>
+  terrain?: ApiOutcome<TerrainSummary>
   selection: DataCategory[]
   finishedAt: string
 }
@@ -185,6 +198,7 @@ export async function collectSiteData(input: CollectInput, onProgress: (p: Colle
   if (want('climate')) progress.push({ id: 'kma:asos', label: '가까운 관측소 기후 (최근 3년)', group: '대중교통·기후', state: 'pending' })
   if (want('stores')) progress.push({ id: 'sbiz:stores', label: '상가업소 업종', group: '상권', state: 'pending' })
   if (want('poi')) progress.push({ id: 'kakao:poi', label: '주변 생활 시설 (카카오)', group: '주변 시설', state: 'pending' })
+  if (want('terrain')) progress.push({ id: 'terrain', label: '지형 (10m 격자)', group: '토지', state: 'pending' })
 
   const report = () => onProgress(progress.map((p) => ({ ...p })))
   const set = (id: string, patch: Partial<CollectProgress>) => {
@@ -480,7 +494,22 @@ export async function collectSiteData(input: CollectInput, onProgress: (p: Colle
     }
   })
 
-  const [, land, landArea, register, sgis, transit, climate, stores, poi] = await Promise.all([
+  const terrainTask = apiTask(
+    want('terrain'),
+    'terrain',
+    async (): Promise<TerrainSummary> => {
+      const t = await analyzeTerrain(center, boundary, radiusM)
+      if (!t) throw new Error('지형 자료를 받지 못했습니다')
+      return { source: t.grid.source, version: t.grid.version, coverage: t.coverage, high: t.high, low: t.low, site: t.site, slopeShare: t.slopeShare }
+    },
+    (r) => ({
+      state: r.coverage > 0 ? 'ok' : 'empty',
+      count: Math.round(r.coverage * 100),
+      message: `${r.source === 'ngii' ? `국토지리정보원 10m 격자 ${r.version ?? ''}` : '대체 자료(AWS Terrain Tiles)'} · 자료 있는 칸 ${Math.round(r.coverage * 100)}%`,
+    }),
+  )
+
+  const [, land, landArea, register, sgis, transit, climate, stores, poi, terrain] = await Promise.all([
     layerTask,
     landTask,
     landAreaTask,
@@ -490,6 +519,7 @@ export async function collectSiteData(input: CollectInput, onProgress: (p: Colle
     climateTask,
     storesTask,
     poiTask,
+    terrainTask,
   ])
 
   let address: CollectOutcome['address'] = null
@@ -518,6 +548,7 @@ export async function collectSiteData(input: CollectInput, onProgress: (p: Colle
     climate,
     stores,
     poi,
+    terrain,
     selection,
     finishedAt: new Date().toISOString(),
   }

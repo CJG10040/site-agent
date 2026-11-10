@@ -2,6 +2,7 @@
 // 같은 자료·설정으로 그린 도판은 모듈 안에 잠시 보관해 단계를 오갈 때 다시 그리지 않는다.
 
 import { useEffect, useMemo, useState } from 'react'
+import { analyzeTerrain, type TerrainAnalysis } from '../lib/terrainSite'
 import { observationsOf } from '../model/observations'
 import { siteKey } from '../model/project'
 import type { DiagramSettings, Project } from '../model/types'
@@ -16,6 +17,7 @@ export interface CachedPanel extends RenderedPanel {
 }
 
 const cache = new Map<string, CachedPanel>()
+const TERRAIN_IDS = new Set(['terrain', 'slope', 'aspect'])
 const MAX_CACHE = 80
 
 function cachePut(p: CachedPanel) {
@@ -54,6 +56,7 @@ export function useDiagrams(project: Project, vworldKey: string, only?: string[]
   const allKey = ORDERED_PANELS.map((p) => settingsKey(p.id, settings)).join(';')
   const [panels, setPanels] = useState<Record<string, CachedPanel>>({})
   const [busy, setBusy] = useState(false)
+  const [terrain, setTerrain] = useState<TerrainAnalysis | null>(null)
 
   useEffect(() => {
     if (!data) {
@@ -64,11 +67,16 @@ export function useDiagrams(project: Project, vworldKey: string, only?: string[]
     const wanted = ORDERED_PANELS.filter((p) => ids.split(',').includes(p.id))
     void (async () => {
       setBusy(true)
+      const needsTerrain = wanted.some((p) => TERRAIN_IDS.has(p.id))
+      const t = needsTerrain ? await analyzeTerrain(data.center, data.boundary, data.R).catch(() => null) : null
+      if (!alive) return
+      setTerrain(t)
       for (const def of wanted) {
-        const key = `${dataSig}|${def.id}|${settingsKey(def.id, settings)}|${vworldKey ? 'k' : '-'}`
+        const tKey = TERRAIN_IDS.has(def.id) ? `|${t ? `${t.grid.source}${t.grid.version ?? ''}` : 'no-terrain'}` : ''
+        const key = `${dataSig}|${def.id}|${settingsKey(def.id, settings)}|${vworldKey ? 'k' : '-'}${tKey}`
         let hit = cache.get(key)
         if (!hit) {
-          const r = await renderPanel(def, data, settings, vworldKey, date)
+          const r = await renderPanel(def, data, settings, vworldKey, date, t)
           hit = { ...r, url: URL.createObjectURL(svgBlob(r.svg)), key }
           cachePut(hit)
         }
@@ -85,5 +93,5 @@ export function useDiagrams(project: Project, vworldKey: string, only?: string[]
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data, allKey, vworldKey, ids, date])
 
-  return { data, settings, panels, busy }
+  return { data, settings, panels, busy, terrain }
 }

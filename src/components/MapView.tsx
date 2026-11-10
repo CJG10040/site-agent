@@ -39,6 +39,8 @@ export interface MapData {
   parcels?: GeoFeature[]
   buildings?: GeoFeature[]
   roads?: GeoFeature[]
+  /** 등고선 (속성 major: 굵은 선) */
+  contours?: GeoFeature[]
   statsAreas?: GeoFeature[]
   sun?: GeoFeature[]
   /** 수집 자료 덧그림 (속성 _c 색, _shape 모양, _r 반지름) */
@@ -168,6 +170,9 @@ export default function MapView({
       return s
     }, 15)
     const roads = make(new Style({ stroke: new Stroke({ color: 'rgba(60,64,70,0.75)', width: 2.5 }) }), 25)
+    const contourMinor = new Style({ stroke: new Stroke({ color: 'rgba(140,90,40,0.55)', width: 1 }) })
+    const contourMajor = new Style({ stroke: new Stroke({ color: 'rgba(120,70,25,0.85)', width: 2 }) })
+    const contoursL = make((f) => (f.get('major') ? contourMajor : contourMinor), 17)
     const overlayStyles = new Map<string, Style>()
     const overlayAreas = make((f) => {
       const c = String(f.get('_c') ?? '#868e96')
@@ -267,7 +272,7 @@ export default function MapView({
 
     const map = new OlMap({
       target: targetRef.current,
-      layers: [base, label, statsAreas.layer, overlayAreas.layer, buildings.layer, roads.layer, radius.layer, overlayPoints.layer, parcels.layer, boundary.layer, sun.layer, marker.layer, observations.layer, edit.layer],
+      layers: [base, label, statsAreas.layer, contoursL.layer, overlayAreas.layer, buildings.layer, roads.layer, radius.layer, overlayPoints.layer, parcels.layer, boundary.layer, sun.layer, marker.layer, observations.layer, edit.layer],
       view: new View({ center: fromLonLat([START.lon, START.lat]), zoom: START.zoom, minZoom: 6, maxZoom: 21 }),
       controls: defaultControls({ attributionOptions: { collapsible: true } }).extend([new ScaleLine()]),
     })
@@ -300,6 +305,7 @@ export default function MapView({
       statsAreas: statsAreas.source,
       buildings: buildings.source,
       roads: roads.source,
+      contours: contoursL.source,
       overlayAreas: overlayAreas.source,
       overlayPoints: overlayPoints.source,
       radius: radius.source,
@@ -394,6 +400,7 @@ export default function MapView({
     setMany('parcels', data.parcels)
     setMany('buildings', data.buildings)
     setMany('roads', data.roads)
+    setMany('contours', data.contours)
     setMany('statsAreas', data.statsAreas)
     setMany('sun', data.sun)
     setMany('overlayAreas', data.overlayAreas)
@@ -406,7 +413,7 @@ export default function MapView({
       f.setProperties({ id: o.id, label: o.label, kind: o.kind, selected: o.selected })
       s.observations?.addFeature(f)
     }
-  }, [data.boundary, data.radius, data.parcels, data.buildings, data.roads, data.statsAreas, data.sun, data.overlayAreas, data.overlayPoints, data.marker, data.observations])
+  }, [data.boundary, data.radius, data.parcels, data.buildings, data.roads, data.contours, data.statsAreas, data.sun, data.overlayAreas, data.overlayPoints, data.marker, data.observations])
 
   // ── 이동·맞춤
   useEffect(() => {

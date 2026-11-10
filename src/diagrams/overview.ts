@@ -1,6 +1,7 @@
 // 대지 개요: 대지와 같은 반경 안의 주요 숫자를 한눈에.
 
 import { overlapsSite, areaM2 } from '../lib/geo'
+import type { TerrainAnalysis } from '../lib/terrainSite'
 import { useName } from '../model/codes'
 import type { Project } from '../model/types'
 import type { DiagramData } from './data'
@@ -44,7 +45,7 @@ export interface OverviewItem {
 
 const fmt = (n: number, d = 0) => n.toLocaleString('ko-KR', { maximumFractionDigits: d })
 
-export function siteOverview(project: Project, d: DiagramData): { site: OverviewItem[]; around: OverviewItem[]; note: string } {
+export function siteOverview(project: Project, d: DiagramData, terrain: TerrainAnalysis | null = null): { site: OverviewItem[]; around: OverviewItem[]; note: string } {
   const site: OverviewItem[] = []
   const around: OverviewItem[] = []
   const a = areaM2(d.boundary)
@@ -103,7 +104,16 @@ export function siteOverview(project: Project, d: DiagramData): { site: Overview
     .sort((x, y) => x.d - y.d)[0]
   if (st) around.push({ label: '가장 가까운 역', value: st.p.name.replace(/\s.*$/, ''), note: `대지 중심에서 약 ${fmt(Math.round(st.d / 10) * 10)}m` })
   if (d.stops.length) around.push({ label: '버스정류소', value: `${d.stops.length}곳`, note: '대지 중심 약 500m' })
-  around.push({ label: '대지 표고', value: '지형 자료 준비 중', note: 'Phase 8에서 국토지리정보원 등고선으로' })
+  if (terrain) {
+    const sign = (v: number) => `${v > 0 ? '+' : ''}${fmt(v, 0)}`
+    site.push({
+      label: '대지 안 높낮이 차',
+      value: `${fmt(terrain.site.range, 1)}m`,
+      note: `평균 경사 ${fmt(terrain.site.meanSlope, 1)}°${terrain.grid.source === 'ngii' ? '' : ' · 대체 자료'}`,
+    })
+    if (terrain.high && terrain.low)
+      around.push({ label: '높이 (대지 중심 = 0m)', value: `${sign(terrain.low.rel)} ~ ${sign(terrain.high.rel)}m`, note: `기복 약 ${fmt(terrain.high.rel - terrain.low.rel, 0)}m` })
+  }
 
   return {
     site,

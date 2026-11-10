@@ -3,6 +3,7 @@
 export type DataCategory =
   | 'zoning'
   | 'land'
+  | 'terrain'
   | 'buildings'
   | 'register'
   | 'roads'
@@ -17,7 +18,7 @@ export type DataCategory =
   | 'stores'
   | 'poi'
 
-export type KeyNeed = 'vworld' | 'sgis' | 'dataGoKr' | 'kakao'
+export type KeyNeed = 'vworld' | 'sgis' | 'dataGoKr' | 'kakao' | 'none'
 
 export interface CategoryDef {
   id: DataCategory
@@ -44,6 +45,14 @@ export const DATA_CATEGORIES: CategoryDef[] = [
     source: '브이월드 부동산 개방데이터',
     scope: '대지 필지 + 반경 안 필지',
     needs: 'vworld',
+  },
+  {
+    id: 'terrain',
+    label: '지형',
+    detail: '대지 안 높낮이 차, 평균 경사도·비탈 방향, 반경 안 가장 높은·낮은 곳 (대지 중심 = 0m 상대 높이)',
+    source: '국토지리정보원 연속수치지형도 → 10m 격자 (광주·전남·전북)',
+    scope: '반경',
+    needs: 'none',
   },
   {
     id: 'buildings',

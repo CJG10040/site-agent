@@ -3,6 +3,7 @@ import MapView, { type MapFit } from '../components/MapView'
 import MapToolbar from '../components/MapToolbar'
 import { DensityLegend, FloorLegend, OverlayLegend, SunLegend } from '../components/Legends'
 import { buildOverlays, type OverlayId } from '../components/overlays'
+import { analyzeTerrain, contourLonLatLines } from '../lib/terrainSite'
 import SiteLinks from '../components/SiteLinks'
 import { areaM2, centerOf, radiusCircle, siteBoundary } from '../lib/geo'
 import { sunPathFeatures } from '../lib/sun'
@@ -37,7 +38,7 @@ const STATE_LABEL: Record<CollectProgress['state'], string> = {
 
 const GROUP_ORDER = ['행정', '규제', '토지', '건물', '교통', '시설', '인구·사업체', '재해·하천', '공공·교육', '상권', '대중교통·기후', '주변 시설']
 
-const KEY_LABEL: Record<KeyNeed, string> = { vworld: '브이월드', sgis: 'SGIS', dataGoKr: '공공데이터포털', kakao: '카카오' }
+const KEY_LABEL: Record<KeyNeed, string> = { vworld: '브이월드', sgis: 'SGIS', dataGoKr: '공공데이터포털', kakao: '카카오', none: '' }
 
 function fmt(n: number): string {
   return Math.round(n).toLocaleString('ko-KR')
@@ -57,6 +58,9 @@ export default function DataStep(props: Props) {
   const [fit, setFit] = useState<MapFit | null>(null)
   const [shown, setShown] = useState<OverlayId[]>([])
   const [info, setInfo] = useState<{ name: string; sub: string } | null>(null)
+  const [showContours, setShowContours] = useState(false)
+  const [contours, setContours] = useState<{ key: string; features: GeoFeature[]; note: string } | null>(null)
+  const [contourBusy, setContourBusy] = useState(false)
 
   const boundary = useMemo(() => siteBoundary(site), [site])
   const center = useMemo(() => (boundary ? centerOf(boundary) : null), [boundary])
@@ -77,6 +81,32 @@ export default function DataStep(props: Props) {
   const overlayPoints = useMemo(() => visible.flatMap((o) => o.points), [visible])
   const toggleOverlay = (id: OverlayId) => setShown((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]))
 
+  // 등고선: 켤 때 지형 격자를 받아 그린다 (대지·반경이 바뀌면 다시)
+  const contourKey = center ? `${center[0].toFixed(6)},${center[1].toFixed(6)},${site.radiusM}` : ''
+  useEffect(() => {
+    if (!showContours || !boundary || !center || contours?.key === contourKey) return
+    let alive = true
+    setContourBusy(true)
+    void analyzeTerrain(center, boundary, site.radiusM)
+      .then((t) => {
+        if (!alive) return
+        if (!t) {
+          setContours({ key: contourKey, features: [], note: '지형 자료를 받지 못했습니다' })
+          return
+        }
+        const lines = contourLonLatLines(t)
+        setContours({
+          key: contourKey,
+          features: lines.map((l) => ({ type: 'Feature', geometry: { type: 'LineString', coordinates: l.coords }, properties: { major: l.major, level: l.level } })),
+          note: lines.length ? `${t.grid.source === 'ngii' ? '국토지리정보원 10m 격자' : '대체 자료'}` : '기복 3m 미만 평지',
+        })
+      })
+      .finally(() => alive && setContourBusy(false))
+    return () => {
+      alive = false
+    }
+  }, [showContours, boundary, center, contourKey, contours?.key, site.radiusM])
+
   const fitted = useRef(false)
   useEffect(() => {
     if (fitted.current || !radius) return
@@ -90,6 +120,7 @@ export default function DataStep(props: Props) {
     sgis: !!(keys.sgisKey.trim() && keys.sgisSecret.trim()),
     dataGoKr: !!keys.dataGoKr.trim(),
     kakao: !!keys.kakaoRest.trim(),
+    none: true,
   }
   const runnable = selection.filter((c) => hasKey[DATA_CATEGORIES.find((d) => d.id === c)!.needs])
   const skippedForKey = selection.filter((c) => !runnable.includes(c))
@@ -275,6 +306,7 @@ export default function DataStep(props: Props) {
             radius,
             buildings: showBuildings ? buildings : [],
             roads: showRoads ? roads : [],
+            contours: showContours && contours?.key === contourKey ? contours.features : [],
             statsAreas: showStats ? statsAreas : [],
             sun,
             overlayAreas,
@@ -306,6 +338,13 @@ export default function DataStep(props: Props) {
                 disabled: statsAreas.length === 0,
               },
               { id: 'sun', label: '태양 궤적', on: showSun, onToggle: () => setShowSun((v) => !v), disabled: !center },
+              {
+                id: 'contours',
+                label: `등고선${contourBusy ? ' (받는 중…)' : contours?.key === contourKey && showContours ? ` (${contours.note})` : ''}`,
+                on: showContours,
+                onToggle: () => setShowContours((v) => !v),
+                disabled: !center,
+              },
               ...overlays.map((o) => ({
                 id: `ov:${o.id}`,
                 label: `${o.label} ${o.count ? `${fmt(o.count)}` : ''}`,

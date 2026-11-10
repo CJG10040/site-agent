@@ -5,6 +5,7 @@ import { composePanel, siteMarkSvg, type PanelOutput } from './compose'
 import type { DiagramData } from './data'
 import { makeFrame } from './frame'
 import { paletteOf } from './palette'
+import type { TerrainAnalysis } from '../lib/terrainSite'
 import { panelNumber, type PanelDef } from './panels'
 
 export const DEFAULT_SETTINGS: DiagramSettings = {
@@ -33,12 +34,19 @@ export function collectedDate(project: Project): string {
   return project.collectedAt ? project.collectedAt.slice(0, 10) : '수집 전'
 }
 
-export async function renderPanel(def: PanelDef, data: DiagramData, settings: DiagramSettings, vworldKey: string, date: string): Promise<RenderedPanel> {
+export async function renderPanel(
+  def: PanelDef,
+  data: DiagramData,
+  settings: DiagramSettings,
+  vworldKey: string,
+  date: string,
+  terrain: TerrainAnalysis | null = null,
+): Promise<RenderedPanel> {
   const frame = makeFrame(data.center[0], data.center[1], data.R, settings.frame)
   const pal = paletteOf(settings.palette)
   let out: PanelOutput
   try {
-    out = await def.render({ d: data, f: frame, pal, st: settings, vworldKey, date })
+    out = await def.render({ d: data, f: frame, pal, st: settings, vworldKey, date, t: terrain })
   } catch (e) {
     out = { layers: [], legend: [], summary: [], caption: '', empty: `그리는 중 오류: ${e instanceof Error ? e.message : String(e)}` }
   }

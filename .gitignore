@@ -12,3 +12,4 @@ terrain-raw/
 tools/terrain/.venv/
 tools/terrain/work/
 __pycache__/
+tools/terrain/reports/*.png
