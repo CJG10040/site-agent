@@ -11,3 +11,4 @@ dist/
 terrain-raw/
 tools/terrain/.venv/
 tools/terrain/work/
+__pycache__/
