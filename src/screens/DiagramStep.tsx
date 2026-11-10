@@ -76,6 +76,8 @@ export default function DiagramStep({ project, update, config, onGoData, onNext 
   const [msg, setMsg] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
   const [copied, setCopied] = useState<number | null>(null)
   const [exporting, setExporting] = useState<string | null>(null)
+  // 처음 열 때 결론이 하나도 없으면 챗봇 상자를 펼쳐 둔다 (그 뒤로는 사용자가 연 대로)
+  const [chatOpen, setChatOpen] = useState(() => !Object.values(project.diagrams?.panels ?? {}).some((n) => n.conclusion.trim()))
 
   const overview = useMemo(() => (data ? siteOverview(project, data) : null), [data, project])
 
@@ -289,7 +291,7 @@ export default function DiagramStep({ project, update, config, onGoData, onNext 
         </div>
       </section>
 
-      <details className="block chat-box" open={written === 0 && ready.length > 0}>
+      <details className="block chat-box" open={chatOpen} onToggle={(e) => setChatOpen(e.currentTarget.open)}>
         <summary>
           <strong>챗봇에게 도판별 결론 후보 받기</strong> <span className="muted small">— 결론 {written}/{ready.length}개 작성</span>
         </summary>
