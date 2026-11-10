@@ -10,6 +10,8 @@ import type { CollectOutcome, CollectProgress, LayerOutcome } from '../sources/c
 import { SOURCE_NAME } from '../sources/vworld'
 import { addLandFacts, addRegisterFacts, addSgisFacts } from './applyExtended'
 import { addClimateFacts, addLandAreaFacts, addNearbyLayerFacts, addPoiFacts, addStoreFacts, addTerrainFacts, addTransitFacts } from './applyNearby'
+import { addMoveFacts, storeMove } from './applyMove'
+import type { SpeedSnapshot } from '../sources/its'
 import { jimokName, useName } from './codes'
 import { makeCard, nextNumber, nowIso, siteKey } from './project'
 import { cleanNames, fmt, listText, median, pct, str, uniq } from './textUtil'
@@ -54,6 +56,11 @@ export function applyCollection(project: Project, outcome: CollectOutcome, bound
   }
 
   // ── 1. 레이어별 출처 기록과 원자료
+  // 같은 대지에서 받아 둔 실시간 속도 장면은 다시 수집해도 이어 쌓는다
+  const prevSnaps =
+    project.collectedSiteKey === siteKey(site)
+      ? (project.collected['its:speed']?.features ?? []).map((f) => f.properties as unknown as SpeedSnapshot)
+      : []
   project.collected = {}
   const layerSource: Record<string, string> = {}
   for (const o of outcome.layers) {
@@ -501,6 +508,9 @@ export function applyCollection(project: Project, outcome: CollectOutcome, bound
   if (outcome.stores) addStoreFacts(ctx, outcome.stores)
   if (outcome.poi) addPoiFacts(ctx, outcome.poi)
   if (outcome.terrain) addTerrainFacts(ctx, outcome.terrain)
+  const move = { wind: outcome.wind, speed: outcome.speed, network: outcome.network }
+  storeMove(project, move, prevSnaps)
+  addMoveFacts(ctx, move, outcome.selection.includes('roads') && outcome.selection.includes('buildings'))
   project.dataSelection = outcome.selection
   if (log) project.collectLog = log.map((p) => ({ ...p }))
 
@@ -539,11 +549,16 @@ function isReplaceable(c: Card, referenced: Set<string>): boolean {
  * 자동 카드는 처음부터 '확인됨'으로 만든다 (사용자가 보면서 제외·수정).
  * 같은 auto_key의 카드는 사용자가 고치거나 제외하지 않았을 때만 새 내용으로 바꾼다.
  */
-function mergeDrafts(project: Project, drafts: DraftFact[]): void {
+/** 주어진 자동 카드만 새로 만들거나 고친다 (다른 카드는 그대로) */
+export function upsertDrafts(project: Project, drafts: DraftFact[]): void {
+  mergeDrafts(project, drafts, false)
+}
+
+function mergeDrafts(project: Project, drafts: DraftFact[], prune = true): void {
   const keys = new Set(drafts.map((d) => d.auto_key))
   const referenced = referencedCardIds(project)
   // 이번에 만들어지지 않은, 손대지 않은 자동 카드는 지운다
-  project.cards = project.cards.filter((c) => !(c.auto_key && !keys.has(c.auto_key) && isReplaceable(c, referenced)))
+  if (prune) project.cards = project.cards.filter((c) => !(c.auto_key && !keys.has(c.auto_key) && isReplaceable(c, referenced)))
   const t = nowIso()
   for (const d of drafts) {
     const existing = project.cards.find((c) => c.auto_key === d.auto_key)

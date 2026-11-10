@@ -6,6 +6,9 @@ import { centerOf, isAreal, isLinear, siteBoundary, type Areal } from '../lib/ge
 import { jimokOf } from '../model/codes'
 import { observationsOf } from '../model/observations'
 import type { Project } from '../model/types'
+import type { SpeedSnapshot } from '../sources/its'
+import type { NetworkResult } from '../sources/network'
+import type { WindResult } from '../sources/wind'
 import { centroidOf } from './frame'
 
 export interface Bld {
@@ -39,6 +42,14 @@ export interface Road {
   width: number | null
   lanes: number | null
   oneway: boolean
+}
+
+/** 표준노드링크 (실시간 속도와 같은 링크 ID) */
+export interface Link {
+  geom: LineString | MultiLineString
+  id: string
+  name: string
+  maxSpd: number | null
 }
 
 export interface Area<T = Record<string, never>> {
@@ -76,8 +87,20 @@ export interface DiagramData {
   stores: Pt[]
   pois: Pt[]
   observations: Pt[]
+  links: Link[]
+  /** 실시간 도로 속도 장면들 (받은 순서) */
+  speedSnaps: SpeedSnapshot[]
+  /** 길의 연결 계산 결과 */
+  network: NetworkResult | null
+  /** 바람장미 집계 */
+  wind: WindResult | null
   /** 어떤 자료가 수집되었는지 */
   has: Record<string, boolean>
+}
+
+/** 표준노드링크 링크 ID 속성 (브이월드 소문자) */
+export function linkIdOf(p: Record<string, unknown>): string {
+  return String(p.link_id ?? p.linkid ?? p.LINK_ID ?? '').trim()
 }
 
 const str = (v: unknown) => (v === null || v === undefined ? '' : String(v).trim())
@@ -326,6 +349,13 @@ export function buildDiagramData(project: Project): DiagramData | null {
     })
     .filter((x): x is Pt => !!x)
 
+  const links: Link[] = feats('LT_L_MOCTLINK')
+    .filter((f) => isLinear(f.geometry))
+    .map((f) => ({ geom: f.geometry as LineString | MultiLineString, id: linkIdOf(f.properties), name: str(f.properties.road_name), maxSpd: num(f.properties.max_spd) }))
+  const speedSnaps = feats('its:speed').map((f) => f.properties as unknown as SpeedSnapshot)
+  const network = (feats('network:graph')[0]?.properties as unknown as NetworkResult | undefined) ?? null
+  const wind = (feats('kma:wind')[0]?.properties as unknown as WindResult | undefined) ?? null
+
   const observations: Pt[] = observationsOf(project)
     .filter((o) => o.observation?.location)
     .map((o) => {
@@ -353,6 +383,10 @@ export function buildDiagramData(project: Project): DiagramData | null {
     stores,
     pois,
     observations,
+    links,
+    speedSnaps,
+    network,
+    wind,
     has,
   }
 }

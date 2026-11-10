@@ -161,7 +161,7 @@ export default function App() {
                 )}
                 {step === 'facts' && <FactsStep project={project} update={update} onGoData={() => go('data')} />}
                 {step === 'diagrams' && (
-                  <DiagramStep project={project} update={update} config={config} onGoData={() => go('data')} onNext={() => go('observe')} />
+                  <DiagramStep project={project} update={update} config={config} keys={keys} onGoData={() => go('data')} onNext={() => go('observe')} />
                 )}
                 {step === 'observe' && (
                   <ObserveStep project={project} update={update} config={config} baseMap={baseMap} onBaseMap={setBaseMap} onGoFacts={() => go('facts')} />

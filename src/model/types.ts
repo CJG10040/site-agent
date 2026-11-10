@@ -210,6 +210,10 @@ export interface DiagramSettings {
   sunHour: number
   /** PNG 가로 픽셀 */
   pngWidth: number
+  /** 바람장미 계절 (0 연중, 1 봄, 2 여름, 3 가을, 4 겨울) */
+  windSeason: number
+  /** 실시간 도로 속도 장면 번호 (-1 = 가장 최근) */
+  speedSnap: number
 }
 
 /** 도판 하나의 결론 */

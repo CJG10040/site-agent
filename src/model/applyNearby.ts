@@ -25,9 +25,9 @@ export function distText(m: number): string {
   return `약 ${fmt(m / 1000, 1)}km`
 }
 
-type SourceDraft = Omit<SourceRecord, 'source_id'>
+export type SourceDraft = Omit<SourceRecord, 'source_id'>
 
-function apiSource(base: Partial<SourceDraft> & Pick<SourceDraft, 'source_name' | 'dataset_name' | 'dataset_id' | 'retrieved_at'>): SourceDraft {
+export function apiSource(base: Partial<SourceDraft> & Pick<SourceDraft, 'source_name' | 'dataset_name' | 'dataset_id' | 'retrieved_at'>): SourceDraft {
   return {
     update_date: null,
     geometry: '대지 중심점',

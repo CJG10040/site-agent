@@ -7,15 +7,21 @@ import { ORDERED_PANELS, PANEL_GROUP_ORDER, panelNumber, type PanelDef } from '.
 import { buildPanelPrompt, parsePanelAnswer } from '../diagrams/prompt'
 import { DEFAULT_SETTINGS, panelFileName } from '../diagrams/render'
 import { useDiagrams, type CachedPanel } from '../diagrams/useDiagrams'
+import { upsertDrafts } from '../model/applyCollection'
+import { appendSpeedSnapshot } from '../model/applyMove'
 import { downloadBlob, nowIso } from '../model/project'
 import { splitPrompt } from '../model/prompts'
 import type { DiagramSettings, PanelNote, Project } from '../model/types'
+import { snapshotLabel, timeBand, toSnapshot, trafficInBox } from '../sources/its'
+import type { ApiKeys } from '../sources/keys'
 import type { VWorldConfig } from '../sources/vworld'
+import { SEASONS } from '../sources/wind'
 
 interface Props {
   project: Project
   update: (fn: (draft: Project) => void) => void
   config: VWorldConfig
+  keys: ApiKeys
   onGoData: () => void
   onNext: () => void
 }
@@ -68,7 +74,7 @@ function Viewer({ panel, def, onClose, onSvg, onPng }: { panel: CachedPanel; def
   )
 }
 
-export default function DiagramStep({ project, update, config, onGoData, onNext }: Props) {
+export default function DiagramStep({ project, update, config, keys, onGoData, onNext }: Props) {
   const { data, settings, panels, busy, terrain } = useDiagrams(project, config.key)
   const [viewing, setViewing] = useState<string | null>(null)
   const [answer, setAnswer] = useState('')
@@ -76,6 +82,7 @@ export default function DiagramStep({ project, update, config, onGoData, onNext 
   const [msg, setMsg] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
   const [copied, setCopied] = useState<number | null>(null)
   const [exporting, setExporting] = useState<string | null>(null)
+  const [speedBusy, setSpeedBusy] = useState(false)
   // 처음 열 때 결론이 하나도 없으면 챗봇 상자를 펼쳐 둔다 (그 뒤로는 사용자가 연 대로)
   const [chatOpen, setChatOpen] = useState(() => !Object.values(project.diagrams?.panels ?? {}).some((n) => n.conclusion.trim()))
 
@@ -94,6 +101,32 @@ export default function DiagramStep({ project, update, config, onGoData, onNext 
       cur.panels = { ...cur.panels, [id]: { ...EMPTY_NOTE, ...cur.panels[id], ...patch, updatedAt: nowIso() } }
       d.diagrams = cur
     })
+
+  /** 실시간 도로 속도 한 장면 더 받기 (출근·낮·퇴근 시간 비교용) */
+  const fetchSpeed = async () => {
+    if (!data || speedBusy) return
+    setSpeedBusy(true)
+    setMsg(null)
+    try {
+      const R = data.R
+      const [lon, lat] = data.center
+      const dLat = R / 110574
+      const dLon = R / (111320 * Math.cos((lat * Math.PI) / 180))
+      const snap = toSnapshot(await trafficInBox(keys, [lon - dLon, lat - dLat, lon + dLon, lat + dLat]))
+      if (!Object.keys(snap.speeds).length) throw new Error('이 범위에 속도 자료가 있는 도로가 없습니다')
+      update((d) => {
+        appendSpeedSnapshot(d, snap, R, upsertDrafts)
+        const cur = d.diagrams ?? { settings: { ...DEFAULT_SETTINGS }, panels: {} }
+        cur.settings = { ...DEFAULT_SETTINGS, ...cur.settings, speedSnap: -1 }
+        d.diagrams = cur
+      })
+      setMsg({ kind: 'ok', text: `${snapshotLabel(snap)}(${timeBand(snap)}) 속도 장면을 더했습니다. 사실 카드 '교통'도 고쳤습니다.` })
+    } catch (e) {
+      setMsg({ kind: 'error', text: `속도를 받지 못했습니다: ${e instanceof Error ? e.message : String(e)}` })
+    } finally {
+      setSpeedBusy(false)
+    }
+  }
 
   const ready = ORDERED_PANELS.filter((p) => panels[p.id] && !panels[p.id].out.empty)
   const written = ORDERED_PANELS.filter((p) => noteOf(project, p.id).conclusion.trim()).length
@@ -280,6 +313,32 @@ export default function DiagramStep({ project, update, config, onGoData, onNext 
           <span className="label">그림자 시각 {settings.sunHour}시</span>
           <input type="range" min={7} max={18} step={1} value={settings.sunHour} onChange={(e) => setSettings({ sunHour: Number(e.target.value) })} />
         </label>
+        {data?.wind && (
+          <Seg label="바람장미" value={settings.windSeason} options={SEASONS.map((s, i) => ({ v: i, label: s }))} onChange={(v) => setSettings({ windSeason: v })} />
+        )}
+        {data && (data.speedSnaps.length > 0 || project.dataSelection?.includes('traffic')) && (
+          <div className="seg-field speed-field">
+            <span className="label">도로 속도 장면</span>
+            <div className="row">
+              {data.speedSnaps.length > 0 && (
+                <select
+                  value={settings.speedSnap >= 0 && settings.speedSnap < data.speedSnaps.length ? settings.speedSnap : data.speedSnaps.length - 1}
+                  onChange={(e) => setSettings({ speedSnap: Number(e.target.value) })}
+                  aria-label="도로 속도 장면"
+                >
+                  {data.speedSnaps.map((s, i) => (
+                    <option key={s.at} value={i}>
+                      {snapshotLabel(s)} · {timeBand(s)}
+                    </option>
+                  ))}
+                </select>
+              )}
+              <button type="button" className="btn small" disabled={speedBusy || !keys.itsKey.trim()} onClick={() => void fetchSpeed()} title={keys.itsKey.trim() ? '' : '설정에서 국가교통정보센터 키를 넣으세요'}>
+                {speedBusy ? '받는 중…' : '지금 한 번 더 받기'}
+              </button>
+            </div>
+          </div>
+        )}
         <Seg label="PNG 크기" value={settings.pngWidth} options={[{ v: 2000, label: '2000px' }, { v: 4000, label: '4000px' }]} onChange={(v) => setSettings({ pngWidth: v })} />
         <div className="diagram-export">
           <button type="button" className="btn small" disabled={!!exporting || busy || !ready.length} onClick={() => void downloadAll('svg')}>

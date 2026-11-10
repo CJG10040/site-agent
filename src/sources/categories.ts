@@ -17,6 +17,8 @@ export type DataCategory =
   | 'climate'
   | 'stores'
   | 'poi'
+  | 'traffic'
+  | 'network'
 
 export type KeyNeed = 'vworld' | 'sgis' | 'dataGoKr' | 'kakao' | 'its' | 'none'
 
@@ -137,8 +139,8 @@ export const DATA_CATEGORIES: CategoryDef[] = [
   {
     id: 'climate',
     label: '기후·바람',
-    detail: '가장 가까운 기상관측소의 최근 3년 기온·강수·일조, 계절별 많이 부는 바람',
-    source: '공공데이터포털 기상청 ASOS',
+    detail: '가장 가까운 기상관측소의 최근 3년 기온·강수·일조, 계절별 많이 부는 바람 + 매시 자료로 만든 바람장미(연중·계절별 16방위)',
+    source: '공공데이터포털 기상청 ASOS (일자료·시간자료)',
     scope: '가장 가까운 관측소',
     needs: 'dataGoKr',
   },
@@ -157,6 +159,22 @@ export const DATA_CATEGORIES: CategoryDef[] = [
     source: '카카오 로컬 API',
     scope: '대지 중심 반경',
     needs: 'kakao',
+  },
+  {
+    id: 'network',
+    label: '길의 연결',
+    detail: '골목까지 든 도로중심선으로 선택도(지나가기 쉬운 길, 걷는 규모 800m·넓은 규모), 걸어서 5·10·15분 도보권, 길로 둘러싸인 가구 계산. 도로·건물을 함께 고르면 가로 위요감(D/H)도',
+    source: '브이월드 도로중심선 → 앱에서 계산',
+    scope: '반경 + 800m (최소 1.5km)',
+    needs: 'vworld',
+  },
+  {
+    id: 'traffic',
+    label: '실시간 도로 속도',
+    detail: '지금 이 순간 도로 구간별 통행 속도 (막힘 정도). 도판 화면에서 출근·낮·퇴근 시간에 한 번씩 더 받아 쌓을 수 있음',
+    source: '국가교통정보센터 교통소통정보 + 표준노드링크',
+    scope: '반경을 감싼 사각형',
+    needs: 'its',
   },
 ]
 

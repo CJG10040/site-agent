@@ -36,6 +36,8 @@ function settingsKey(id: string, s: DiagramSettings): string {
   if (id === 'high') return `${common}|${s.highFloors}`
   if (id === 'low') return `${common}|${s.lowFloors}`
   if (id === 'sun') return `${common}|${s.sunDay}|${s.sunHour}`
+  if (id === 'wind') return `${common}|${s.windSeason}`
+  if (id === 'speed') return `${common}|${s.speedSnap}`
   return common
 }
 
@@ -73,7 +75,9 @@ export function useDiagrams(project: Project, vworldKey: string, only?: string[]
       setTerrain(t)
       for (const def of wanted) {
         const tKey = TERRAIN_IDS.has(def.id) ? `|${t ? `${t.grid.source}${t.grid.version ?? ''}` : 'no-terrain'}` : ''
-        const key = `${dataSig}|${def.id}|${settingsKey(def.id, settings)}|${vworldKey ? 'k' : '-'}${tKey}`
+        // 속도 장면은 수집 뒤에도 늘어나므로 장면 수를 열쇠에 넣는다
+        const sKey = def.id === 'speed' ? `|snaps:${data.speedSnaps.length}` : ''
+        const key = `${dataSig}|${def.id}|${settingsKey(def.id, settings)}|${vworldKey ? 'k' : '-'}${tKey}${sKey}`
         let hit = cache.get(key)
         if (!hit) {
           const r = await renderPanel(def, data, settings, vworldKey, date, t)

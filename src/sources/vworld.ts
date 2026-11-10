@@ -331,6 +331,8 @@ export interface FeatureQuery {
   geomFilter: string
   geometry: boolean
   maxFeatures?: number
+  /** false면 속성 없이 도형만 (기본 true) */
+  attribute?: boolean
 }
 
 export interface FeatureQueryResult {
@@ -353,7 +355,7 @@ export async function queryFeatures(config: VWorldConfig, q: FeatureQuery): Prom
     crs: 'EPSG:4326',
     size: String(size),
     geometry: String(q.geometry),
-    attribute: 'true',
+    attribute: String(q.attribute ?? true),
   }
   const features: GeoFeature[] = []
   let total = 0

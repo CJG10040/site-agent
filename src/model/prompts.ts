@@ -88,6 +88,13 @@ const PANEL_TITLES: Record<string, string> = {
   stores: '상가 업종',
   poi: '생활 시설',
   observations: '현장 관찰 위치',
+  blocks: '가구',
+  enclosure: '가로 위요감 (D/H)',
+  choiceWalk: '선택도 (걷는 규모)',
+  choiceWide: '선택도 (넓은 규모)',
+  walkshed: '도보권',
+  speed: '실시간 도로 속도',
+  wind: '바람장미',
 }
 
 function panelTitle(id: string): string {

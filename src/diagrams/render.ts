@@ -18,6 +18,8 @@ export const DEFAULT_SETTINGS: DiagramSettings = {
   sunDay: 'winter',
   sunHour: 12,
   pngWidth: 2000,
+  windSeason: 0,
+  speedSnap: -1,
 }
 
 export function settingsOf(project: Project): DiagramSettings {
@@ -42,7 +44,8 @@ export async function renderPanel(
   date: string,
   terrain: TerrainAnalysis | null = null,
 ): Promise<RenderedPanel> {
-  const frame = makeFrame(data.center[0], data.center[1], data.R, settings.frame)
+  const R = def.frameR ? def.frameR(data) : data.R
+  const frame = makeFrame(data.center[0], data.center[1], R, settings.frame)
   const pal = paletteOf(settings.palette)
   let out: PanelOutput
   try {
@@ -52,7 +55,7 @@ export async function renderPanel(
   }
   const site = siteMarkSvg(frame, frame.path(data.boundary, false), data.center, settings, pal)
   const svg = composePanel(
-    { id: def.id, number: panelNumber(def.id), title: def.title, subtitle: `반경 ${data.R}m · ${date} 수집` },
+    { id: def.id, number: panelNumber(def.id), title: def.title, subtitle: `반경 ${R.toLocaleString('ko-KR')}m · ${date} 수집` },
     out,
     frame,
     settings,

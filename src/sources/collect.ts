@@ -22,6 +22,9 @@ import {
 } from './sgis'
 import { analyzeTerrain, type TerrainAnalysis } from '../lib/terrainSite'
 import { climateNear, type ClimateResult } from './climate'
+import { toSnapshot, trafficInBox, type SpeedSnapshot } from './its'
+import { networkAround, type NetworkResult } from './network'
+import { windNear, type WindResult } from './wind'
 import { poisAround, type PoiCategoryResult } from './kakao'
 import { storesAround, type StoresResult } from './stores'
 import { busStopsAround, type TransitResult } from './transit'
@@ -135,6 +138,9 @@ export interface CollectOutcome {
   sgis?: SgisOutcome
   transit?: ApiOutcome<TransitResult>
   climate?: ApiOutcome<ClimateResult>
+  wind?: ApiOutcome<WindResult>
+  speed?: ApiOutcome<SpeedSnapshot>
+  network?: ApiOutcome<NetworkResult>
   stores?: ApiOutcome<StoresResult>
   poi?: ApiOutcome<PoiCategoryResult[]>
   terrain?: ApiOutcome<TerrainSummary>
@@ -182,6 +188,8 @@ export async function collectSiteData(input: CollectInput, onProgress: (p: Colle
 
   const layers = ALL_LAYERS.filter((l) => {
     const c = layerCategory(l)
+    // 실시간 속도는 표준노드링크 도형에 칠하므로 '도로'를 고르지 않아도 받는다
+    if (l.id === 'LT_L_MOCTLINK' && want('traffic')) return true
     return c === null || want(c)
   })
 
@@ -196,6 +204,9 @@ export async function collectSiteData(input: CollectInput, onProgress: (p: Colle
   if (want('business')) progress.push({ id: 'sgis:business', label: '사업체·산업 구조', group: '인구·사업체', state: 'pending' })
   if (want('transit')) progress.push({ id: 'tago:stops', label: '버스정류소·경유 노선', group: '대중교통·기후', state: 'pending' })
   if (want('climate')) progress.push({ id: 'kma:asos', label: '가까운 관측소 기후 (최근 3년)', group: '대중교통·기후', state: 'pending' })
+  if (want('climate')) progress.push({ id: 'kma:wind', label: '바람장미 (관측소 매시 자료 3년)', group: '대중교통·기후', state: 'pending' })
+  if (want('traffic')) progress.push({ id: 'its:speed', label: '실시간 도로 속도 (지금 한 장면)', group: '교통', state: 'pending' })
+  if (want('network')) progress.push({ id: 'network', label: '길의 연결 (선택도·도보권·가구 계산)', group: '교통', state: 'pending' })
   if (want('stores')) progress.push({ id: 'sbiz:stores', label: '상가업소 업종', group: '상권', state: 'pending' })
   if (want('poi')) progress.push({ id: 'kakao:poi', label: '주변 생활 시설 (카카오)', group: '주변 시설', state: 'pending' })
   if (want('terrain')) progress.push({ id: 'terrain', label: '지형 (10m 격자)', group: '토지', state: 'pending' })
@@ -477,6 +488,30 @@ export async function collectSiteData(input: CollectInput, onProgress: (p: Colle
     count: r.rows.length,
     message: `${r.station.name} 관측소 (약 ${r.distanceKm.toFixed(1)}km) · ${r.years[0]}~${r.years.at(-1)}년`,
   }))
+  const windTask = apiTask(want('climate'), 'kma:wind', () => windNear(keys, lon, lat), (r) => ({
+    state: 'ok',
+    count: r.tables[0].hours,
+    message: `${r.station.name} 관측소 · ${r.years[0]}~${r.years.at(-1)}년 ${r.months}개월`,
+  }))
+  const box = (() => {
+    const dLat = radiusM / 110574
+    const dLon = radiusM / (111320 * Math.cos((lat * Math.PI) / 180))
+    return [lon - dLon, lat - dLat, lon + dLon, lat + dLat] as [number, number, number, number]
+  })()
+  const speedTask = apiTask(want('traffic'), 'its:speed', async () => toSnapshot(await trafficInBox(keys, box)), (r) => {
+    const n = Object.keys(r.speeds).length
+    return { state: n ? 'ok' : 'empty', count: n, message: n ? undefined : '이 범위에 속도 자료가 있는 도로가 없음' }
+  })
+  const networkTask = apiTask(
+    want('network'),
+    'network',
+    () => networkAround(config, center, radiusM, (text) => set('network', { state: 'running', message: text })),
+    (r) => ({
+      state: 'ok',
+      count: r.edges.length,
+      message: `반경 ${(r.fetchR / 1000).toLocaleString('ko-KR', { maximumFractionDigits: 1 })}km 도로중심선 ${r.features.toLocaleString('ko-KR')}개${r.truncated ? `(전체 ${r.total.toLocaleString('ko-KR')}개 중)` : ''} → 길 ${r.edges.length.toLocaleString('ko-KR')}구간`,
+    }),
+  )
   const storesTask = apiTask(want('stores'), 'sbiz:stores', () => storesAround(keys, lon, lat, radiusM), (r) => ({
     state: r.stores.length ? 'ok' : 'empty',
     count: r.stores.length,
@@ -508,7 +543,7 @@ export async function collectSiteData(input: CollectInput, onProgress: (p: Colle
     }),
   )
 
-  const [, land, landArea, register, sgis, transit, climate, stores, poi, terrain] = await Promise.all([
+  const [, land, landArea, register, sgis, transit, climate, stores, poi, terrain, wind, speed, network] = await Promise.all([
     layerTask,
     landTask,
     landAreaTask,
@@ -519,6 +554,9 @@ export async function collectSiteData(input: CollectInput, onProgress: (p: Colle
     storesTask,
     poiTask,
     terrainTask,
+    windTask,
+    speedTask,
+    networkTask,
   ])
 
   let address: CollectOutcome['address'] = null
@@ -548,6 +586,9 @@ export async function collectSiteData(input: CollectInput, onProgress: (p: Colle
     stores,
     poi,
     terrain,
+    wind,
+    speed,
+    network,
     selection,
     finishedAt: new Date().toISOString(),
   }
