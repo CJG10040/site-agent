@@ -114,6 +114,9 @@ export default function DiagramStep({ project, update, config, keys, onGoData, o
       const dLon = R / (111320 * Math.cos((lat * Math.PI) / 180))
       const snap = toSnapshot(await trafficInBox(keys, [lon - dLon, lat - dLat, lon + dLon, lat + dLat]))
       if (!Object.keys(snap.speeds).length) throw new Error('이 범위에 속도 자료가 있는 도로가 없습니다')
+      const last = data.speedSnaps[data.speedSnaps.length - 1]
+      if (last && snap.created && last.created === snap.created)
+        throw new Error(`아직 새 자료가 없습니다 (${snapshotLabel(last)} 자료가 최신, 약 5분마다 갱신)`)
       update((d) => {
         appendSpeedSnapshot(d, snap, R, upsertDrafts)
         const cur = d.diagrams ?? { settings: { ...DEFAULT_SETTINGS }, panels: {} }
