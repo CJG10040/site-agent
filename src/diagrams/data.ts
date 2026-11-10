@@ -24,6 +24,8 @@ export interface Bld {
   src: 'bldg' | 'addr'
   /** 층수를 도로명주소 건물에서 채웠는지 */
   floorsFromAddr: boolean
+  /** 지하만 있는 시설 (지하상가·지하철역 등: 지상층 없음 + 지하층 있음 + 건축면적 0) */
+  underground?: boolean
   onSite: boolean
 }
 
@@ -187,6 +189,7 @@ export function buildDiagramData(project: Project): DiagramData | null {
     const b: Bld = {
       geom: f.geometry,
       floors: floors && floors > 0 ? floors : null,
+      underground: !(floors && floors > 0) && (num(p.ugrnd_flr) ?? 0) > 0 && !((num(p.archarea) ?? 0) > 0),
       use: str(p.usability),
       year: Number.isInteger(yr) && yr >= 1900 && yr <= new Date().getFullYear() ? yr : null,
       area: safeArea(f.geometry),

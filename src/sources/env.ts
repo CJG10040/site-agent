@@ -96,10 +96,11 @@ export async function computeEnv(project: Project, config: VWorldConfig, onProgr
   const [lon, lat] = d.center
   const p = localProj(lon, lat)
   const R = d.R
+  // 대지 안 기존 건물과 지하만 있는 시설(지하상가·역)은 뺀다
   const buildings: EnvBuilding[] = d.buildings
-    .filter((b) => !b.onSite)
+    .filter((b) => !b.onSite && !b.underground)
     .map((b) => ({ rings: arealRings(p, b.geom), h: b.floors && b.floors > 0 ? b.floors * FLOOR_M : UNKNOWN_H }))
-  const unknownHeights = d.buildings.filter((b) => !b.onSite && !(b.floors && b.floors > 0)).length
+  const unknownHeights = d.buildings.filter((b) => !b.onSite && !b.underground && !(b.floors && b.floors > 0)).length
   onProgress('지형 받는 중')
   const terr = await localTerrain(lon, lat, R + 2100).catch(() => null)
   const wind = d.wind

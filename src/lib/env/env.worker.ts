@@ -115,15 +115,16 @@ self.onmessage = async (ev: MessageEvent<EnvJob>) => {
 
     // 바람 실험
     const side = Math.min(job.R * 2, 800)
-    const solidAt = (x: number, y: number) => {
+    const heightAt = (x: number, y: number) => {
       const k = cellAt(coarseG, x, y)
-      return k >= 0 && cm.bld[k] > 0
+      return k >= 0 ? cm.bld[k] : 0
     }
     const winds: WindOut[] = []
     const flows: ReturnType<typeof lbmWind>[] = []
     for (const w of job.winds) {
       post({ type: 'progress', text: `바람 흐름 실험 (${w.season})` })
-      const f = lbmWind(solidAt, w.fromAz, side, {
+      const f = lbmWind(heightAt, w.fromAz, side, {
+        n: Math.max(120, Math.min(200, Math.round(side / 4))),
         onProgress: (p) => post({ type: 'progress', text: `바람 흐름 실험 (${w.season}) ${Math.round(p * 100)}%` }),
       })
       flows.push(f)

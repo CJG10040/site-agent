@@ -87,7 +87,7 @@ function gridContour(c: PanelCtx, g: UnpackedGrid, level: number): string {
 
 function buildingsLayer(c: PanelCtx, color = mix('#ffffff', c.pal.ink, 0.42)): PanelLayer {
   const d = c.d.buildings
-    .filter((b) => !b.onSite)
+    .filter((b) => !b.onSite && !b.underground)
     .map((b) => c.f.path(b.geom, false))
     .join('')
   return { id: '건물', svg: d ? `<path d="${d}" fill="${color}"/>` : '' }
@@ -314,9 +314,9 @@ const skyDomePanel: PanelDef = {
       legend: [
         { color: skyColor, label: '보이는 하늘' },
         { color: blockColor, label: '건물·지형이 가린 하늘' },
-        ...SUN_DAYS.map((d, i) => ({ color: pathColors[i], label: `${d.label} 태양 궤적 (점 = 2시간마다)`, shape: 'line' as const })),
+        ...SUN_DAYS.map((d, i) => ({ color: pathColors[i], label: `${d.label} 태양 궤적`, shape: 'line' as const })),
       ],
-      legendTitle: '대지 가운데 눈높이(1.5m)에서 위를 본 그림 (가운데 = 바로 위)',
+      legendTitle: '대지 가운데 눈높이(1.5m)에서 본 하늘 (가운데 = 바로 위, 점 = 2시간마다)',
       summary: [
         `하늘이 보이는 비율(개방감): ${pctText(e.sky.svf)}`,
         e.sky.horizon[maxA] > 1 ? `가장 높게 가린 곳: ${dir8(maxA)}쪽 ${fmt(e.sky.horizon[maxA])}°` : '주변이 거의 트여 있음',
@@ -499,7 +499,7 @@ function windPanel(season: '여름' | '겨울'): PanelDef {
           near.length ? `대지 주변 30m: 평균 ${fmt(near.reduce((x, y) => x + y, 0) / near.length, 2)}배` : '',
           `계산 영역 중 빨라지는 곳(1.5배 이상) ${pctText(n ? fast / n : 0)}, 거의 멈추는 곳(0.3배 미만) ${pctText(n ? still / n : 0)}`,
         ].filter(Boolean),
-        caption: `실험 · 2D 격자 볼츠만(D2Q9) · 대지 중심 ${fmt(g.nx * g.cell)}m 정사각, ${fmt(g.cell, 1)}m 칸 · 건물 위로 넘는 바람이 없어 건물 사이 속도가 실제보다 크게 나옴 · 실제 풍속·돌풍 아님 · ${e.computedAt.slice(0, 10)} 계산`,
+        caption: `실험 · 2D 격자 볼츠만(D2Q9) · 대지 중심 ${fmt(g.nx * g.cell)}m 정사각, ${fmt(g.cell, 1)}m 칸 · 높이 20m(약 7층) 이상 건물은 막고, 낮은 건물은 높이만큼 바람을 줄여 지나가게 함(지붕 위로 넘는 바람을 평면에서 흉내) · 실제 풍속·돌풍 아님 · ${e.computedAt.slice(0, 10)} 계산`,
       }
     },
   }
