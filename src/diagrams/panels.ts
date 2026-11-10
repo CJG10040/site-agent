@@ -265,7 +265,7 @@ export const PANELS: PanelDef[] = [
       const layers = [...new Set(items.map((x) => x.layer))]
       const styles: Record<string, { fill: string; stroke: string; width: number; opacity: number; label: string }> = {}
       layers.forEach((l, i) => (styles[l] = { fill: catColor(c.pal, i), stroke: catColor(c.pal, i), width: 2.5, opacity: 0.22, label: layerLabel(l) }))
-      const onSite = [...new Set(items.filter((x) => overlapsSite(x.geom, c.d.boundary)).map((x) => `${layerLabel(x.layer)}(${x.name})`))]
+      const onSite = [...new Set(items.filter((x) => overlapsSite(x.geom, c.d.boundary)).map((x) => x.name))]
       const names = [...new Set(items.map((x) => x.name))]
       return {
         layers: [baseBuildings(c), { id: '구역·지구', svg: grouped(items.map((x) => ({ d: c.f.path(x.geom), key: x.layer })), styles) }],
@@ -386,7 +386,10 @@ export const PANELS: PanelDef[] = [
       return {
         layers: [{ id: '지형등급', svg: grouped(items, styles) }],
         legend: [...order.map((k, i) => ({ color: color(k, i), label: k })), { color: c.pal.unknown, label: '미상' }],
-        summary: [`반경 안 필지의 지형높이 등급: ${share.map(([k, n]) => `${k} ${pct(n, known.length)}%`).join(', ')}`, siteK.length ? `대지 필지는 ${siteK.join('·')}` : ''].filter(Boolean),
+        summary: [
+          `반경 안 필지 ${fmt(known.length)}곳의 지형높이 등급: ${share.map(([k, n]) => (pct(n, known.length) >= 1 ? `${k} ${pct(n, known.length)}%` : `${k} ${fmt(n)}필지`)).join(', ')}`,
+          siteK.length ? `대지 필지는 ${siteK.join('·')}` : '',
+        ].filter(Boolean),
         caption: `국토교통부 토지특성(개별공시지가 조사, 브이월드) · ${c.date} 수집 · 주변과 비교한 등급이며 실제 경사도(°)가 아님`,
       }
     },

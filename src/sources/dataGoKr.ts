@@ -18,11 +18,37 @@ function xmlError(text: string): string {
   return m ? m[2] : text.replace(/\s+/g, ' ').slice(0, 120)
 }
 
+/** 서버가 잠깐 바쁠 때 나는 오류 (예: TAGO "가용한 세션이 존재하지 않습니다 (30/30)") */
+function isTransient(e: unknown): boolean {
+  if (!(e instanceof DataGoKrError)) return false
+  return /세션|LIMITED|초과|일시|timeout|TIMEOUT/i.test(e.message) || /^5\d\d$/.test(e.code) || e.code === 'NETWORK'
+}
+
 /**
- * serviceKey를 붙여 GET 요청하고 JSON으로 해석한다.
+ * serviceKey를 붙여 GET 요청하고 JSON으로 해석한다. 서버가 잠깐 바쁘면 두 번까지 다시 시도한다.
  * @param serviceName 오류 안내에 쓸 서비스 이름 (예: '버스정류소정보')
  */
 export async function dataGoKrGet(keys: ApiKeys, base: string, params: Record<string, string>, serviceName: string): Promise<unknown> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return checkBody(await dataGoKrGetOnce(keys, base, params, serviceName), serviceName)
+    } catch (e) {
+      if (attempt >= 2 || !isTransient(e)) throw e
+      await new Promise((r) => setTimeout(r, 1200 * (attempt + 1)))
+    }
+  }
+}
+
+/** 표준 형식 응답의 header에 담겨 오는 '바쁨' 오류도 다시 시도 대상으로 올린다 */
+function checkBody(data: unknown, serviceName: string): unknown {
+  const h = (data as { response?: { header?: { resultCode?: string; resultMsg?: string } }; header?: { resultCode?: string; resultMsg?: string } })
+  const header = h?.response?.header ?? h?.header
+  const msg = String(header?.resultMsg ?? '')
+  if (/세션|LIMITED/i.test(msg)) throw new DataGoKrError(String(header?.resultCode ?? 'BUSY'), `${msg} — ${serviceName} 서버가 잠시 바쁩니다. 잠시 뒤 다시 수집해 보세요.`)
+  return data
+}
+
+async function dataGoKrGetOnce(keys: ApiKeys, base: string, params: Record<string, string>, serviceName: string): Promise<unknown> {
   const key = normalizeDataGoKrKey(keys.dataGoKr)
   if (!key) throw new DataGoKrError('NO_KEY', '공공데이터포털 인증키가 입력되지 않았습니다. 설정에서 입력하세요.')
   const url = `${base}?${new URLSearchParams({ serviceKey: key, ...params })}`

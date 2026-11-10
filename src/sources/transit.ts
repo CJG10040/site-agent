@@ -71,8 +71,9 @@ export async function busStopsAround(keys: ApiKeys, lon: number, lat: number): P
     .sort((a, b) => a.distance - b.distance)
 
   const targets = stops.slice(0, MAX_ROUTE_LOOKUPS)
-  await Promise.all(
-    targets.map(async (stop) => {
+  // 한꺼번에 많이 부르면 TAGO 서버가 '가용한 세션 없음'으로 거절하므로 3개씩
+  const queue = [...targets]
+  const lookup = async (stop: BusStop) => {
       try {
         const r = await dataGoKrGet(
           keys,
@@ -90,7 +91,10 @@ export async function busStopsAround(keys: ApiKeys, lon: number, lat: number): P
       } catch (e) {
         stop.routeError = e instanceof Error ? e.message : String(e)
       }
-    }),
-  )
+  }
+  const worker = async () => {
+    for (let next = queue.shift(); next; next = queue.shift()) await lookup(next)
+  }
+  await Promise.all([worker(), worker(), worker()])
   return { stops, routeChecked: targets.length }
 }
