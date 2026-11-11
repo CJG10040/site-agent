@@ -89,10 +89,26 @@ export function convexHull(pts: XY[]): XY[] {
 export interface LocalTerrain extends GridSpec {
   /** 대지 중심 = 0m 상대 높이, 자료 없으면 NaN */
   z: Float32Array
+  /** 대지 주변 세밀 지형(수치지도 2m) — 있으면 먼저 쓴다 */
+  fine?: LocalTerrain
 }
 
 export function terrainZ(t: LocalTerrain | null, x: number, y: number): number {
   if (!t) return 0
+  if (t.fine) {
+    const f = t.fine
+    const fc = (x - f.x0) / f.cell - 0.5
+    const fr = (f.y0 - y) / f.cell - 0.5
+    const c = Math.floor(fc)
+    const r = Math.floor(fr)
+    if (c >= 0 && r >= 0 && c + 1 < f.nx && r + 1 < f.ny) {
+      const a = fc - c
+      const b = fr - r
+      const k = r * f.nx + c
+      const v = (f.z[k] * (1 - a) + f.z[k + 1] * a) * (1 - b) + (f.z[k + f.nx] * (1 - a) + f.z[k + f.nx + 1] * a) * b
+      if (Number.isFinite(v)) return v
+    }
+  }
   const fc = (x - t.x0) / t.cell - 0.5
   const fr = (t.y0 - y) / t.cell - 0.5
   const c = Math.floor(fc)

@@ -2882,6 +2882,38 @@ input[type='datetime-local'] {
   }
 }
 
+.ngii-box .ngii-sheets {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.ngii-drop {
+  display: block;
+  padding: 14px;
+  border: 1.5px dashed var(--border);
+  border-radius: 10px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--muted);
+  cursor: pointer;
+  background: var(--panel-2);
+}
+
+.ngii-drop.drag,
+.ngii-drop:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.ngii-status {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-start;
+}
+
 /* ───────── 연결 진단 ───────── */
 
 dl {

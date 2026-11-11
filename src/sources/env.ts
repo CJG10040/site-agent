@@ -7,7 +7,8 @@ import type { EnvJob, EnvMessage, EnvOutput } from '../lib/env/env.worker'
 import type { LocalTerrain } from '../lib/env/grid'
 import { wgs84ToUtmk } from '../lib/proj'
 import { sunAt, sunAtDate, SUN_DAYS } from '../lib/sun'
-import { sampleAt, terrainAround } from '../lib/terrain'
+import { sampleAt, terrainAround, type TerrainGrid } from '../lib/terrain'
+import { fineHalfFor, fineTerrainCached } from '../lib/terrainFine'
 import { arealRings, localProj } from '../lib/xy'
 import type { Project } from '../model/types'
 import type { VWorldConfig } from './vworld'
@@ -27,6 +28,8 @@ export interface EnvResult extends EnvOutput {
   buildings: number
   unknownHeights: number
   terrainSource: string | null
+  /** 건물 자료 (수치지도를 올렸으면 함께) */
+  buildingSource?: string
   thermal: { ta: number; rh: number; ws: number; days: number; alt: number; az: number; label: string } | null
 }
 
@@ -40,7 +43,7 @@ function steps(lon: number, lat: number, day: (typeof SUN_DAYS)[number]['key']):
 }
 
 /** 지형을 대지 중심 기준 미터 10m 칸으로 다시 담는다 (5179 ↔ 지역 좌표는 이 범위에서 1차식으로 충분) */
-async function localTerrain(lon: number, lat: number, halfM: number): Promise<{ t: LocalTerrain; source: string } | null> {
+async function localTerrain(lon: number, lat: number, halfM: number, fine: TerrainGrid | null = null): Promise<{ t: LocalTerrain; source: string } | null> {
   const grid = await terrainAround(lon, lat, halfM)
   if (!grid) return null
   const p = localProj(lon, lat)
@@ -52,7 +55,8 @@ async function localTerrain(lon: number, lat: number, halfM: number): Promise<{ 
   const ay = (ex[1] - o[1]) / 1000
   const bx = (ny[0] - o[0]) / 1000
   const by = (ny[1] - o[1]) / 1000
-  const z0 = sampleAt(grid, grid.z, o[0], o[1])
+  const zf = fine ? sampleAt(fine, fine.z, o[0], o[1]) : NaN
+  const z0 = Number.isFinite(zf) ? zf : sampleAt(grid, grid.z, o[0], o[1])
   if (!Number.isFinite(z0)) return null
   const cell = 10
   const n = Math.ceil((halfM * 2) / cell)
@@ -64,6 +68,22 @@ async function localTerrain(lon: number, lat: number, halfM: number): Promise<{ 
       const v = sampleAt(grid, grid.z, o[0] + ax * x + bx * y, o[1] + ay * x + by * y)
       t.z[r * n + c] = Number.isFinite(v) ? v - z0 : NaN
     }
+  if (fine) {
+    // 대지 주변 2m (수치지도) — 같은 1차식으로 지역 좌표에 다시 담는다
+    const fc = 2
+    const half = Math.min(halfM, (Math.min(fine.nx, fine.ny) * fine.cell) / 2)
+    const m = Math.ceil((half * 2) / fc)
+    const f: LocalTerrain = { x0: -(m * fc) / 2, y0: (m * fc) / 2, cell: fc, nx: m, ny: m, z: new Float32Array(m * m) }
+    for (let r = 0; r < m; r++)
+      for (let c = 0; c < m; c++) {
+        const x = f.x0 + (c + 0.5) * fc
+        const y = f.y0 - (r + 0.5) * fc
+        const v = sampleAt(fine, fine.z, o[0] + ax * x + bx * y, o[1] + ay * x + by * y)
+        f.z[r * m + c] = Number.isFinite(v) ? v - z0 : NaN
+      }
+    t.fine = f
+    return { t, source: `국토지리정보원 수치지도${fine.version ? `(${fine.version}년)` : ''} 2m(대지 주변, 옹벽 단차 반영) + 10m 격자` }
+  }
   return { t, source: grid.source === 'ngii' ? `국토지리정보원 10m ${grid.version ?? ''}`.trim() : '대체 자료(AWS Terrain Tiles)' }
 }
 
@@ -113,7 +133,8 @@ export async function computeEnv(project: Project, config: VWorldConfig, onProgr
     .map((b) => ({ rings: arealRings(p, b.geom), h: b.floors && b.floors > 0 ? b.floors * FLOOR_M : UNKNOWN_H }))
   const unknownHeights = d.buildings.filter((b) => !b.onSite && !b.underground && !(b.floors && b.floors > 0)).length
   onProgress('지형 받는 중')
-  const terr = await localTerrain(lon, lat, R + 2100).catch(() => null)
+  const fine = fineTerrainCached(d.ngii, d.center, fineHalfFor(R))
+  const terr = await localTerrain(lon, lat, R + 2100, fine).catch(() => null)
   const wind = d.wind
   const winds: EnvJob['winds'] = []
   if (wind) {
@@ -153,6 +174,7 @@ export async function computeEnv(project: Project, config: VWorldConfig, onProgr
     buildings: buildings.length,
     unknownHeights,
     terrainSource: terr?.source ?? null,
+    buildingSource: d.ngii ? `국토지리정보원 수치지도${d.ngii.year ? `(${d.ngii.year}년)` : ''}·GIS건물통합정보` : 'GIS건물통합정보',
     thermal: hot
       ? { ta: hot.ta, rh: hot.rh, ws: hot.ws, days: hot.days, alt: ts.altitude, az: ts.azimuth, label: `${THERMAL_DAY.month}월 ${THERMAL_DAY.day}일 ${THERMAL_DAY.hour}시` }
       : null,

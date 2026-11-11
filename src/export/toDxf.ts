@@ -20,6 +20,13 @@ export const DXF_LAYERS: { name: string; color: number; label: string }[] = [
   { name: 'CONTOUR', color: 34, label: '등고선 (높이 = 대지 중심 지면 기준)' },
   { name: 'CONTOUR-MAJOR', color: 30, label: '계곡선 (굵은 등고선)' },
   { name: 'CONTOUR-TEXT', color: 30, label: '계곡선 높이 숫자' },
+  // 수치지도를 올렸을 때만 채워짐
+  { name: 'MAP-CONTOUR', color: 32, label: '수치지도 등고선 원본 (선 높이 = 대지 중심 지면 기준)' },
+  { name: 'SPOT', color: 32, label: '표고점·기준점 (점 + 해발 숫자)' },
+  { name: 'WALL', color: 250, label: '옹벽·석축·제방 상단 (H = 높이 m)' },
+  { name: 'CUTFILL', color: 42, label: '절토·성토 경계' },
+  { name: 'WALK', color: 253, label: '인도' },
+  { name: 'BLDG-MINOR', color: 254, label: '지붕 구조물(무벽건물)·가건물' },
 ]
 
 const n = (v: number) => (Math.round(v * 1000) / 1000).toString()
@@ -167,6 +174,22 @@ export function siteModelToDxf(m: SiteModel, meta: { title: string; address: str
     const num = ascii(p.jibun.replace(/[^\d-]/g, ''))
     if (num && p.polys[0]) text('PARCEL-TEXT', centroid(p.polys[0].outer), 1.2, num)
   }
+  for (const c of m.mapContours) polyline('MAP-CONTOUR', c.pts, false, c.z)
+  for (const s of m.spots) {
+    g(0, 'POINT')
+    g(8, 'SPOT')
+    g(10, s.x)
+    g(20, s.y)
+    g(30, s.z)
+    text('SPOT', [s.x + 0.8, s.y + 0.8], 1.2, s.level.toFixed(1), false)
+  }
+  for (const w of m.walls) {
+    polyline('WALL', w.pts, false)
+    if (w.h && w.pts.length > 1) text('WALL', w.pts[Math.floor(w.pts.length / 2)], 1.2, `H${w.h}`)
+  }
+  for (const c of m.cutfill) polyline('CUTFILL', c.pts, false)
+  polys('WALK', m.walks)
+  polys('BLDG-MINOR', m.minor)
   for (const a of m.parks) polys('PARK', a.polys)
   for (const a of m.rivers) polys('RIVER', a.polys)
   polys('ROAD-EDGE', m.roads)
@@ -188,9 +211,10 @@ export function siteModelToDxf(m: SiteModel, meta: { title: string; address: str
     `ORIGIN WGS84  lon ${o.lon.toFixed(7)}  lat ${o.lat.toFixed(7)}`,
     `TRUE NORTH: ${Math.abs(o.trueNorthDeg).toFixed(2)} deg ${o.trueNorthDeg >= 0 ? 'clockwise' : 'counterclockwise'} from +Y`,
     `CONTOUR elevation 0 = ground at site center${o.elev !== null ? ` (approx. ${o.elev.toFixed(1)} m above sea level)` : ''}, interval ${m.contourStep} m, major ${m.contourStep * 5} m`,
-    `TERRAIN: ${m.terrainSource === 'ngii' ? 'NGII contours -> 10 m grid' : m.terrainSource === 'terrarium' ? 'AWS Terrarium (~30 m, low accuracy)' : 'none'}`,
+    `TERRAIN: ${m.terrainSource === 'map' ? `NGII 1:5000 digital map${m.mapYear ? ` (${m.mapYear})` : ''} contours/spot heights + retaining walls -> 2 m near site, 10 m beyond` : m.terrainSource === 'ngii' ? 'NGII contours -> 10 m grid' : m.terrainSource === 'terrarium' ? 'AWS Terrarium (~30 m, low accuracy)' : 'none'}`,
+    ...(m.spots.length ? ['SPOT text = elevation above sea level (m); MAP-CONTOUR/CONTOUR elevation = relative to site center ground'] : []),
     'BUILDINGS: VWorld GIS building data, height not drawn (floors as text)',
-    `ROADS: NGII road centerlines widened by road width. Collected ${ascii(meta.collected)}`,
+    `ROADS: ${m.roadSource === 'map' ? 'NGII digital map road boundary areas' : m.roadSource === 'mixed' ? 'NGII digital map road areas (inside map sheets) + centerlines widened by width' : 'NGII road centerlines widened by road width'}. Collected ${ascii(meta.collected)}`,
   ]
   info.forEach((s, i) => text('INFO', [-h, -h - 8 - i * 4], 2.4, s, false))
   // 원점 표시 (작은 십자)

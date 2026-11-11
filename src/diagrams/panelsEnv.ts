@@ -123,7 +123,7 @@ function maskOf(c: PanelCtx, g: GridSpec, kind: 'site' | 'radius'): Uint8Array {
 }
 
 function envCaption(e: EnvResult, extra: string): string {
-  const parts = [`건물: GIS건물통합정보(층수×${FLOOR_M}m${e.unknownHeights ? `, 층수 모름 ${fmt(e.unknownHeights)}동은 ${FLOOR_M}m로 봄` : ''}), 대지 안 기존 건물은 없다고 봄`]
+  const parts = [`건물: ${e.buildingSource ?? 'GIS건물통합정보'}(층수×${FLOOR_M}m${e.unknownHeights ? `, 층수 모름 ${fmt(e.unknownHeights)}동은 ${FLOOR_M}m로 봄` : ''}), 대지 안 기존 건물은 없다고 봄`]
   if (e.terrainSource) parts.push(`지형: ${e.terrainSource}`)
   parts.push(`${e.computedAt.slice(0, 10)} 계산 · ${CALC}`)
   return [extra, ...parts].filter(Boolean).join(' · ')

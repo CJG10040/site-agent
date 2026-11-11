@@ -4,11 +4,11 @@
 // 사용자 결정(2026-11-11): 원점은 대지 중심, 파일에 원점의 실제 좌표를 적는다. 지형은 지금의 10m 격자로 먼저 만들고,
 // 나중에 더 정밀한 지형(1·5m DEM, 현황측량)을 구하면 terrainAround 자리만 바꿔 끼운다.
 
-import { featureCollection, intersect, polygon as turfPolygon } from '@turf/turf'
+import { featureCollection, intersect, polygon as turfPolygon, union } from '@turf/turf'
 import { contours } from 'd3-contour'
 import earcut from 'earcut'
 import type { Position } from 'geojson'
-import type { DiagramData } from '../diagrams/data'
+import { inNgii, type DiagramData } from '../diagrams/data'
 import { FLOOR_M } from '../lib/enclosure'
 import type { Areal } from '../lib/geo'
 import { wgs84To5186, wgs84ToUtmk } from '../lib/proj'
@@ -75,11 +75,23 @@ export interface SiteModel {
   site: Poly[]
   buildings: ModelBuilding[]
   parcels: ModelParcel[]
-  /** 도로 면: 도로중심선을 폭만큼 넓혀 합친 것 */
+  /** 도로 면: 수치지도 도로경계 면(올린 도엽 안)을 합친 것 + 그 밖은 도로중심선을 폭만큼 넓혀 합친 것 */
   roads: Poly[]
+  roadSource: 'map' | 'centerline' | 'mixed'
   roadCenters: { pts: XY[]; width: number | null }[]
   parks: ModelArea[]
   rivers: ModelArea[]
+  /** 아래는 수치지도를 올렸을 때만 (없으면 빈 배열) */
+  walks: Poly[]
+  /** 무벽건물(지붕만)·가건물 발자국 */
+  minor: Poly[]
+  walls: { pts: XY[]; kind: string; h: number | null; top: boolean }[]
+  cutfill: { pts: XY[]; kind: string; top: boolean }[]
+  /** 수치지도 등고선 원본 (z = 대지 중심 지면 기준 상대 높이, level = 해발) */
+  mapContours: { pts: XY[]; z: number; level: number; major: boolean }[]
+  /** 표고점·기준점 (z = 상대 높이, level = 해발) */
+  spots: { x: number; y: number; z: number; level: number }[]
+  mapYear: string | null
   /** 지형 면 위의 높이 (메시와 같은 삼각형으로 보간, 자료 없으면 0) */
   zAt: (x: number, y: number) => number
 }
@@ -534,7 +546,73 @@ export async function buildSiteModel(d: DiagramData, half: number, opts: { grid?
     return parts.map((c) => ({ pts: c.map(f), width: r.width }))
   })
   const roadCenters = centers.flatMap((c) => clipLine(c.pts, half).map((pts) => ({ pts, width: c.width })))
-  const roads = roadSurfaces(centers, half)
+
+  // ── 수치지도: 도엽 안 도로는 측량한 도로경계 면을 합쳐 쓰고, 도엽 밖만 도로중심선으로
+  const n = d.ngii
+  const lonlatOf = ([x, y]: XY): [number, number] => {
+    // 원점 주변 1차식 (범위 몇 km 안에서 충분)
+    const kx = 111320 * Math.cos((lat * Math.PI) / 180)
+    const t = (trueNorthDeg * Math.PI) / 180
+    const ex = x * Math.cos(t) - y * Math.sin(t)
+    const ny2 = x * Math.sin(t) + y * Math.cos(t)
+    return [lon + ex / kx, lat + ny2 / 110574]
+  }
+  const covered = (p: XY) => {
+    const [lo, la] = lonlatOf(p)
+    return inNgii(n, lo, la)
+  }
+  let roads: Poly[]
+  let roadSource: SiteModel['roadSource'] = 'centerline'
+  if (n && n.roads.length) {
+    const pieces = clipPolys(
+      n.roads.flatMap((g) => polysOf(g, f)),
+      half,
+    )
+    const close = (r: XY[]) => [...r, r[0]]
+    let merged: Poly[] = pieces
+    try {
+      const u = pieces.length > 1 ? union(featureCollection(pieces.map((p) => turfPolygon([close(p.outer), ...p.holes.map(close)])))) : null
+      if (u) {
+        const g = u.geometry
+        merged = (g.type === 'Polygon' ? [g.coordinates] : g.coordinates).map((q) => toPoly(q.map((r) => r.map(([x, y]) => [x, y] as XY)))).filter((p): p is Poly => !!p)
+      }
+    } catch {
+      // 합치기에 실패하면 조각 그대로
+    }
+    const corners: XY[] = [
+      [-half, -half],
+      [half, -half],
+      [half, half],
+      [-half, half],
+    ]
+    const full = corners.every(covered)
+    const outside = full ? [] : centers.filter((c) => c.pts.length && !covered(c.pts[Math.floor(c.pts.length / 2)]))
+    roads = [...merged, ...(outside.length ? roadSurfaces(outside, half) : [])]
+    roadSource = outside.length ? 'mixed' : 'map'
+  } else roads = roadSurfaces(centers, half)
+
+  const linesOfGeom = (g: { type: string; coordinates: unknown }) =>
+    (g.type === 'LineString' ? [g.coordinates as Position[]] : (g.coordinates as Position[][])).map((c) => c.map(f))
+  const walks = n ? clipPolys(n.walks.flatMap((g) => polysOf(g, f)), half) : []
+  const minor = n
+    ? n.minor.flatMap((g) => polysOf(g, f)).filter((p) => {
+        const o = p.outer
+        return inSquare([o.reduce((s, q) => s + q[0], 0) / o.length, o.reduce((s, q) => s + q[1], 0) / o.length])
+      })
+    : []
+  const walls = n ? n.walls.flatMap((w) => linesOfGeom(w.geom).flatMap((l) => clipLine(l, half)).map((pts) => ({ pts, kind: w.kind, h: w.h, top: w.top }))) : []
+  const cutfill = n ? n.cutfill.flatMap((w) => linesOfGeom(w.geom).flatMap((l) => clipLine(l, half)).map((pts) => ({ pts, kind: w.kind, top: w.top }))) : []
+  const mapContours = n
+    ? n.contours.flatMap((c) => linesOfGeom(c.geom).flatMap((l) => clipLine(l, half)).map((pts) => ({ pts, z: c.z - z0, level: c.z, major: c.major })))
+    : []
+  const spots = n
+    ? n.spots
+        .map((s) => {
+          const [x, y] = f([s.lon, s.lat])
+          return { x, y, z: s.z - z0, level: s.z }
+        })
+        .filter((s) => inSquare([s.x, s.y]))
+    : []
 
   return {
     origin: { lon, lat, x5179: X0, y5179: Y0, x5186, y5186, elev, trueNorthDeg },
@@ -548,9 +626,17 @@ export async function buildSiteModel(d: DiagramData, half: number, opts: { grid?
     buildings,
     parcels,
     roads,
+    roadSource,
     roadCenters,
     parks,
     rivers,
+    walks,
+    minor,
+    walls,
+    cutfill,
+    mapContours,
+    spots,
+    mapYear: n?.year ?? null,
     zAt,
   }
 }
@@ -569,15 +655,27 @@ export function modelNotes(m: SiteModel, meta: { title: string; address: string;
     ['높이 0', m.origin.elev !== null ? `대지 중심 지면 (해발 약 ${f(m.origin.elev, 1)}m, 지형 격자 추정)` : '대지 중심 지면 (지형 자료 없음)'],
     [
       '지형',
-      m.terrainSource === 'ngii'
-        ? `국토지리정보원 연속수치지형도 등고선·표고점 → 10m 격자${m.terrainVersion ? ` (${m.terrainVersion})` : ''}. 1m 안팎 높낮이는 정확하지 않음`
-        : m.terrainSource === 'terrarium'
-          ? 'AWS Terrarium 지형 타일(약 30m, 도심은 건물 높이가 섞임) — 정확도 낮음'
-          : '없음 (평면)',
+      m.terrainSource === 'map'
+        ? `국토지리정보원 1:5,000 수치지도${m.mapYear ? `(${m.mapYear}년)` : ''} 등고선·표고점 삼각망 2m + 옹벽·석축 높이 단차(대지 주변), 그 밖은 10m 격자. 이 파일의 지형 면은 ${m.terrain?.cell ?? '-'}m 칸. 등고선 사이 1m 안팎은 정확하지 않음`
+        : m.terrainSource === 'ngii'
+          ? `국토지리정보원 연속수치지형도 등고선·표고점 → 10m 격자${m.terrainVersion ? ` (${m.terrainVersion})` : ''}. 1m 안팎 높낮이는 정확하지 않음`
+          : m.terrainSource === 'terrarium'
+            ? 'AWS Terrarium 지형 타일(약 30m, 도심은 건물 높이가 섞임) — 정확도 낮음'
+            : '없음 (평면)',
     ],
     ['등고선', `${m.contourStep}m 간격, 굵은 선(계곡선) ${m.contourStep * 5}m 간격 — 10m 격자에서 다시 그린 선`],
-    ['건물', '브이월드 GIS건물통합정보 + 도로명주소 건물. 높이 = 층수 × 3m 어림(발자국 평균 지면 기준), 층수 모르는 건물은 발자국만, 지하만 있는 시설은 뺌'],
-    ['도로', '국토지리정보원 도로중심선을 도로 폭(rvwd)만큼 넓혀 합친 면 (폭 없는 길은 4m로 봄)'],
+    [
+      '건물',
+      `${m.mapYear !== null || m.minor.length ? '국토지리정보원 수치지도(올린 도엽 안, 층수 포함) + ' : ''}브이월드 GIS건물통합정보 + 도로명주소 건물. 높이 = 층수 × 3m 어림(발자국 평균 지면 기준), 층수 모르는 건물은 발자국만, 지하만 있는 시설은 뺌${m.minor.length ? ', 무벽건물·가건물은 따로' : ''}`,
+    ],
+    [
+      '도로',
+      m.roadSource === 'map'
+        ? '국토지리정보원 수치지도 도로경계 면(인도 포함)을 합친 면, 인도는 따로'
+        : m.roadSource === 'mixed'
+          ? '올린 수치지도 도엽 안은 도로경계 면, 그 밖은 도로중심선을 폭만큼 넓혀 합친 면'
+          : '국토지리정보원 도로중심선을 도로 폭(rvwd)만큼 넓혀 합친 면 (폭 없는 길은 4m로 봄)',
+    ],
     ['필지·공원·하천', '연속지적도, 도시계획(공원·녹지·광장), 하천망 — 참고용이며 법적 효력 없음'],
     ['범위', `원점 중심 가로·세로 ${Math.round(m.half * 2).toLocaleString('ko-KR')}m`],
     ['수집일', meta.collected],

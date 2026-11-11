@@ -4,7 +4,8 @@
 
 
 import { wgs84ToUtmk } from '../lib/proj'
-import { sampleAt } from '../lib/terrain'
+import { terrainSourceLabel } from '../lib/terrain'
+import { relAt } from '../lib/terrainSite'
 import { arealRings } from '../lib/xy'
 import type { XY } from '../lib/network'
 import type { PanelOutput } from './compose'
@@ -59,7 +60,7 @@ function groundSampler(c: PanelCtx): (x: number, y: number) => number {
   const p = projOf(c.d)
   return (x, y) => {
     const [X, Y] = wgs84ToUtmk(p.lon0 + x / p.kx, p.lat0 + y / p.ky)
-    const v = sampleAt(t.grid, t.rel, X, Y)
+    const v = relAt(t, X, Y)
     return Number.isFinite(v) ? v : 0
   }
 }
@@ -216,7 +217,7 @@ function sectionPanel(which: 'A' | 'B'): PanelDef {
         ],
         legendTitle: `${which}–${which}′ 단면 · ${dir8(leftAz)} → ${dir8(rightAz)}${rot ? ` (${rot}° 돌림)` : ''} · 높이 ${vex === 1 ? '실제 비율' : `${vex}배 과장`}`,
         summary,
-        caption: `지형: ${c.t ? (c.t.grid.source === 'ngii' ? '국토지리정보원 10m 격자' : '대체 자료(AWS Terrain Tiles)') : '자료 없음(평지로 그림)'} · 건물: GIS건물통합정보 층수×${FLOOR_M}m${unknown ? `(층수 모름 ${unknown}동은 ${UNKNOWN_H}m, 점선)` : ''} · ${c.date} 수집 · 단면 방향은 도판 설정에서 돌림`,
+        caption: `지형: ${c.t ? terrainSourceLabel(c.t.grid.source, c.t.grid.version) : '자료 없음(평지로 그림)'} · 건물: ${d.ngii ? '수치지도·GIS건물통합정보' : 'GIS건물통합정보'} 층수×${FLOOR_M}m${unknown ? `(층수 모름 ${unknown}동은 ${UNKNOWN_H}m, 점선)` : ''} · ${c.date} 수집 · 단면 방향은 도판 설정에서 돌림`,
         hideBase: true,
         noFrame: true,
       }

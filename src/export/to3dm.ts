@@ -22,12 +22,18 @@ const LAYERS: LayerDef[] = [
   { key: 'bldgAround', name: '주변 건물 (층수 × 3m)', color: [150, 150, 150], parent: 'bldg' },
   { key: 'bldgSite', name: '대지 안 기존 건물', color: [230, 150, 150], parent: 'bldg' },
   { key: 'bldgUnknown', name: '층수 모름 (발자국만)', color: [190, 190, 190], parent: 'bldg' },
+  { key: 'bldgMinor', name: '지붕 구조물·가건물 (수치지도, 발자국)', color: [200, 190, 170], parent: 'bldg' },
   { key: 'terrain', name: '지형', color: [150, 120, 90] },
-  { key: 'mesh', name: '지형 면 (10m 격자)', color: [215, 205, 185], parent: 'terrain' },
+  { key: 'mesh', name: '지형 면', color: [215, 205, 185], parent: 'terrain' },
   { key: 'contour', name: '등고선', color: [176, 130, 90], parent: 'terrain' },
   { key: 'contourMajor', name: '계곡선 (굵은 등고선)', color: [130, 85, 50], parent: 'terrain' },
+  { key: 'mapContour', name: '수치지도 등고선 (원본)', color: [150, 95, 60], parent: 'terrain' },
+  { key: 'spot', name: '표고점·기준점 (이름 = 해발)', color: [120, 70, 40], parent: 'terrain' },
+  { key: 'wall', name: '옹벽·석축·제방', color: [70, 70, 70], parent: 'terrain' },
+  { key: 'cutfill', name: '절토·성토', color: [160, 120, 80], parent: 'terrain' },
   { key: 'road', name: '도로', color: [90, 90, 90] },
-  { key: 'roadSurf', name: '도로 면 (도로중심선 폭)', color: [120, 120, 120], parent: 'road' },
+  { key: 'roadSurf', name: '도로 면', color: [120, 120, 120], parent: 'road' },
+  { key: 'walk', name: '인도 (수치지도)', color: [190, 180, 160], parent: 'road' },
   { key: 'roadCenter', name: '도로중심선', color: [200, 160, 40], parent: 'road' },
   { key: 'parcel', name: '필지', color: [170, 170, 200] },
   { key: 'park', name: '공원·녹지', color: [90, 160, 90] },
@@ -79,9 +85,18 @@ export async function siteModelTo3dm(m: SiteModel, meta: ExportMeta, onStep?: (s
     // 레이어 (부모를 먼저 넣고 id로 잇는다)
     const layerIndex = new Map<string, number>()
     const layerId = new Map<string, string>()
+    const hasMap = m.mapYear !== null || m.walls.length > 0 || m.walks.length > 0
     for (const def of LAYERS) {
+      if (!hasMap && ['bldgMinor', 'mapContour', 'spot', 'wall', 'cutfill', 'walk'].includes(def.key)) continue
       const L = new rhino.Layer()
-      L.name = def.name
+      L.name =
+        def.key === 'mesh'
+          ? `지형 면 (${m.terrain?.cell ?? 10}m 칸${m.terrainSource === 'map' ? ', 수치지도' : ''})`
+          : def.key === 'roadSurf'
+            ? m.roadSource === 'centerline'
+              ? '도로 면 (도로중심선 폭)'
+              : '도로 면 (수치지도 도로경계)'
+            : def.name
       L.color = { r: def.color[0], g: def.color[1], b: def.color[2], a: 255 }
       if (def.parent) L.parentLayerId = layerId.get(def.parent) ?? ''
       const idx = doc.layers().add(L)
@@ -111,7 +126,9 @@ export async function siteModelTo3dm(m: SiteModel, meta: ExportMeta, onStep?: (s
       return d
     }
     /** 지형에 얹은 면들을 메시 하나로 */
-    const drapedMesh = (polys: Poly[], key: string, name: string, lift: number, maxEdge = 6) => {
+    // 지형 칸이 작으면(수치지도 2m) 얹는 면도 잘게 — 단차를 가로지르는 큰 삼각형이 땅에 묻히지 않게
+    const DRAPE_EDGE = Math.min(6, Math.max(3, (m.terrain?.cell ?? 10) * 1.5))
+    const drapedMesh = (polys: Poly[], key: string, name: string, lift: number, maxEdge = DRAPE_EDGE) => {
       if (!polys.length) return
       const mesh = new rhino.Mesh()
       const vs = mesh.vertices()
@@ -212,9 +229,61 @@ export async function siteModelTo3dm(m: SiteModel, meta: ExportMeta, onStep?: (s
       }
     }
 
+    // ── 수치지도: 원본 등고선·표고점·옹벽·절성토·지붕 구조물
+    for (const c of m.mapContours) addPolyline(c.pts.map(([x, y]) => [x, y, c.z]), 'mapContour', `해발 ${c.level}m`, { 해발: String(c.level), 구분: c.major ? '계곡선' : '주곡선' })
+    for (const s of m.spots) {
+      const at = attrs('spot', `해발 ${s.level}m`, { 해발: String(s.level) })
+      objs.addPoint([s.x, s.y, s.z], at)
+      free(at)
+    }
+    for (const w of m.walls) {
+      const label = `${w.kind}${w.h ? ` 높이 ${w.h}m` : ''}${w.top ? '' : ' (하단)'}`
+      const user = { 종류: w.kind, '높이(m)': w.h === null ? '모름' : String(w.h), 구분: w.top ? '상단' : '하단' }
+      const h = w.h ?? 0
+      if (w.top && h >= 0.2) {
+        // 벽 면: 지형 단차의 위·아래 (단차 가운데에서 ±h/2)
+        const pts = densify(w.pts, 2, false)
+        const mesh = new rhino.Mesh()
+        const vs = mesh.vertices()
+        const fs = mesh.faces()
+        // 벽 위·아래 = 선 양옆 3m의 지형 높이 (선 바로 위는 단차 한가운데라 2m 칸에서 들쭉날쭉함)
+        const off = Math.max(3, (m.terrain?.cell ?? 2) * 1.5)
+        const tops: number[] = []
+        pts.forEach(([x, y], i) => {
+          const [ax, ay] = pts[Math.max(0, i - 1)]
+          const [bx, by] = pts[Math.min(pts.length - 1, i + 1)]
+          const L = Math.hypot(bx - ax, by - ay) || 1
+          const nx = -(by - ay) / L
+          const ny = (bx - ax) / L
+          const za = m.zAt(x + nx * off, y + ny * off)
+          const zb = m.zAt(x - nx * off, y - ny * off)
+          const lo = Math.min(za, zb)
+          const hi = Math.max(lo + 0.2, Math.max(za, zb))
+          vs.add(x, y, lo - 0.1)
+          vs.add(x, y, hi)
+          tops.push(hi)
+        })
+        for (let i = 0; i + 1 < pts.length; i++) fs.addQuadFace(2 * i, 2 * i + 2, 2 * i + 3, 2 * i + 1)
+        mesh.normals().computeNormals()
+        const at = attrs('wall', label, user)
+        objs.addMesh(mesh, at)
+        free(mesh)
+        free(at)
+        addPolyline(
+          pts.map(([x, y], i) => [x, y, tops[i]]),
+          'wall',
+          label,
+          user,
+        )
+      } else addPolyline(draped(w.pts, false, 0.1), 'wall', label, user)
+    }
+    for (const c of m.cutfill) addPolyline(draped(c.pts, false, 0.1), 'cutfill', `${c.kind}${c.top ? ' 상단' : ' 하단'}`)
+    for (const p of m.minor) addPolyline(draped(p.outer, true, 0.05), 'bldgMinor', '지붕 구조물·가건물')
+
     // ── 도로·필지·공원·하천·대지
     onStep?.('도로·필지')
     drapedMesh(m.roads, 'roadSurf', '도로 면', 0.08)
+    drapedMesh(m.walks, 'walk', '인도', 0.15)
     for (const r of m.roadCenters) addPolyline(draped(r.pts, false, 0.12), 'roadCenter', r.width ? `폭 ${r.width}m` : '폭 모름')
     for (const p of m.parcels)
       for (const poly of p.polys) addPolyline(draped(poly.outer, true, 0.04), 'parcel', p.jibun, { 지번: p.jibun, 지목: p.jimok })

@@ -20,8 +20,8 @@ export interface Bld {
   /** 바닥 면적(㎡, 도형 계산) */
   area: number
   name: string
-  /** 'bldg' GIS건물통합정보, 'addr' 도로명주소 건물로 보강 */
-  src: 'bldg' | 'addr'
+  /** 'bldg' GIS건물통합정보, 'addr' 도로명주소 건물로 보강, 'ngii' 국토지리정보원 수치지도(올린 도엽 안) */
+  src: 'bldg' | 'addr' | 'ngii'
   /** 층수를 도로명주소 건물에서 채웠는지 */
   floorsFromAddr: boolean
   /** 지하만 있는 시설 (지하상가·지하철역 등: 지상층 없음 + 지하층 있음 + 건축면적 0) */
@@ -72,6 +72,72 @@ export interface Pt {
   detail?: string
 }
 
+type Lines = LineString | MultiLineString
+
+/** 국토지리정보원 1:5,000 수치지도 2.0 (④에서 올린 도엽) */
+export interface NgiiData {
+  sheets: { code: string; year: string | null; bounds: [number, number, number, number] }[]
+  year: string | null
+  /** 건물을 수치지도로 바꾼 수 (지붕 구조물·가건물 제외) */
+  buildings: number
+  /** 무벽건물(지붕만)·가건물 — 건물 통계·계산에서는 빼고 3D·DXF에만 */
+  minor: Areal[]
+  /** 도로경계 면 (인도 포함 도로 전체) */
+  roads: Areal[]
+  walks: Areal[]
+  contours: { geom: Lines; z: number; major: boolean }[]
+  spots: { lon: number; lat: number; z: number; benchmark?: string }[]
+  /** 옹벽·석축·제방: '상단' 선은 그린 방향의 오른쪽이 낮은 쪽 */
+  walls: { geom: Lines; kind: string; top: boolean; h: number | null }[]
+  cutfill: { geom: Lines; kind: string; top: boolean }[]
+}
+
+/** 올린 수치지도 도엽 안의 점인지 */
+export function inNgii(n: NgiiData | null, lon: number, lat: number): boolean {
+  return !!n && n.sheets.some(({ bounds: b }) => lon >= b[0] && lon <= b[2] && lat >= b[1] && lat <= b[3])
+}
+
+/** 도판 출처 글: 건물 */
+export function bldSourceText(d: { ngii: NgiiData | null }): string {
+  return d.ngii
+    ? `국토지리정보원 1:5,000 수치지도${d.ngii.year ? `(${d.ngii.year}년)` : ''} 건물(올린 도엽 안) + 브이월드 GIS건물통합정보(사용승인연도·용도, 도엽 밖)`
+    : '국토교통부 GIS건물통합정보(브이월드)'
+}
+
+// 수치지도 용도 → 건물 용도 코드 (브이월드에서 짝을 못 찾을 때만)
+const NGII_USE: [RegExp, string][] = [
+  [/문화및집회/, '05000'],
+  [/종교/, '06000'],
+  [/판매/, '07000'],
+  [/운수/, '08000'],
+  [/의료/, '09000'],
+  [/교육연구/, '10000'],
+  [/노유자/, '11000'],
+  [/수련/, '12000'],
+  [/운동/, '13000'],
+  [/업무/, '14000'],
+  [/숙박/, '15000'],
+  [/위락/, '16000'],
+  [/공장/, '17000'],
+  [/창고/, '18000'],
+  [/위험물/, '19000'],
+  [/자동차/, '20000'],
+  [/동물|식물/, '21000'],
+  [/분뇨|쓰레기|자원순환/, '22000'],
+  [/교정|군사/, '23000'],
+  [/방송|통신/, '24000'],
+  [/발전/, '25000'],
+  [/묘지/, '26000'],
+  [/관광휴게/, '27000'],
+  [/장례/, '28000'],
+  [/근린생활/, '03000'],
+]
+
+function ngiiUse(kind: string, use: string): string {
+  if (/주택/.test(use)) return /아파트|연립|다세대/.test(kind) ? '02000' : '01000'
+  return NGII_USE.find(([re]) => re.test(use))?.[1] ?? ''
+}
+
 export interface DiagramData {
   center: [number, number]
   R: number
@@ -101,6 +167,8 @@ export interface DiagramData {
   wind: WindResult | null
   /** 환경 계산 결과 (일조·개방감·가시권·수목·바람·열쾌적) */
   env: EnvResult | null
+  /** 올린 수치지도 (없으면 null) */
+  ngii: NgiiData | null
   /** 어떤 자료가 수집되었는지 */
   has: Record<string, boolean>
 }
@@ -129,7 +197,10 @@ const num = (v: unknown): number | null => {
 /** 겹침 판정을 빠르게 하려고 건물 도형을 격자 칸에 나눠 담는다 */
 class GridIndex<T extends { geom: Areal }> {
   private cells = new Map<string, T[]>()
-  constructor(private size: number) {}
+  private size: number
+  constructor(size: number) {
+    this.size = size
+  }
   private key(i: number, j: number) {
     return `${i}:${j}`
   }
@@ -241,6 +312,70 @@ export function buildDiagramData(project: Project): DiagramData | null {
       underground: isUnderground(floors, str(f.properties.buld_nm), null, null),
       onSite: inside(c[0], c[1], boundary),
     })
+  }
+
+  // ── 수치지도를 올렸으면 그 도엽 안 건물은 수치지도(2025 측량 도형·층수)로 바꾸고,
+  //    사용승인연도·용도는 겹치는 브이월드 건물에서 가져온다 (못 찾으면 수치지도 용도로)
+  let ngii: NgiiData | null = null
+  const sheetFeats = feats('ngii:sheets')
+  if (sheetFeats.length) {
+    const lines = (id: string) => feats(id).filter((f) => isLinear(f.geometry))
+    ngii = {
+      sheets: sheetFeats.map((f) => ({
+        code: str(f.properties.code),
+        year: str(f.properties.year) || null,
+        bounds: f.properties.bounds as [number, number, number, number],
+      })),
+      year: [...new Set(sheetFeats.map((f) => str(f.properties.year)).filter(Boolean))].sort().join('·') || null,
+      buildings: 0,
+      minor: [],
+      roads: feats('ngii:road').filter((f) => isAreal(f.geometry)).map((f) => f.geometry as Areal),
+      walks: feats('ngii:walk').filter((f) => isAreal(f.geometry)).map((f) => f.geometry as Areal),
+      contours: lines('ngii:contour').map((f) => ({ geom: f.geometry as Lines, z: Number(f.properties.z), major: !!f.properties.major })),
+      spots: feats('ngii:spot')
+        .filter((f) => f.geometry?.type === 'Point')
+        .map((f) => {
+          const c = (f.geometry as { coordinates: number[] }).coordinates
+          return { lon: c[0], lat: c[1], z: Number(f.properties.z), ...(f.properties.benchmark ? { benchmark: str(f.properties.benchmark) } : {}) }
+        }),
+      walls: lines('ngii:wall').map((f) => ({ geom: f.geometry as Lines, kind: str(f.properties.kind), top: f.properties.top !== false, h: num(f.properties.h) })),
+      cutfill: lines('ngii:cutfill').map((f) => ({ geom: f.geometry as Lines, kind: str(f.properties.kind), top: f.properties.top !== false })),
+    }
+    const n = ngii
+    const kept = buildings.filter((b) => {
+      const c = centroidOf(b.geom)
+      return !c || !inNgii(n, c[0], c[1])
+    })
+    const added: Bld[] = []
+    for (const f of feats('ngii:bldg')) {
+      if (!isAreal(f.geometry)) continue
+      const c = centroidOf(f.geometry)
+      if (!c || !inNgii(n, c[0], c[1])) continue
+      const kind = str(f.properties.kind)
+      // 무벽건물(지붕만 있는 차양·주차장 지붕 등)·가건물은 건축물이 아니라 통계·계산에서 뺀다
+      if (/무벽|가건물/.test(kind)) {
+        n.minor.push(f.geometry)
+        continue
+      }
+      const host = index.at(c[0], c[1]).find((b) => inside(c[0], c[1], b.geom))
+      const floors = num(f.properties.floors)
+      const name = str(f.properties.name) || str(f.properties.note).replace(/^\d+동$/, '') || host?.name || ''
+      added.push({
+        geom: f.geometry,
+        floors: floors && floors > 0 ? floors : (host?.floors ?? null),
+        use: host?.use || ngiiUse(kind, str(f.properties.use)),
+        year: host?.year ?? null,
+        area: safeArea(f.geometry),
+        name,
+        src: 'ngii',
+        floorsFromAddr: false,
+        underground: false,
+        onSite: inside(c[0], c[1], boundary),
+      })
+    }
+    n.buildings = added.length
+    buildings.length = 0
+    buildings.push(...kept, ...added)
   }
 
   // ── 필지: 연속지적도 + 토지특성
@@ -412,6 +547,7 @@ export function buildDiagramData(project: Project): DiagramData | null {
     network,
     wind,
     env,
+    ngii,
     has,
   }
 }

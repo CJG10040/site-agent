@@ -61,7 +61,10 @@ export function applyCollection(project: Project, outcome: CollectOutcome, bound
     project.collectedSiteKey === siteKey(site)
       ? (project.collected['its:speed']?.features ?? []).map((f) => f.properties as unknown as SpeedSnapshot)
       : []
-  project.collected = {}
+  // 사용자가 올린 수치지도도 같은 대지면 남긴다 (사실 카드는 DataStep이 수집 뒤 다시 만듦)
+  const uploadedFor = project.collected['ngii:sheets']?.features[0]?.properties.siteKey
+  const keepUploads = uploadedFor === siteKey(site) ? Object.fromEntries(Object.entries(project.collected).filter(([k]) => k.startsWith('ngii:'))) : {}
+  project.collected = keepUploads
   const layerSource: Record<string, string> = {}
   for (const o of outcome.layers) {
     layerSource[o.layer.id] = newSource({

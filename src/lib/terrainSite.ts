@@ -5,13 +5,15 @@ import type { Position } from 'geojson'
 import type { Areal } from './geo'
 import { utmkToWgs84, wgs84ToUtmk } from './proj'
 import { sampleAt, slopeAspect, smooth, terrainAround, type TerrainGrid } from './terrain'
+import { compositeGrid } from './terrainFine'
 
 export const SLOPE_BINS = [5, 10, 15, 20] // 경계(°): 0–5, 5–10, 10–15, 15–20, 20 이상
 export const FLAT_DEG = 3 // 이보다 완만하면 경사 방향을 칠하지 않음
 const DIR8 = ['북', '북동', '동', '남동', '남', '남서', '서', '북서']
 
 /** 대지 안 높낮이 차 표현 (10m 격자로는 1m 미만 차이를 가리기 어려움) */
-export function rangeText(m: number): string {
+export function rangeText(m: number, fine = false): string {
+  if (fine) return m < 0.5 ? '0.5m 미만 (수치지도 2m 지형 기준)' : `약 ${m.toLocaleString('ko-KR', { maximumFractionDigits: 1 })}m (수치지도 2m 지형 기준)`
   return m < 1 ? '1m 미만 (10m 격자 기준)' : `약 ${m.toLocaleString('ko-KR', { maximumFractionDigits: 1 })}m`
 }
 
@@ -39,6 +41,29 @@ export interface TerrainAnalysis {
   slopeShare: number[]
   /** 반경 안 자료가 있는 칸 비율 */
   coverage: number
+  /** 수치지도로 만든 대지 주변 2m 지형 (해발, 없으면 null) — 단면은 이것을 먼저 쓴다 */
+  fine: TerrainGrid | null
+}
+
+/** 상대 높이(대지 중심 = 0): 세밀 지형이 있으면 그것을, 없거나 범위 밖이면 분석 격자 */
+export function relAt(t: TerrainAnalysis, x: number, y: number): number {
+  if (t.fine) {
+    const v = sampleAt(t.fine, t.fine.z, x, y)
+    if (Number.isFinite(v)) return v - t.z0
+  }
+  return sampleAt(t.grid, t.rel, x, y)
+}
+
+const gridIds = new WeakMap<TerrainGrid, number>()
+let gridSeq = 0
+function gridId(g: TerrainGrid | null): string {
+  if (!g) return '-'
+  let id = gridIds.get(g)
+  if (id === undefined) {
+    id = ++gridSeq
+    gridIds.set(g, id)
+  }
+  return String(id)
 }
 
 function insideRing(x: number, y: number, ring: Position[]): boolean {
@@ -58,14 +83,16 @@ function polygons5179(b: Areal): Position[][][] {
 
 const cache = new Map<string, Promise<TerrainAnalysis | null>>()
 
-export function analyzeTerrain(center: [number, number], boundary: Areal, radiusM: number): Promise<TerrainAnalysis | null> {
-  const key = `${center[0].toFixed(6)},${center[1].toFixed(6)},${radiusM},${JSON.stringify(boundary).length}`
+export function analyzeTerrain(center: [number, number], boundary: Areal, radiusM: number, fine: TerrainGrid | null = null): Promise<TerrainAnalysis | null> {
+  const key = `${center[0].toFixed(6)},${center[1].toFixed(6)},${radiusM},${JSON.stringify(boundary).length},${gridId(fine)}`
   let p = cache.get(key)
   if (!p) {
     p = (async () => {
-      const grid = await terrainAround(center[0], center[1], radiusM)
+      const base = await terrainAround(center[0], center[1], radiusM)
+      // 수치지도가 있으면 5m 칸으로 섞고(대지 주변 2m 자료) 평활하지 않는다 — 옹벽 단차가 남도록
+      const grid = fine ? compositeGrid(base, fine, center, radiusM + 150, 5) : base
       if (!grid) return null
-      const s10 = smooth(grid, 10)
+      const s10 = fine ? Float32Array.from(grid.z) : smooth(grid, 10)
       const s50 = smooth(grid, 25) // 표준편차 25m ≈ 폭 50m 평활
       const { slope, aspect } = slopeAspect(grid, s50)
       const [cx, cy] = wgs84ToUtmk(center[0], center[1])
@@ -122,6 +149,35 @@ export function analyzeTerrain(center: [number, number], boundary: Areal, radius
         ex = Math.sin(a) * (slope[k] || 0)
         ey = Math.cos(a) * (slope[k] || 0)
       }
+      // 세밀 지형이 있으면 대지 안 높낮이 차는 2m 칸으로 다시 잰다
+      if (fine) {
+        let lo = Infinity
+        let hi = -Infinity
+        let n = 0
+        for (const poly of polys) {
+          const xs = poly[0].map((p) => p[0])
+          const ys = poly[0].map((p) => p[1])
+          const i0 = Math.max(0, Math.floor((Math.min(...xs) - fine.x0) / fine.cell))
+          const i1 = Math.min(fine.nx - 1, Math.ceil((Math.max(...xs) - fine.x0) / fine.cell))
+          const j0 = Math.max(0, Math.floor((fine.y0 - Math.max(...ys)) / fine.cell))
+          const j1 = Math.min(fine.ny - 1, Math.ceil((fine.y0 - Math.min(...ys)) / fine.cell))
+          for (let j = j0; j <= j1; j++)
+            for (let i = i0; i <= i1; i++) {
+              const x = fine.x0 + (i + 0.5) * fine.cell
+              const y = fine.y0 - (j + 0.5) * fine.cell
+              if (!insideRing(x, y, poly[0]) || poly.slice(1).some((h) => insideRing(x, y, h))) continue
+              const v = fine.z[j * fine.nx + i]
+              if (Number.isNaN(v)) continue
+              lo = Math.min(lo, v)
+              hi = Math.max(hi, v)
+              n++
+            }
+        }
+        if (n) {
+          siteMin = lo
+          siteMax = hi
+        }
+      }
       const toLonLat = (o: { rel: number; lon: number; lat: number } | null) => {
         if (!o) return null
         const [lon, lat] = utmkToWgs84(o.lon, o.lat)
@@ -147,6 +203,7 @@ export function analyzeTerrain(center: [number, number], boundary: Areal, radius
         },
         slopeShare: share.map((n) => (totalShare ? n / totalShare : 0)),
         coverage: inRadius ? valid / inRadius : 0,
+        fine,
       }
     })()
     cache.set(key, p)

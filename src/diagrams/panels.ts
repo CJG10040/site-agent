@@ -12,7 +12,7 @@ import type { DiagramSettings } from '../model/types'
 import { ALL_LAYERS } from '../sources/vworldLayers'
 import { aerialImage } from './aerial'
 import { esc, type PanelLayer, type PanelOutput } from './compose'
-import type { Bld, DiagramData, Pt } from './data'
+import { bldSourceText, type Bld, type DiagramData, type Pt } from './data'
 import { centroidOf, dir8, MAP_CX, MAP_CY, MAP_R, type Frame } from './frame'
 import { mix, shades, steps, zoningColor, type Palette } from './palette'
 import { projOf } from './move'
@@ -120,7 +120,9 @@ function where(c: PanelCtx, lon: number, lat: number): string {
 
 function bldCaption(c: PanelCtx): string {
   const add = c.d.addedFromAddr ? `, 도로명주소 건물로 ${fmt(c.d.addedFromAddr)}동 보강` : ''
-  return `건물: 국토교통부 GIS건물통합정보(브이월드)${add} · ${c.date} 수집 · 최근 지은 건물이 빠지거나 값이 비어 있을 수 있음`
+  return c.d.ngii
+    ? `건물: ${bldSourceText(c.d)}${add} · ${c.date} 수집 · 무벽건물(지붕만)·가건물은 뺌`
+    : `건물: 국토교통부 GIS건물통합정보(브이월드)${add} · ${c.date} 수집 · 최근 지은 건물이 빠지거나 값이 비어 있을 수 있음`
 }
 
 function catColor(pal: Palette, i: number): string {
@@ -689,9 +691,20 @@ export const PANELS: PanelDef[] = [
         .filter((w): w is number => w !== null)
       const adjText = [...new Set(adj.map((w) => Math.round(w)))].sort((a, b) => b - a)
       const count = bins.map((_, i) => rs.filter((r) => keyOf(r.width) === i).length)
+      // 수치지도를 올렸으면 실제 도로 면(인도 포함)을 바탕에 옅게
+      const areaSvg = c.d.ngii?.roads.length
+        ? `<path d="${c.d.ngii.roads.map((g) => c.f.path(g)).join('')}" fill="${mix('#ffffff', c.pal.ink, 0.14)}" stroke="none"/>`
+        : ''
       return {
-        layers: [baseBuildings(c, mix('#ffffff', c.pal.base, 0.6)), { id: '도로', svg: lines }],
-        legend: bins.map((b, i) => ({ color: colors[i], label: b.label, shape: 'line' as const })),
+        layers: [
+          baseBuildings(c, mix('#ffffff', c.pal.base, 0.6)),
+          ...(areaSvg ? [{ id: '도로_면_수치지도', svg: areaSvg }] : []),
+          { id: '도로', svg: lines },
+        ],
+        legend: [
+          ...bins.map((b, i) => ({ color: colors[i], label: b.label, shape: 'line' as const })),
+          ...(areaSvg ? [{ color: mix('#ffffff', c.pal.ink, 0.14), label: '도로 면 (수치지도, 인도 포함)' }] : []),
+        ],
         summary: [
           adjText.length ? `대지에 접한 길의 폭: ${adjText.map((w) => `${w}m`).join(', ')} (도로중심선 기준)` : '대지 경계에 바로 붙은 도로중심선을 찾지 못함 (골목·사유 통로일 수 있어 현장 확인)',
           `반경 안 도로 구간: ${bins.map((b, i) => (count[i] ? `${b.label.split(' ')[0]} ${count[i]}` : '')).filter(Boolean).join(', ')}`,
@@ -1067,6 +1080,8 @@ function contourSvg(c: PanelCtx, t: TerrainAnalysis, interval?: number): { svg: 
 }
 
 function terrainCaption(t: TerrainAnalysis, extra = ''): string {
+  if (t.grid.source === 'map')
+    return `국토지리정보원 수치지도${t.grid.version ? `(${t.grid.version}년)` : ''} 등고선·표고점으로 만든 대지 주변 2m 지형에 옹벽·석축 높이를 단차로 넣음(낮은 쪽은 선 방향 규칙), 그 밖은 10m 격자 · 도판은 5m 칸 · 높이는 대지 중심 = 0m 상대값${extra} · 등고선 사이 1m 안팎은 정확하지 않음 · 참고용`
   return t.grid.source === 'ngii'
     ? `국토지리정보원 연속수치지형도 등고선·표고점으로 만든 10m 격자(${t.grid.version ?? ''}) · 높이는 대지 중심 = 0m 상대값${extra} · 옹벽·계단처럼 10m보다 작은 지형은 나타나지 않음 · 참고용`
     : `대체 자료(AWS Terrain Tiles) — 광주·전남·전북 밖이라 국토지리정보원 격자가 없음, 도심에서는 건물 높이가 섞여 오차가 큼 · 높이는 대지 중심 = 0m 상대값${extra}`
@@ -1101,15 +1116,29 @@ export const TERRAIN_PANELS: PanelDef[] = [
       const cont = relief >= 3 ? contourSvg(c, t, iv) : { svg: '', step: null }
       const hb = t.high ? c.f.polar(t.high.lon, t.high.lat) : null
       const lb = t.low ? c.f.polar(t.low.lon, t.low.lat) : null
+      // 수치지도 옹벽·석축·제방 (상단 선)
+      const walls = (c.d.ngii?.walls ?? []).filter((w) => w.top && c.f.inside(...(centroidOf(w.geom) ?? [0, 0])))
+      const wallSvg = walls.length
+        ? `<path d="${walls.map((w) => c.f.path(w.geom, false)).join('')}" fill="none" stroke="#1d1d1b" stroke-width="2.2" stroke-linecap="round"/>`
+        : ''
       return {
-        layers: [{ id: '높이_단계', svg: raster }, { id: '등고선', svg: cont.svg }, { id: '바탕_건물', svg: `<path d="${c.d.buildings.map((b) => c.f.path(b.geom, false)).join('')}" fill="none" stroke="${c.pal.ink}" stroke-opacity="0.18" stroke-width="0.5"/>` }],
+        layers: [
+          { id: '높이_단계', svg: raster },
+          { id: '등고선', svg: cont.svg },
+          { id: '바탕_건물', svg: `<path d="${c.d.buildings.map((b) => c.f.path(b.geom, false)).join('')}" fill="none" stroke="${c.pal.ink}" stroke-opacity="0.18" stroke-width="0.5"/>` },
+          ...(wallSvg ? [{ id: '옹벽_석축', svg: wallSvg }] : []),
+        ],
         legendTitle: '대지 중심 = 0m',
-        legend: Array.from({ length: nb }, (_, i) => ({ color: colors[i], label: `${signed(start + i * bandStep)} ~ ${signed(start + (i + 1) * bandStep)}m` })),
+        legend: [
+          ...Array.from({ length: nb }, (_, i) => ({ color: colors[i], label: `${signed(start + i * bandStep)} ~ ${signed(start + (i + 1) * bandStep)}m` })),
+          ...(wallSvg ? [{ color: '#1d1d1b', label: '옹벽·석축·제방 (수치지도)', shape: 'line' as const }] : []),
+        ],
         summary: [
           `대지 중심을 0m로 하면 반경 안 높이는 ${signed(lo)} ~ ${signed(hi)}m (기복 약 ${fmt(relief, 0)}m)`,
           t.high && hb ? `가장 높은 곳: ${dir8(hb.bearing)}쪽 ${dist(hb.d)}, ${signed(t.high.rel)}m / 가장 낮은 곳: ${lb ? `${dir8(lb.bearing)}쪽 ${dist(lb.d)}, ${signed(t.low!.rel)}m` : '—'}` : '',
           relief >= 3 ? `등고선 간격 ${iv}m (굵은 선은 ${iv * 5}m마다)` : '기복이 3m 미만인 평지라 등고선을 그리지 않음 (레벨 계획 부담이 적다는 근거)',
-          `대지 안 높낮이 차 ${rangeText(t.site.range)}`,
+          `대지 안 높낮이 차 ${rangeText(t.site.range, !!t.fine)}`,
+          walls.length ? `옹벽·석축·제방 ${fmt(walls.length)}곳 (높이 ${(() => { const hs = walls.map((w) => w.h ?? 0).filter((h) => h > 0); return hs.length ? `${fmt(Math.min(...hs), 1)}~${fmt(Math.max(...hs), 1)}m` : '미상' })()})` : '',
         ].filter(Boolean),
         caption: terrainCaption(t),
       }

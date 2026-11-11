@@ -37,8 +37,17 @@ export interface TerrainGrid {
   ny: number
   /** 해발 높이(m), 0행 = 북쪽, 자료 없음 = NaN */
   z: Float32Array
-  source: 'ngii' | 'terrarium'
+  /** ngii 10m 지형 타일, terrarium 대체 자료, map 사용자가 올린 수치지도로 만든 세밀 지형(+10m) */
+  source: 'ngii' | 'terrarium' | 'map'
   version: string | null
+}
+
+/** 도판·파일 출처 글 */
+export function terrainSourceLabel(source: TerrainGrid['source'] | null | undefined, version?: string | null): string {
+  if (source === 'map') return `국토지리정보원 수치지도${version ? `(${version}년)` : ''} 등고선·표고점·옹벽 → 대지 주변 2m + 그 밖 10m 격자`
+  if (source === 'ngii') return '국토지리정보원 10m 격자'
+  if (source === 'terrarium') return '대체 자료(AWS Terrain Tiles)'
+  return '자료 없음'
 }
 
 let manifestP: Promise<TerrainManifest | null> | null = null

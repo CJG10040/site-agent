@@ -9,6 +9,8 @@ import { areaM2, centerOf, radiusCircle, siteBoundary } from '../lib/geo'
 import { sunPathFeatures } from '../lib/sun'
 import { applyCollection } from '../model/applyCollection'
 import { applyEnv } from '../model/applyEnv'
+import { hasNgii, refreshNgiiFacts } from '../model/applyNgii'
+import NgiiUpload from '../components/NgiiUpload'
 import { siteKey } from '../model/project'
 import type { Project } from '../model/types'
 import { ALL_CATEGORIES, DATA_CATEGORIES, type DataCategory, type KeyNeed } from '../sources/categories'
@@ -159,6 +161,8 @@ export default function DataStep(props: Props) {
       let after = null as Project | null
       update((d) => {
         applyCollection(d, outcome, boundary, last)
+        // 올려 둔 수치지도(같은 대지)는 남아 있으므로 그 사실 카드도 다시
+        if (hasNgii(d)) refreshNgiiFacts(d)
         after = d
       })
       setShowBuildings(true)
@@ -315,6 +319,8 @@ export default function DataStep(props: Props) {
             <p className="help">'해당 없음'은 오류가 아니라 대지·반경 안에 그 자료가 없다는 뜻입니다. 기준 연도가 자료마다 다르니 사실 카드의 출처를 확인하세요.</p>
           </section>
         )}
+
+        {boundary && <NgiiUpload project={project} update={update} config={config} />}
 
         {boundary && <SiteLinks site={site} />}
 

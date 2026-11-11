@@ -9,6 +9,8 @@ import { collectedDate, DEFAULT_SETTINGS, panelFileName } from '../diagrams/rend
 import { useDiagrams, type CachedPanel } from '../diagrams/useDiagrams'
 import { DXF_LAYERS, siteModelToDxf } from '../export/toDxf'
 import { wgs84ToUtmk } from '../lib/proj'
+import { terrainAround, type TerrainGrid } from '../lib/terrain'
+import { compositeGrid, fineHalfFor, fineTerrainCached } from '../lib/terrainFine'
 import { upsertDrafts } from '../model/applyCollection'
 import { appendSpeedSnapshot } from '../model/applyMove'
 import { downloadBlob, nowIso } from '../model/project'
@@ -168,7 +170,14 @@ export default function DiagramStep({ project, update, config, keys, onGoData, o
     try {
       await new Promise((r) => setTimeout(r, 30))
       const { buildSiteModel } = await import('../export/siteModel')
-      const m = await buildSiteModel(data, half)
+      // 수치지도를 올렸으면 대지 주변 2m 지형 + 그 밖 10m를 섞은 격자 (범위가 크면 칸을 키움)
+      let grid: TerrainGrid | null | undefined
+      if (data.ngii) {
+        const fine = fineTerrainCached(data.ngii, data.center, fineHalfFor(data.R))
+        const base = await terrainAround(data.center[0], data.center[1], data.R).catch(() => null)
+        grid = compositeGrid(base, fine, data.center, half + 20, half <= 300 ? 2 : half <= 600 ? 4 : 5)
+      }
+      const m = await buildSiteModel(data, half, grid !== undefined ? { grid } : {})
       const meta = {
         title: project.brief.projectName || '대지',
         address: project.site.address?.road || project.site.address?.parcel || project.site.parcels[0]?.addr || '',
@@ -185,7 +194,7 @@ export default function DiagramStep({ project, update, config, keys, onGoData, o
       const unknown = m.buildings.filter((b) => b.top === null).length
       setModelMsg({
         kind: 'ok',
-        text: `${kind === '3dm' ? '라이노 파일을' : 'DXF를'} 내려받았습니다 — 가로·세로 ${sideLabel(half)}, 건물 ${m.buildings.length.toLocaleString('ko-KR')}동(층수 모름 ${unknown}동은 발자국만), 등고선 ${m.contours.length}개(${m.contourStep}m 간격)${m.terrainSource === 'terrarium' ? ', 지형은 대체 자료(약 30m)' : m.terrainSource ? '' : ', 지형 자료 없음'}.`,
+        text: `${kind === '3dm' ? '라이노 파일을' : 'DXF를'} 내려받았습니다 — 가로·세로 ${sideLabel(half)}, 건물 ${m.buildings.length.toLocaleString('ko-KR')}동${unknown ? `(층수 모름 ${unknown}동은 발자국만)` : ''}, 등고선 ${m.contours.length}개(${m.contourStep}m 간격)${m.terrainSource === 'map' ? `, 지형 ${m.terrain?.cell ?? 2}m 칸·도로는 수치지도${m.walls.length ? `, 옹벽 등 ${m.walls.length}곳` : ''}` : m.terrainSource === 'terrarium' ? ', 지형은 대체 자료(약 30m)' : m.terrainSource ? '' : ', 지형 자료 없음'}.`,
       })
     } catch (e) {
       setModelMsg({ kind: 'error', text: `만들지 못했습니다: ${e instanceof Error ? e.message : String(e)}` })

@@ -2,6 +2,7 @@
 // 같은 자료·설정으로 그린 도판은 모듈 안에 잠시 보관해 단계를 오갈 때 다시 그리지 않는다.
 
 import { useEffect, useMemo, useState } from 'react'
+import { fineHalfFor, fineTerrainCached } from '../lib/terrainFine'
 import { analyzeTerrain, type TerrainAnalysis } from '../lib/terrainSite'
 import { observationsOf } from '../model/observations'
 import { siteKey } from '../model/project'
@@ -54,7 +55,9 @@ export function useDiagrams(project: Project, vworldKey: string, only?: string[]
     .join('|')
   // 환경 계산은 수집 뒤에 따로 끝나므로 그 시각도 넣는다
   const envSig = project.collected['env:result']?.retrieved_at ?? ''
-  const dataSig = `${project.collectedAt ?? ''}|${envSig}|${siteKey(project.site)}|${project.collectedRadiusM ?? project.site.radiusM}|${obsSig}`
+  // 수치지도는 수집과 따로 올리므로 그 시각도
+  const ngiiSig = project.collected['ngii:sheets']?.retrieved_at ?? ''
+  const dataSig = `${project.collectedAt ?? ''}|${envSig}|${ngiiSig}|${siteKey(project.site)}|${project.collectedRadiusM ?? project.site.radiusM}|${obsSig}`
   // 결론을 고칠 때마다 프로젝트 객체가 바뀌므로, 자료가 실제로 바뀐 때만 다시 만든다
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const data: DiagramData | null = useMemo(() => buildDiagramData(project), [dataSig, project.collected])
@@ -75,7 +78,8 @@ export function useDiagrams(project: Project, vworldKey: string, only?: string[]
     void (async () => {
       setBusy(true)
       const needsTerrain = wanted.some((p) => TERRAIN_IDS.has(p.id))
-      const t = needsTerrain ? await analyzeTerrain(data.center, data.boundary, data.R).catch(() => null) : null
+      const fine = needsTerrain ? fineTerrainCached(data.ngii, data.center, fineHalfFor(data.R)) : null
+      const t = needsTerrain ? await analyzeTerrain(data.center, data.boundary, data.R, fine).catch(() => null) : null
       if (!alive) return
       setTerrain(t)
       for (const def of wanted) {
