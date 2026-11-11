@@ -23,6 +23,7 @@ export const DEFAULT_SETTINGS: DiagramSettings = {
   speedSnap: -1,
   planFloors: 5,
   sectionAngle: 0,
+  sectionVex: 1,
 }
 
 export function settingsOf(project: Project): DiagramSettings {

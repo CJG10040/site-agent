@@ -235,7 +235,7 @@ export function applyEnv(project: Project, e: EnvResult | null, error: string | 
     license: VWORLD_LICENSE,
     reliability: 'computed',
     limitations:
-      '건물 높이는 층수×3m(모르면 3m), 대지 안 기존 건물은 없다고 보고, 반경 밖 건물은 빠진다. 지형은 10m 격자. 수목은 위성영상 색으로 찾은 최소치. 바람·열쾌적은 단순화한 실험이다. 모두 참고용이며 일조권·인허가 판정에 쓸 수 없다.',
+      '건물 높이는 실측 높이가 있으면 그 값, 없으면 층수×용도별 층고(주거 3m·비주거 4m, 모르면 3m), 대지 안 기존 건물은 없다고 보고, 반경 밖 건물은 빠진다. 지형은 10m 격자. 수목은 위성영상 색으로 찾은 최소치. 바람·열쾌적은 단순화한 실험이다. 모두 참고용이며 일조권·인허가 판정에 쓸 수 없다.',
     original_url: '',
     feature_count: null,
     status: error ? 'error' : 'ok',

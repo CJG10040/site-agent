@@ -9,6 +9,7 @@ import type { Project } from '../model/types'
 import type { EnvResult } from '../sources/env'
 import type { SpeedSnapshot } from '../sources/its'
 import type { NetworkResult } from '../sources/network'
+import { isPlaceholderStop } from '../sources/transit'
 import type { WindResult } from '../sources/wind'
 import { centroidOf } from './frame'
 
@@ -27,6 +28,43 @@ export interface Bld {
   /** 지하만 있는 시설 (지하상가·지하철역 등: 지상층 없음 + 지하층 있음 + 건축면적 0) */
   underground?: boolean
   onSite: boolean
+  /** GIS건물통합정보의 높이(m) — 값이 있고 층수와 어긋나지 않을 때만 */
+  heightM?: number | null
+}
+
+// ───────────────────────── 건물 높이 ─────────────────────────
+// 사용자 결정(2026-11-12): '실측 높이 우선 + 용도별 층고'. 단면·일조·하늘·가시권·바람·위요감·3D가 모두 이 값을 쓴다.
+
+/** 층수를 모를 때 (1층으로 봄) */
+export const UNKNOWN_H = 3
+
+/** 용도별 층고(m): 주거(단독·공동주택) 3.0, 공장·창고 5.0, 그 밖 비주거 4.0, 용도 모름 3.3 */
+export function floorHeightOf(use: string): number {
+  const u = use.trim()
+  if (!u) return 3.3
+  if (u.startsWith('01') || u.startsWith('02')) return 3.0
+  if (u.startsWith('17') || u.startsWith('18')) return 5.0
+  return 4.0
+}
+
+export const HEIGHT_RULE = '높이는 자료의 실측 높이가 있으면 그 값, 없으면 층수 × 용도별 층고(주거 3m·비주거 4m·공장·창고 5m·용도 모름 3.3m)'
+export const HEIGHT_SHORT = '실측 높이 또는 층수×용도별 층고'
+
+/** 실측 높이가 층수와 어울리는지 (층당 2.2~8m) */
+export function plausibleHeight(h: number | null, floors: number | null): number | null {
+  if (!h || !(h > 0)) return null
+  if (floors && floors > 0) {
+    const per = h / floors
+    if (per < 2.2 || per > 8) return null
+  } else if (h > 300) return null
+  return h
+}
+
+/** 건물 높이(m). 층수도 높이도 모르면 null */
+export function bldHeight(b: Pick<Bld, 'floors' | 'use' | 'heightM'>): number | null {
+  if (b.heightM && b.heightM > 0) return b.heightM
+  if (b.floors && b.floors > 0) return Math.round(b.floors * floorHeightOf(b.use) * 10) / 10
+  return null
 }
 
 export interface Parcel {
@@ -272,6 +310,7 @@ export function buildDiagramData(project: Project): DiagramData | null {
     const b: Bld = {
       geom: f.geometry,
       floors: floors && floors > 0 ? floors : null,
+      heightM: plausibleHeight(num(p.height), floors && floors > 0 ? floors : null),
       underground: isUnderground(floors, str(p.bld_nm), num(p.ugrnd_flr), num(p.archarea)),
       use: str(p.usability),
       year: Number.isInteger(yr) && yr >= 1900 && yr <= new Date().getFullYear() ? yr : null,
@@ -360,9 +399,12 @@ export function buildDiagramData(project: Project): DiagramData | null {
       const host = index.at(c[0], c[1]).find((b) => inside(c[0], c[1], b.geom))
       const floors = num(f.properties.floors)
       const name = str(f.properties.name) || str(f.properties.note).replace(/^\d+동$/, '') || host?.name || ''
+      const fl = floors && floors > 0 ? floors : (host?.floors ?? null)
       added.push({
         geom: f.geometry,
-        floors: floors && floors > 0 ? floors : (host?.floors ?? null),
+        floors: fl,
+        // 브이월드 건물의 실측 높이는 층수가 같을 때만 (단지 전체 도형의 최고 높이를 동마다 씌우지 않게)
+        heightM: host?.heightM && host.floors === fl ? host.heightM : null,
         use: host?.use || ngiiUse(kind, str(f.properties.use)),
         year: host?.year ?? null,
         area: safeArea(f.geometry),
@@ -481,6 +523,8 @@ export function buildDiagramData(project: Project): DiagramData | null {
       return { lon: c[0], lat: c[1], name: str(f.properties.name), kind: 'SW8' }
     })
   const stops: Pt[] = feats('tago:stops')
+    // 터미널 자체 기록(정류소 번호 0, 노선 없음)은 정류소가 아님 — 예전에 수집한 자료에도
+    .filter((f) => !isPlaceholderStop(f.properties.nodeno, f.properties.routes))
     .map((f): Pt | null => {
       const c = pointOf(f.geometry)
       return c ? { lon: c[0], lat: c[1], name: str(f.properties.nodenm), kind: 'bus', label: str(f.properties.routes) } : null

@@ -1,6 +1,6 @@
 // 3D 모형(.3dm)·CAD 밑그림(DXF)에 쓸 대지 모형을 만든다.
 // 좌표: 대지 중심 = 원점. EPSG:5179(UTM-K) 미터 좌표에서 원점 좌표를 뺀 값 (x 동쪽, y 북쪽 = 격자 북, 진북과 1° 안쪽 차이).
-// 높이: 대지 중심 지면 = 0m (국토지리정보원 등고선으로 만든 10m 지형 격자). 건물 높이는 층수 × 3m 어림.
+// 높이: 대지 중심 지면 = 0m (국토지리정보원 등고선으로 만든 10m 지형 격자). 건물 높이는 실측 높이 또는 층수 × 용도별 층고 (data.ts bldHeight).
 // 사용자 결정(2026-11-11): 원점은 대지 중심, 파일에 원점의 실제 좌표를 적는다. 지형은 지금의 10m 격자로 먼저 만들고,
 // 나중에 더 정밀한 지형(1·5m DEM, 현황측량)을 구하면 terrainAround 자리만 바꿔 끼운다.
 
@@ -8,8 +8,7 @@ import { featureCollection, intersect, polygon as turfPolygon, union } from '@tu
 import { contours } from 'd3-contour'
 import earcut from 'earcut'
 import type { Position } from 'geojson'
-import { inNgii, type DiagramData } from '../diagrams/data'
-import { FLOOR_M } from '../lib/enclosure'
+import { bldHeight, inNgii, type DiagramData } from '../diagrams/data'
 import type { Areal } from '../lib/geo'
 import { wgs84To5186, wgs84ToUtmk } from '../lib/proj'
 import { terrainAround, type TerrainGrid } from '../lib/terrain'
@@ -26,7 +25,7 @@ export interface ModelBuilding {
   parts: Poly[]
   /** 바닥 높이: 발자국 아래 가장 낮은 지면 (조금 묻음) */
   base: number
-  /** 지붕 높이: 발자국 평균 지면 + 층수 × 3m. 층수를 모르면 null (발자국만) */
+  /** 지붕 높이: 발자국 평균 지면 + 건물 높이(실측 또는 층수 × 용도별 층고). 모르면 null (발자국만) */
   top: number | null
   floors: number | null
   name: string
@@ -521,7 +520,7 @@ export async function buildSiteModel(d: DiagramData, half: number, opts: { grid?
     buildings.push({
       parts,
       base,
-      top: b.floors ? mean + b.floors * FLOOR_M : null,
+      top: bldHeight(b) !== null ? mean + (bldHeight(b) as number) : null,
       floors: b.floors,
       name: b.name,
       use: b.use,
@@ -666,7 +665,7 @@ export function modelNotes(m: SiteModel, meta: { title: string; address: string;
     ['등고선', `${m.contourStep}m 간격, 굵은 선(계곡선) ${m.contourStep * 5}m 간격 — 10m 격자에서 다시 그린 선`],
     [
       '건물',
-      `${m.mapYear !== null || m.minor.length ? '국토지리정보원 수치지도(올린 도엽 안, 층수 포함) + ' : ''}브이월드 GIS건물통합정보 + 도로명주소 건물. 높이 = 층수 × 3m 어림(발자국 평균 지면 기준), 층수 모르는 건물은 발자국만, 지하만 있는 시설은 뺌${m.minor.length ? ', 무벽건물·가건물은 따로' : ''}`,
+      `${m.mapYear !== null || m.minor.length ? '국토지리정보원 수치지도(올린 도엽 안, 층수 포함) + ' : ''}브이월드 GIS건물통합정보 + 도로명주소 건물. 높이 = 실측 높이가 있으면 그 값, 없으면 층수 × 용도별 층고(주거 3m·비주거 4m·공장·창고 5m·용도 모름 3.3m, 발자국 평균 지면 기준), 층수 모르는 건물은 발자국만, 지하만 있는 시설은 뺌${m.minor.length ? ', 무벽건물·가건물은 따로' : ''}`,
     ],
     [
       '도로',

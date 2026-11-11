@@ -52,7 +52,7 @@ function settingsKey(id: string, s: DiagramSettings): string {
   if (id === 'speed' || id === 'speedLocal') return `${common}|${s.speedSnap}`
   if (id === 'sunSite' || id === 'sunWide') return `${common}|${s.sunDay}`
   if (id === 'viewshed') return `${common}|${s.planFloors}`
-  if (id === 'sectionA' || id === 'sectionB') return `${common}|${s.sectionAngle}`
+  if (id === 'sectionA' || id === 'sectionB') return `${common}|${s.sectionAngle}|${s.sectionVex}`
   return common
 }
 

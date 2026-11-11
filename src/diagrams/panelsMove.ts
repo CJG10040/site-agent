@@ -2,7 +2,7 @@
 // panels.ts의 도우미를 가져오지 않는다 (panels.ts가 이 파일을 불러 순서를 정하므로 서로 부르지 않게).
 
 import type { LineString, MultiLineString } from 'geojson'
-import { ENC_CLASSES, FLOOR_M, STEP } from '../lib/enclosure'
+import { ENC_CLASSES, STEP } from '../lib/enclosure'
 import { sliceLine, type XY } from '../lib/network'
 import { bearingOf, ringArea, ringCentroid, toXY } from '../lib/xy'
 import { snapshotLabel, timeBand } from '../sources/its'
@@ -261,7 +261,7 @@ export const MOVE_PANELS: PanelDef[] = [
         legend: [...ENC_CLASSES.map((x, i) => ({ color: colors[i], label: x.label, shape: 'line' as const })), { color: c.pal.unknown, label: '높이 미상', shape: 'line' as const }],
         legendTitle: 'D = 양옆 건물 사이 거리, H = 건물 높이',
         summary: [frontTxt, `반경 안 길(10m 간격 ${fmt(n)}곳): ${ENC_CLASSES.map((x, i) => `${x.label.replace(/ \(.*\)$/, '')} ${pctText(share[i])}`).join(', ')}`],
-        caption: `도로중심선·GIS건물통합정보(브이월드) ${c.date} 수집 → 길 가운데에서 직각으로 첫 건물까지 잼 · 높이는 층수×${FLOOR_M}m · 담장·가로수·저층부 후퇴는 반영 안 함`,
+        caption: `도로중심선·GIS건물통합정보(브이월드) ${c.date} 수집 → 길 가운데에서 직각으로 첫 건물까지 잼 · 높이는 실측 높이 또는 층수×용도별 층고 · 담장·가로수·저층부 후퇴는 반영 안 함`,
       }
     },
   },

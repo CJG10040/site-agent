@@ -3,6 +3,7 @@
 // _name·_sub는 지도에서 눌렀을 때 보여 줄 이름과 설명.
 
 import type { Project } from '../model/types'
+import { isPlaceholderStop } from '../sources/transit'
 import type { GeoFeature } from '../sources/vworld'
 import { ALL_LAYERS } from '../sources/vworldLayers'
 
@@ -121,7 +122,7 @@ export function buildOverlays(project: Project): Overlay[] {
     layered(project, 'commerce', '상권·전통시장', COMMERCE),
   ]
 
-  const stops = (project.collected['tago:stops']?.features ?? []) as GeoFeature[]
+  const stops = ((project.collected['tago:stops']?.features ?? []) as GeoFeature[]).filter((f) => !isPlaceholderStop(f.properties.nodeno, f.properties.routes))
   out.push({
     id: 'bus',
     label: '버스정류소',

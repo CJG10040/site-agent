@@ -40,6 +40,17 @@ export interface TransitResult {
 
 const s = (v: unknown) => (v === null || v === undefined ? '' : String(v).trim())
 
+/**
+ * 정류소가 아닌 기록: 다른 지역 버스 자료에 들어 있는 터미널·종점 자체 (정류소 번호 0, 지나는 노선 없음).
+ * 예: 유스퀘어 대지 한가운데의 '광주유스퀘어(종합터미널)' — 경기도 버스 자료(GGB…), 노선 0개 (2026-11-12 확인).
+ * routes는 조회한 노선(배열) 또는 저장된 노선 번호 글('' = 조회했는데 없음, null = 조회 안 함).
+ */
+export function isPlaceholderStop(nodeno: unknown, routes: unknown): boolean {
+  const no = s(nodeno)
+  const none = routes === null || routes === undefined || (Array.isArray(routes) ? routes.length === 0 : s(routes) === '')
+  return no === '0' && none
+}
+
 /** 노선 조회는 가까운 정류소 몇 곳만 (요청 수 절약) */
 const MAX_ROUTE_LOOKUPS = 10
 
@@ -96,5 +107,5 @@ export async function busStopsAround(keys: ApiKeys, lon: number, lat: number): P
     for (let next = queue.shift(); next; next = queue.shift()) await lookup(next)
   }
   await Promise.all([worker(), worker(), worker()])
-  return { stops, routeChecked: targets.length }
+  return { stops: stops.filter((x) => !isPlaceholderStop(x.nodeno, x.routes)), routeChecked: targets.length }
 }

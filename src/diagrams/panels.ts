@@ -12,7 +12,7 @@ import type { DiagramSettings } from '../model/types'
 import { ALL_LAYERS } from '../sources/vworldLayers'
 import { aerialImage } from './aerial'
 import { esc, type PanelLayer, type PanelOutput } from './compose'
-import { bldSourceText, type Bld, type DiagramData, type Pt } from './data'
+import { bldHeight, bldSourceText, type Bld, type DiagramData, type Pt } from './data'
 import { centroidOf, dir8, MAP_CX, MAP_CY, MAP_R, type Frame } from './frame'
 import { mix, shades, steps, zoningColor, type Palette } from './palette'
 import { projOf } from './move'
@@ -757,7 +757,7 @@ export const PANELS: PanelDef[] = [
           ns.length ? `가장 가까운 지하철역: ${ns[0].p.name} (대지 중심에서 ${dist(ns[0].d)})` : '반경 안에 지하철역 없음',
           `대지 중심 200m 안 버스정류소 ${nb.filter((x) => x.d <= 200).length}곳, 500m 안 ${nb.filter((x) => x.d <= 500).length}곳`,
         ],
-        caption: `지하철역: 카카오 로컬 · 버스정류소: 국토교통부 TAGO(대지 중심 약 500m) · ${c.date} 수집 · 거리는 직선거리`,
+        caption: `지하철역: 카카오 로컬 · 버스정류소: 국토교통부 TAGO(대지 중심 약 500m, 정류소 번호 0·노선 없는 터미널 자체 기록은 뺌) · ${c.date} 수집 · 거리는 직선거리`,
       }
     },
   },
@@ -798,8 +798,9 @@ export const PANELS: PanelDef[] = [
         const dirRad = (((sun.azimuth + 180) % 360) * Math.PI) / 180
         const hulls: { poly: [number, number][]; onSite: boolean; box: number[] }[] = []
         for (const b of c.d.buildings) {
-          if (b.floors === null) continue
-          const L = Math.min((b.floors * 3) / tanA, c.f.R * 1.5) * c.f.s
+          const bh = bldHeight(b)
+          if (bh === null) continue
+          const L = Math.min(bh / tanA, c.f.R * 1.5) * c.f.s
           const dx = L * Math.sin(dirRad)
           const dy = -L * Math.cos(dirRad)
           const pts: [number, number][] = []
@@ -833,7 +834,7 @@ export const PANELS: PanelDef[] = [
           { color: mix('#ffffff', c.pal.ink, 0.28), label: `그림자 (${day.label} ${hour}시)` },
         ],
         summary,
-        caption: `태양 위치는 SunCalc 계산(한국 표준시) · 바깥 원이 지평선, 중심에 가까울수록 높은 태양 · 그림자는 층당 3m로 환산한 건물 높이로 그린 어림값이며 지형·나무는 반영하지 않음`,
+        caption: `태양 위치는 SunCalc 계산(한국 표준시) · 바깥 원이 지평선, 중심에 가까울수록 높은 태양 · 그림자는 건물 높이(실측 높이 또는 층수×용도별 층고)로 그린 어림값이며 지형·나무는 반영하지 않음`,
       }
     },
   },

@@ -394,6 +394,16 @@ export default function DiagramStep({ project, update, config, keys, onGoData, o
           <span className="label">단면 방향 {settings.sectionAngle}°</span>
           <input type="range" min={0} max={165} step={15} value={settings.sectionAngle} onChange={(e) => setSettings({ sectionAngle: Number(e.target.value) })} />
         </label>
+        <Seg
+          label="단면 높이"
+          value={settings.sectionVex}
+          options={[
+            { v: 1, label: '실제 비율' },
+            { v: 2, label: '×2' },
+            { v: 4, label: '×4' },
+          ]}
+          onChange={(v) => setSettings({ sectionVex: v })}
+        />
         {data?.env && (
           <label className="num-field">
             <span className="label">계획 층수 (가시권)</span>
@@ -442,7 +452,7 @@ export default function DiagramStep({ project, update, config, keys, onGoData, o
         <h3>3D 모형·CAD 밑그림 내보내기</h3>
         <p className="muted small">
           대지 중심 = 원점(단위 m, 위쪽 = 북), 높이 0 = 대지 중심 지면. 지형은 국토지리정보원 등고선으로 만든 <strong>10m 격자</strong>라 1m 안팎의 높낮이는 정확하지 않고,
-          건물 높이는 <strong>층수 × 3m 어림</strong>입니다(층수 모르면 발자국만). 원점의 실제 좌표(EPSG:5179·5186·경위도)는 파일 안에 적어 둡니다.
+          건물 높이는 <strong>실측 높이가 있으면 그 값, 없으면 층수 × 용도별 층고</strong>(주거 3m·비주거 4m·공장·창고 5m) 어림입니다(층수 모르면 발자국만). 원점의 실제 좌표(EPSG:5179·5186·경위도)는 파일 안에 적어 둡니다.
         </p>
         <div className="row">
           <span className="label">범위 (가로·세로)</span>

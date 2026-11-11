@@ -6,7 +6,7 @@
 
 import { pointToAreaDistanceM } from '../lib/geo'
 import { arealRings, pointInRings, pointToRingsDist, toXY } from '../lib/xy'
-import { mclsLabel, storeTime, STORE_TIME_LABEL, type StoreTime } from '../model/storeClass'
+import { mclsLabel, storeGroup, STORE_GROUP_NOTE, storeTime, STORE_TIME_LABEL, type StoreTime } from '../model/storeClass'
 import { esc, type LegendItem, type PanelOutput } from './compose'
 import type { DiagramData, Pt } from './data'
 import { MAP_CX, MAP_CY, MAP_R } from './frame'
@@ -173,9 +173,12 @@ const storesComparePanel: PanelDef = {
   render: (c): PanelOutput => {
     const ss = c.d.stores
     if (!ss.length) return { layers: [], legend: [], summary: [], caption: '', empty: '상가업소 자료가 없습니다', noFrame: true, hideBase: true }
-    const keyOf = (st: Pt) => mclsLabel(st.label || st.kind || '분류 없음')
+    // 비슷한 중분류는 12묶음으로 (한식·일식·서양식 → 음식점 등)
+    const keyOf = (st: Pt) => storeGroup(st.kind ?? '', st.label ?? '')
     const allC = new Map<string, number>()
     const nearC = new Map<string, number>()
+    /** 묶음 안 대지 주변 중분류 구성 (요약에) */
+    const nearSub = new Map<string, Map<string, number>>()
     let nearN = 0
     for (const st of ss) {
       const k = keyOf(st)
@@ -183,13 +186,21 @@ const storesComparePanel: PanelDef = {
       if (near100(c, st)) {
         nearN++
         nearC.set(k, (nearC.get(k) ?? 0) + 1)
+        const sub = nearSub.get(k) ?? new Map<string, number>()
+        const sk = mclsLabel(st.label || '분류 없음')
+        sub.set(sk, (sub.get(sk) ?? 0) + 1)
+        nearSub.set(k, sub)
       }
     }
     const allN = ss.length
     const lq = (k: string) => (nearN && allC.get(k) ? (nearC.get(k) ?? 0) / nearN / ((allC.get(k) as number) / allN) : 0)
-    const topAll = [...allC.entries()].sort((a, b) => b[1] - a[1]).slice(0, 9).map(([k]) => k)
-    const topNear = [...nearC.entries()].filter(([, n]) => n >= 3).sort((a, b) => lq(b[0]) - lq(a[0])).slice(0, 4).map(([k]) => k)
-    const rows = [...new Set([...topAll, ...topNear])].slice(0, 12)
+    const subText = (k: string) =>
+      [...(nearSub.get(k) ?? new Map<string, number>()).entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3)
+        .map(([s, n]) => `${s} ${n}`)
+        .join('·')
+    const rows = [...new Set([...allC.keys(), ...nearC.keys()])].slice(0, 13)
     rows.sort((a, b) => ((nearC.get(b) ?? 0) / Math.max(1, nearN) + (allC.get(b) ?? 0) / allN) - ((nearC.get(a) ?? 0) / Math.max(1, nearN) + (allC.get(a) ?? 0) / allN))
     const maxShare = Math.max(...rows.map((k) => Math.max((allC.get(k) ?? 0) / allN, nearN ? (nearC.get(k) ?? 0) / nearN : 0)), 0.01)
     const nearColor = c.pal.id === 'mono' ? '#222222' : c.pal.accent
@@ -212,7 +223,7 @@ const storesComparePanel: PanelDef = {
       svg += `<rect x="${X0}" y="${(y + 6 + rowH * 0.36).toFixed(1)}" width="${(bx(a) - X0).toFixed(1)}" height="${(rowH * 0.32).toFixed(1)}" fill="${allColor}"/>`
       svg += `<text x="${(Math.max(bx(nShare), bx(a)) + 8).toFixed(1)}" y="${(y + rowH * 0.48).toFixed(1)}" font-size="13" fill="${c.pal.subtle}">${pctText(nShare)} / ${pctText(a)}${tag ? `  <tspan font-weight="700" fill="${nearColor}">${tag}</tspan>` : ''}</text>`
     })
-    const more = rows.filter((k) => nearN >= 5 && (nearC.get(k) ?? 0) >= 3 && lq(k) >= 1.5).map((k) => `${k}(×${fmt(lq(k), 1)})`)
+    const more = rows.filter((k) => nearN >= 5 && (nearC.get(k) ?? 0) >= 3 && lq(k) >= 1.5).map((k) => `${k}(×${fmt(lq(k), 1)}${subText(k) ? `: ${subText(k)}` : ''})`)
     const none = rows.filter((k) => nearN >= 5 && !(nearC.get(k) ?? 0) && (allC.get(k) ?? 0) / allN >= 0.03)
     return {
       layers: [{ id: '비교', svg }],
@@ -220,13 +231,13 @@ const storesComparePanel: PanelDef = {
         { color: nearColor, label: `대지 경계 ${NEAR_M}m 안 (${fmt(nearN)}곳)` },
         { color: allColor, label: `반경 ${fmt(c.d.R)}m 전체 (${fmt(allN)}곳)` },
       ],
-      legendTitle: '업종(중분류)별 비율 — ×는 동네 대비 대지 주변에 몇 배 많은지',
+      legendTitle: '업종 묶음별 비율 (비슷한 중분류를 12묶음으로) — ×는 동네 대비 대지 주변에 몇 배 많은지',
       summary: [
         more.length ? `대지 주변에 동네보다 많은 업종: ${more.slice(0, 4).join(', ')}` : '대지 주변에 동네보다 눈에 띄게 많은 업종 없음',
         none.length ? `동네엔 흔하지만 대지 주변엔 없는 업종: ${none.slice(0, 4).join(', ')}` : '',
         nearN < 10 ? `대지 주변 상가가 ${nearN}곳뿐이라 비율이 크게 흔들릴 수 있음` : '',
       ].filter(Boolean),
-      caption: `소상공인시장진흥공단 상가(상권)정보 중분류 · 대지 경계에서 ${NEAR_M}m 안 vs 수집 반경 전체 · 비율은 상가 수 기준(면적·매출 아님) · ${c.date} 수집`,
+      caption: `소상공인시장진흥공단 상가(상권)정보 중분류를 묶음: ${STORE_GROUP_NOTE} · 대지 경계에서 ${NEAR_M}m 안 vs 수집 반경 전체 · 비율은 상가 수 기준(면적·매출 아님) · ${c.date} 수집`,
       noFrame: true,
       hideBase: true,
     }

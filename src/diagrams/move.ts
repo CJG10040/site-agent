@@ -2,12 +2,12 @@
 // 같은 DiagramData에 대해 한 번만 계산해 둔다.
 
 import type { LineString, MultiLineString } from 'geojson'
-import { enclosureSamples, FLOOR_M, type EncSample } from '../lib/enclosure'
+import { enclosureSamples, type EncSample } from '../lib/enclosure'
 import { blocks, metricFromNodes, midpoint, nearestOnNetwork, networkFromEdges, type Face, type Network, type XY } from '../lib/network'
 import { arealRings, lineToRingsDist, localProj, pointInRings, pointToRingsDist, ringCentroid, toXY, type LocalProj } from '../lib/xy'
 import type { SpeedSnapshot } from '../sources/its'
 import { WALK_SPEED, WALK_BANDS } from '../sources/network'
-import type { DiagramData } from './data'
+import { bldHeight, type DiagramData } from './data'
 
 const memo = new WeakMap<DiagramData, Map<string, unknown>>()
 function cached<T>(d: DiagramData, key: string, make: () => T): T {
@@ -175,7 +175,7 @@ export function encView(d: DiagramData): EncView | null {
         roads.push(l.map((c) => toXY(p, c)))
         widths.push(r.width)
       }
-    const blds = d.buildings.map((b) => ({ rings: arealRings(p, b.geom), h: b.floors && b.floors > 0 ? b.floors * FLOOR_M : null }))
+    const blds = d.buildings.map((b) => ({ rings: arealRings(p, b.geom), h: bldHeight(b) }))
     const samples = enclosureSamples(
       roads.map((coords, i) => ({ coords, width: widths[i] })),
       blds,

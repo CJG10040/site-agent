@@ -111,8 +111,9 @@ self.onmessage = async (ev: MessageEvent<EnvJob>) => {
     const view = visibleHeight(cm)
     lap('view')
 
-    // 바람 실험: 도판 원(windR)을 어느 방향에서도 다 덮게 정사각 영역 + 들어오고 나가는 여유
-    const side = job.windR * 2 + 120
+    // 바람 실험: 도판 원(windR)을 어느 방향에서도 다 덮게 정사각 영역 + 들어오고 나가는 여유.
+    // 작은 대지는 도판을 가까이 잡아도 계산은 반경 300m 이상으로 (바람이 오는 쪽 건물까지)
+    const side = Math.max(job.windR, 300) * 2 + 120
     const heightAt = (x: number, y: number) => {
       const k = cellAt(coarseG, x, y)
       return k >= 0 ? cm.bld[k] : 0

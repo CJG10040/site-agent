@@ -222,6 +222,8 @@ export interface DiagramSettings {
   planFloors: number
   /** 단면 방향 회전(°, 시계방향): 0이면 남북·동서 */
   sectionAngle: number
+  /** 단면 높이 과장 배율 (1 = 실제 비율, 2026-11-12 사용자 결정: 기본 1:1 + 과장 고르기) */
+  sectionVex: number
 }
 
 /** 도판 하나의 결론 */

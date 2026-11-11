@@ -9,7 +9,7 @@ import { relAt } from '../lib/terrainSite'
 import { arealRings } from '../lib/xy'
 import type { XY } from '../lib/network'
 import type { PanelOutput } from './compose'
-import type { DiagramData } from './data'
+import { bldHeight, HEIGHT_SHORT, UNKNOWN_H, type DiagramData } from './data'
 import { niceLength } from './frame'
 import { projOf, siteRingsXY } from './move'
 import { mix } from './palette'
@@ -18,8 +18,6 @@ import type { PanelCtx, PanelDef } from './panels'
 const fmt = (n: number, digits = 0) => n.toLocaleString('ko-KR', { maximumFractionDigits: digits })
 const DIR8 = ['북', '북동', '동', '남동', '남', '남서', '서', '북서']
 const dir8 = (b: number) => DIR8[Math.round((((b % 360) + 360) % 360) / 45) % 8]
-const FLOOR_M = 3
-const UNKNOWN_H = 3
 /** 단면 가까이(이 거리 안) 건물은 입면으로 */
 const BEYOND_M = 40
 
@@ -106,8 +104,9 @@ function sectionPanel(which: 'A' | 'B'): PanelDef {
           if (ss > maxS) maxS = ss
         }
         if (maxS < -L || minS > L) continue
-        const known = !!(b.floors && b.floors > 0)
-        const h = known ? (b.floors as number) * FLOOR_M : UNKNOWN_H
+        const bh = bldHeight(b)
+        const known = bh !== null
+        const h = bh ?? UNKNOWN_H
         if (minD <= 0 && maxD >= 0) {
           for (const [s0, s1] of lineIntervals(rings, u)) if (s1 > -L && s0 < L) cuts.push({ s0: Math.max(-L, s0), s1: Math.min(L, s1), h, known })
         } else if (Math.min(Math.abs(minD), Math.abs(maxD)) <= BEYOND_M) {
@@ -126,7 +125,10 @@ function sectionPanel(which: 'A' | 'B'): PanelDef {
       const sx = (X1 - X0) / (2 * L)
       const TOP = 120
       const BASE = 560
-      const vex = Math.max(1, Math.min(4, Math.floor((BASE - TOP) / ((zMax - zMin) * sx))))
+      // 높이 과장: 기본 실제 비율(1:1), 도판 설정에서 ×2·×4. 과장하면 그림이 칸을 넘지 않게 줄여서
+      const want = [1, 2, 4].includes(c.st.sectionVex) ? c.st.sectionVex : 1
+      const fit = (BASE - TOP) / ((zMax - zMin) * sx)
+      const vex = want === 1 ? 1 : Math.max(1, Math.min(want, Math.floor(fit * 10) / 10))
       const sy = sx * vex
       const px = (s: number) => X0 + (s + L) * sx
       const py = (z: number) => BASE - (z - zMin) * sy
@@ -217,7 +219,7 @@ function sectionPanel(which: 'A' | 'B'): PanelDef {
         ],
         legendTitle: `${which}–${which}′ 단면 · ${dir8(leftAz)} → ${dir8(rightAz)}${rot ? ` (${rot}° 돌림)` : ''} · 높이 ${vex === 1 ? '실제 비율' : `${vex}배 과장`}`,
         summary,
-        caption: `지형: ${c.t ? terrainSourceLabel(c.t.grid.source, c.t.grid.version) : '자료 없음(평지로 그림)'} · 건물: ${d.ngii ? '수치지도·GIS건물통합정보' : 'GIS건물통합정보'} 층수×${FLOOR_M}m${unknown ? `(층수 모름 ${unknown}동은 ${UNKNOWN_H}m, 점선)` : ''} · ${c.date} 수집 · 단면 방향은 도판 설정에서 돌림`,
+        caption: `지형: ${c.t ? terrainSourceLabel(c.t.grid.source, c.t.grid.version) : '자료 없음(평지로 그림)'} · 건물: ${d.ngii ? '수치지도·GIS건물통합정보' : 'GIS건물통합정보'} ${HEIGHT_SHORT}${unknown ? `(층수 모름 ${unknown}동은 ${UNKNOWN_H}m, 점선)` : ''} · ${c.date} 수집 · 단면 방향은 도판 설정에서 돌림`,
         hideBase: true,
         noFrame: true,
       }

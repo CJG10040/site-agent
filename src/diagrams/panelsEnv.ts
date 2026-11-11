@@ -5,10 +5,10 @@ import { contours } from 'd3-contour'
 import { rasterize, unpackGrid, type GridSpec, type UnpackedGrid } from '../lib/env/grid'
 import type { XY } from '../lib/network'
 import { sunAt, SUN_DAYS } from '../lib/sun'
-import { FLOOR_M, windName, type EnvResult } from '../sources/env'
+import { FLOOR_M, windName, windRadius, type EnvResult } from '../sources/env'
 import type { LegendItem, PanelLayer, PanelOutput } from './compose'
 import { MAP_CX, MAP_CY, MAP_R } from './frame'
-import type { DiagramData } from './data'
+import { HEIGHT_SHORT, type DiagramData } from './data'
 import { siteRingsXY } from './move'
 import { mix, shades, steps } from './palette'
 import type { PanelCtx, PanelDef } from './panels'
@@ -123,7 +123,7 @@ function maskOf(c: PanelCtx, g: GridSpec, kind: 'site' | 'radius'): Uint8Array {
 }
 
 function envCaption(e: EnvResult, extra: string): string {
-  const parts = [`건물: ${e.buildingSource ?? 'GIS건물통합정보'}(층수×${FLOOR_M}m${e.unknownHeights ? `, 층수 모름 ${fmt(e.unknownHeights)}동은 ${FLOOR_M}m로 봄` : ''}), 대지 안 기존 건물은 없다고 봄`]
+  const parts = [`건물: ${e.buildingSource ?? 'GIS건물통합정보'}(${HEIGHT_SHORT}${e.unknownHeights ? `, 층수 모름 ${fmt(e.unknownHeights)}동은 ${FLOOR_M}m로 봄` : ''}), 대지 안 기존 건물은 없다고 봄`]
   if (e.terrainSource) parts.push(`지형: ${e.terrainSource}`)
   parts.push(`${e.computedAt.slice(0, 10)} 계산 · ${CALC}`)
   return [extra, ...parts].filter(Boolean).join(' · ')
@@ -380,14 +380,40 @@ function nearRings(x: number, y: number, rings: XY[][], d: number): boolean {
 const WIND_BINS = [0, 0.3, 0.7, 1.1, 1.5]
 const WIND_LABELS = ['0.3배 미만 (거의 멈춤)', '0.3~0.7배', '0.7~1.1배 (비슷)', '1.1~1.5배', '1.5배 이상 (빨라짐)']
 
+/** 대지 중심에서 가장 먼 대지 꼭짓점까지(m) */
+function siteFarOf(d: DiagramData): number {
+  return Math.max(0, ...siteRingsXY(d).flat().map(([x, y]) => Math.hypot(x, y)))
+}
+
+/**
+ * 바람 실험 도판 반경: 계산할 때 정한 반경(windR)을 쓰되, 대지가 잘리면 대지 끝 + 40m까지 넓힘 (계산한 격자가 덮는 데까지).
+ * 예전 계산 결과(windR 없음 — 그땐 300m)도 대지가 다 보이게. (2026-11-12 사용자 보고: 유스퀘어가 300m 원에 잘림)
+ */
+export function windFrameR(d: DiagramData): number {
+  const far = siteFarOf(d)
+  const e = d.env
+  if (!e) return windRadius(d.R, far)
+  const grid = e.winds.find((w) => w.ratio)?.ratio
+  const half = grid ? (grid.nx * grid.cell) / 2 : null
+  let r = e.windR ?? Math.min(d.R, 300)
+  if (r < far + 40) r = far + 40
+  if (half) r = Math.min(r, half - 5)
+  return Math.ceil(r / 10) * 10
+}
+
+/** 대지가 계산 범위를 넘어 잘리는지 */
+function windClipsSite(d: DiagramData): boolean {
+  return siteFarOf(d) > windFrameR(d) - 5
+}
+
 function windPanel(season: '여름' | '겨울'): PanelDef {
   return {
     id: season === '여름' ? 'windSummer' : 'windWinter',
     title: `바람 흐름 실험 (${season}, 보행 높이)`,
     group: '환경',
     needs: "공간정보에서 '환경 계산'과 '기후·바람'을 수집하세요.",
-    // 계산한 범위 그대로 (대지가 크면 수집 반경보다 넓을 수 있음)
-    frameR: (d) => d.env?.windR ?? Math.min(d.R, 300),
+    // 계산한 범위 (대지 크기에 맞춤, 예전 결과도 대지가 잘리지 않게)
+    frameR: (d) => windFrameR(d),
     render: (c): PanelOutput => {
       const e = envOf(c)
       if (!e) return emptyOut('환경 계산 결과가 없습니다')
@@ -436,6 +462,8 @@ function windPanel(season: '여름' | '겨울'): PanelDef {
         summary: [
           near.length ? `대지 주변 30m: 평균 ${fmt(near.reduce((x, y) => x + y, 0) / near.length, 2)}배` : '',
           `계산 영역 중 빨라지는 곳(1.5배 이상) ${pctText(n ? fast / n : 0)}, 거의 멈추는 곳(0.3배 미만) ${pctText(n ? still / n : 0)}`,
+          windClipsSite(c.d) ? "대지가 계산한 범위보다 커서 일부가 잘림 — ④ 공간정보에서 '환경 계산'을 다시 하면 대지 크기에 맞춰 계산" : '',
+          e.windR === undefined ? "예전에 계산한 결과 — ④ 공간정보에서 '환경 계산'을 다시 하면 대지 크기에 맞춘 범위로 계산" : '',
         ].filter(Boolean),
         caption: `실험 · 보행 높이(약 2m) 한 층의 평면 흐름, 2D 격자 볼츠만(D2Q9) · 도판보다 넓은 ${fmt(g.nx * g.cell)}m 정사각을 ${fmt(g.cell, 1)}m 칸으로 계산${(e.windR ?? 0) > c.d.R ? ` · 대지가 커서 수집 반경(${fmt(c.d.R)}m) 밖까지 그렸고, 그 바깥은 건물 자료가 없어 빈 땅으로 계산` : ""} · 높이 20m(약 7층) 이상 건물은 막고, 낮은 건물은 높이만큼 바람을 줄여 지나가게 함(지붕 위로 넘는 바람을 흉내) · 실제 풍속·돌풍 아님 · ${e.computedAt.slice(0, 10)} 계산`,
       }

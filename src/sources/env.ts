@@ -1,7 +1,7 @@
 // 환경 계산 준비·실행 (화면 쪽): 수집이 끝난 프로젝트에서 건물·지형·태양 위치·바람·여름 오후 조건을 모아 Worker로 보낸다.
 // 대지 안 기존 건물은 없다고 보고(새로 지을 땅) 계산한다.
 
-import { buildDiagramData } from '../diagrams/data'
+import { bldHeight, buildDiagramData } from '../diagrams/data'
 import type { EnvBuilding, SunStep } from '../lib/env/compute'
 import type { EnvJob, EnvMessage, EnvOutput } from '../lib/env/env.worker'
 import type { LocalTerrain } from '../lib/env/grid'
@@ -109,14 +109,20 @@ function run(job: EnvJob, onProgress: (t: string) => void): Promise<EnvOutput> {
   })
 }
 
-/** 바람 실험 도판 반경: 기본 400m, 대지가 크면 대지 끝 + 150m (최대 800m) */
-export const WIND_R = 400
+/**
+ * 바람 실험 도판 반경 — 대지 크기에 맞춤 (2026-11-12 사용자 요청: '대지의 크기를 판단하여 스케일을 정하도록').
+ * 대지 가장 먼 꼭짓점 거리의 2배 또는 +150m 중 큰 것, 최소 250m·최대 800m.
+ * 수집 반경 밖에는 건물 자료가 없으므로 수집 반경을 넘는 것은 대지가 커서 꼭 필요할 때만(대지 끝 + 80m까지).
+ */
+export const WIND_R_MIN = 250
 export const WIND_R_MAX = 800
+/** 바람 계산 영역은 도판보다 넓게: 반경 최소 300m (바람이 오는 쪽 건물까지 넣으려고) */
+export const WIND_DOMAIN_MIN = 300
 
 export function windRadius(R: number, siteFar: number): number {
-  const need = Math.ceil((siteFar + 150) / 10) * 10
-  // 수집 반경 밖에는 건물 자료가 없으므로 기본은 수집 반경 안에서, 대지가 크면 대지가 다 보이게
-  return Math.min(WIND_R_MAX, Math.max(need, Math.min(R, WIND_R)))
+  const want = Math.max(siteFar * 2, siteFar + 150)
+  const cap = Math.max(R, siteFar + 80)
+  return Math.min(WIND_R_MAX, Math.max(WIND_R_MIN, Math.ceil(Math.min(want, cap) / 10) * 10))
 }
 
 export async function computeEnv(project: Project, config: VWorldConfig, onProgress: (t: string) => void): Promise<EnvResult> {
@@ -130,8 +136,8 @@ export async function computeEnv(project: Project, config: VWorldConfig, onProgr
   // 대지 안 기존 건물과 지하만 있는 시설(지하상가·역)은 뺀다
   const buildings: EnvBuilding[] = d.buildings
     .filter((b) => !b.onSite && !b.underground)
-    .map((b) => ({ rings: arealRings(p, b.geom), h: b.floors && b.floors > 0 ? b.floors * FLOOR_M : UNKNOWN_H }))
-  const unknownHeights = d.buildings.filter((b) => !b.onSite && !b.underground && !(b.floors && b.floors > 0)).length
+    .map((b) => ({ rings: arealRings(p, b.geom), h: bldHeight(b) ?? UNKNOWN_H }))
+  const unknownHeights = d.buildings.filter((b) => !b.onSite && !b.underground && bldHeight(b) === null).length
   onProgress('지형 받는 중')
   const fine = fineTerrainCached(d.ngii, d.center, fineHalfFor(R))
   const terr = await localTerrain(lon, lat, R + 2100, fine).catch(() => null)

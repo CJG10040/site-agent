@@ -19,7 +19,7 @@ const LAYERS: LayerDef[] = [
   { key: 'info', name: '정보', color: [40, 40, 40] },
   { key: 'site', name: '대지 경계', color: [220, 38, 38] },
   { key: 'bldg', name: '건물', color: [140, 140, 140] },
-  { key: 'bldgAround', name: '주변 건물 (층수 × 3m)', color: [150, 150, 150], parent: 'bldg' },
+  { key: 'bldgAround', name: '주변 건물 (실측 높이·층수 × 용도별 층고)', color: [150, 150, 150], parent: 'bldg' },
   { key: 'bldgSite', name: '대지 안 기존 건물', color: [230, 150, 150], parent: 'bldg' },
   { key: 'bldgUnknown', name: '층수 모름 (발자국만)', color: [190, 190, 190], parent: 'bldg' },
   { key: 'bldgMinor', name: '지붕 구조물·가건물 (수치지도, 발자국)', color: [200, 190, 170], parent: 'bldg' },

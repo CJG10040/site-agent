@@ -251,7 +251,7 @@ function enclosureDraft(d: DiagramData, src: string): DraftFact | null {
     const H = median(both.map((s) => s.H as number))
     const R = median(both.map((s) => s.ratio as number))
     const cls = ENC_CLASSES.findIndex((c) => R < c.max)
-    frontTxt = `대지 앞 길에서 건물 사이 거리(D)는 약 ${fmt(D)}m, 양옆 건물 높이(H, 층수×3m)는 약 ${fmt(H)}m로 D/H는 약 ${fmt(R, 1)}(${ENC_CLASSES[cls >= 0 ? cls : ENC_CLASSES.length - 1].label.replace(/^.*\((.*)\)$/, '$1')})이다.`
+    frontTxt = `대지 앞 길에서 건물 사이 거리(D)는 약 ${fmt(D)}m, 양옆 건물 높이(H, 실측 또는 층수×용도별 층고)는 약 ${fmt(H)}m로 D/H는 약 ${fmt(R, 1)}(${ENC_CLASSES[cls >= 0 ? cls : ENC_CLASSES.length - 1].label.replace(/^.*\((.*)\)$/, '$1')})이다.`
   }
   return {
     auto_key: 'enclosure',
@@ -352,7 +352,7 @@ export function addMoveFacts(ctx: FactContext, o: MoveOutcome, enclosure: boolea
         license: VWORLD_LICENSE,
         reliability: 'computed',
         limitations:
-          '길 가운데에서 직각으로 30m(넓은 길은 폭/2+22m) 안의 첫 건물까지 잰 값이다. 높이는 층수×3m로 어림했고, 담장·가로수·건물 저층부 후퇴는 반영하지 않는다.',
+          '길 가운데에서 직각으로 30m(넓은 길은 폭/2+22m) 안의 첫 건물까지 잰 값이다. 높이는 실측 높이 또는 층수×용도별 층고로 어림했고, 담장·가로수·건물 저층부 후퇴는 반영하지 않는다.',
         feature_count: null,
       }),
     )
