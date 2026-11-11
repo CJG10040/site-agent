@@ -386,7 +386,8 @@ function windPanel(season: '여름' | '겨울'): PanelDef {
     title: `바람 흐름 실험 (${season}, 보행 높이)`,
     group: '환경',
     needs: "공간정보에서 '환경 계산'과 '기후·바람'을 수집하세요.",
-    frameR: (d) => Math.min(d.R, d.env?.windR ?? d.R),
+    // 계산한 범위 그대로 (대지가 크면 수집 반경보다 넓을 수 있음)
+    frameR: (d) => d.env?.windR ?? Math.min(d.R, 300),
     render: (c): PanelOutput => {
       const e = envOf(c)
       if (!e) return emptyOut('환경 계산 결과가 없습니다')
@@ -436,7 +437,7 @@ function windPanel(season: '여름' | '겨울'): PanelDef {
           near.length ? `대지 주변 30m: 평균 ${fmt(near.reduce((x, y) => x + y, 0) / near.length, 2)}배` : '',
           `계산 영역 중 빨라지는 곳(1.5배 이상) ${pctText(n ? fast / n : 0)}, 거의 멈추는 곳(0.3배 미만) ${pctText(n ? still / n : 0)}`,
         ].filter(Boolean),
-        caption: `실험 · 보행 높이(약 2m) 한 층의 평면 흐름, 2D 격자 볼츠만(D2Q9) · 도판보다 넓은 ${fmt(g.nx * g.cell)}m 정사각을 ${fmt(g.cell, 1)}m 칸으로 계산 · 높이 20m(약 7층) 이상 건물은 막고, 낮은 건물은 높이만큼 바람을 줄여 지나가게 함(지붕 위로 넘는 바람을 흉내) · 실제 풍속·돌풍 아님 · ${e.computedAt.slice(0, 10)} 계산`,
+        caption: `실험 · 보행 높이(약 2m) 한 층의 평면 흐름, 2D 격자 볼츠만(D2Q9) · 도판보다 넓은 ${fmt(g.nx * g.cell)}m 정사각을 ${fmt(g.cell, 1)}m 칸으로 계산${(e.windR ?? 0) > c.d.R ? ` · 대지가 커서 수집 반경(${fmt(c.d.R)}m) 밖까지 그렸고, 그 바깥은 건물 자료가 없어 빈 땅으로 계산` : ""} · 높이 20m(약 7층) 이상 건물은 막고, 낮은 건물은 높이만큼 바람을 줄여 지나가게 함(지붕 위로 넘는 바람을 흉내) · 실제 풍속·돌풍 아님 · ${e.computedAt.slice(0, 10)} 계산`,
       }
     },
   }

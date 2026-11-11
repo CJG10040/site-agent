@@ -122,8 +122,8 @@ self.onmessage = async (ev: MessageEvent<EnvJob>) => {
     for (const w of job.winds) {
       post({ type: 'progress', text: `바람 흐름 실험 (${w.season})` })
       const f = lbmWind(heightAt, w.fromAz, side, {
-        n: Math.max(140, Math.min(240, Math.round(side / 3.5))),
-        steps: 2800,
+        n: Math.max(140, Math.min(300, Math.round(side / 3.5))),
+        steps: 2600,
         avg: 900,
         onProgress: (p) => post({ type: 'progress', text: `바람 흐름 실험 (${w.season}) ${Math.round(p * 100)}%` }),
       })

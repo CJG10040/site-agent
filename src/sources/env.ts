@@ -89,8 +89,15 @@ function run(job: EnvJob, onProgress: (t: string) => void): Promise<EnvOutput> {
   })
 }
 
-/** 바람 실험 도판 반경: 대지 주변을 자세히 (최대 300m) */
-export const WIND_R = 300
+/** 바람 실험 도판 반경: 기본 400m, 대지가 크면 대지 끝 + 150m (최대 800m) */
+export const WIND_R = 400
+export const WIND_R_MAX = 800
+
+export function windRadius(R: number, siteFar: number): number {
+  const need = Math.ceil((siteFar + 150) / 10) * 10
+  // 수집 반경 밖에는 건물 자료가 없으므로 기본은 수집 반경 안에서, 대지가 크면 대지가 다 보이게
+  return Math.min(WIND_R_MAX, Math.max(need, Math.min(R, WIND_R)))
+}
 
 export async function computeEnv(project: Project, config: VWorldConfig, onProgress: (t: string) => void): Promise<EnvResult> {
   void config
@@ -134,7 +141,7 @@ export async function computeEnv(project: Project, config: VWorldConfig, onProgr
     thermal: hot ? { alt: ts.altitude, az: ts.azimuth, ta: hot.ta, rh: hot.rh, ws: hot.ws } : null,
     winds,
     fineHalf,
-    windR: Math.min(R, WIND_R),
+    windR: windRadius(R, far),
   }
   const out = await run(job, onProgress)
   return {
