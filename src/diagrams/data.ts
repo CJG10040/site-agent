@@ -268,7 +268,11 @@ export function buildDiagramData(project: Project): DiagramData | null {
         .map((f) => ({ geom: f.geometry as Areal, name: nameOf(f.properties), layer: id, extra: {} as Record<string, never> })),
     )
 
-  const zoning = areas(['LT_C_UQ111', 'LT_C_UQ112', 'LT_C_UQ113', 'LT_C_UQ114'], (p) => str(p.uname) || '용도지역 미상')
+  // 이름(uname) 없는 용도지역 도형은 도시지역 전체 윤곽(예: 광주 서구 일대 4,600ha, 결정연도·번호 '0000')이라
+  // 이름 있는 용도지역이 있으면 뺀다 (안 빼면 반경 전체가 '미상'으로 덮임)
+  const zoningAll = areas(['LT_C_UQ111', 'LT_C_UQ112', 'LT_C_UQ113', 'LT_C_UQ114'], (p) => str(p.uname))
+  const zoningNamed = zoningAll.filter((z) => z.name)
+  const zoning = zoningNamed.length ? zoningNamed : zoningAll.map((z) => ({ ...z, name: '용도지역 미상' }))
   const districts = areas(
     [
       'LT_C_UQ121',
