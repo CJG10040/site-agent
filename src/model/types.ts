@@ -188,6 +188,8 @@ export interface Project {
   reportPrintedAt?: string
   /** Phase 7 도판: 그리기 설정과 도판별 결론 */
   diagrams?: DiagramState
+  /** Phase 12 종합 다이어그램 (⑧ 해석·가설에서 그림) */
+  synth?: SynthState
 }
 
 // ───────────────────────── Phase 7 도판 ─────────────────────────
@@ -246,6 +248,36 @@ export interface DiagramState {
   chatLog?: DiagramChat[]
   /** ⑨ 리포트의 보드 조판 설정 */
   board?: BoardSettings
+}
+
+// ───────────────────────── Phase 12 종합 다이어그램 ─────────────────────────
+
+/** 색 = 방향 (긴장·기회 카드의 '방향'과 같은 네 가지 + 그 밖) */
+export type SynthTone = 'keep' | 'reveal' | 'avoid' | 'transform' | 'neutral'
+export type SynthKind = 'arrow' | 'area' | 'point' | 'note' | 'card'
+
+export interface SynthItem {
+  id: string
+  kind: SynthKind
+  /** 경위도 점: 화살표 2개 이상, 영역 3개 이상, 포인트·카드 1개, 글상자 1개(+ 지시선 끝 1개) */
+  pts: [number, number][]
+  tone: SynthTone
+  /** 글 (카드는 비우면 카드 제목) */
+  label: string
+  cardId?: string
+  /** 화살표 양쪽 */
+  both?: boolean
+  /** 포인트 모양: 점·별(중요한 곳)·번개(긴장 지점) */
+  mark?: 'dot' | 'star' | 'bolt'
+}
+
+export interface SynthState {
+  items: SynthItem[]
+  /** 바탕: 'plain'(회색 건물·도로) 또는 도판 id */
+  base: string
+  /** 도판 반경(m), null이면 수집 반경 */
+  radius: number | null
+  updatedAt: string
 }
 
 // ───────────────────────── Phase 11 보드 조판 ─────────────────────────

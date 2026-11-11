@@ -6,7 +6,8 @@ import type { DiagramData } from './data'
 import { makeFrame } from './frame'
 import { paletteOf } from './palette'
 import type { TerrainAnalysis } from '../lib/terrainSite'
-import { panelNumber, type PanelDef } from './panels'
+import { ORDERED_PANELS, panelNumber, type PanelCtx, type PanelDef } from './panels'
+import type { SynthCtx } from './synth'
 
 export const DEFAULT_SETTINGS: DiagramSettings = {
   frame: 'circle',
@@ -45,13 +46,20 @@ export async function renderPanel(
   vworldKey: string,
   date: string,
   terrain: TerrainAnalysis | null = null,
+  extra: { synth?: SynthCtx | null } = {},
 ): Promise<RenderedPanel> {
-  const R = def.frameR ? def.frameR(data) : data.R
+  const R = def.frameR ? def.frameR(data, extra) : data.R
   const frame = makeFrame(data.center[0], data.center[1], R, settings.frame)
   const pal = paletteOf(settings.palette)
   let out: PanelOutput
   try {
-    out = await def.render({ d: data, f: frame, pal, st: settings, vworldKey, date, t: terrain })
+    const ctx: PanelCtx = { d: data, f: frame, pal, st: settings, vworldKey, date, t: terrain, synth: extra.synth ?? null }
+    // 종합 도판은 다른 도판의 그림을 같은 틀로 다시 그려 바탕에 깔 수 있다
+    ctx.basePanel = async (id) => {
+      const bd = ORDERED_PANELS.find((p) => p.id === id && p.id !== def.id)
+      return bd ? await bd.render({ ...ctx, synth: null }) : null
+    }
+    out = await def.render(ctx)
   } catch (e) {
     out = { layers: [], legend: [], summary: [], caption: '', empty: `그리는 중 오류: ${e instanceof Error ? e.message : String(e)}` }
   }

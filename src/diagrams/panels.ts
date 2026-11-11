@@ -21,6 +21,7 @@ import { ENV_PANELS } from './panelsEnv'
 import { LIFE_PANELS } from './panelsLife'
 import { MOVE_PANELS } from './panelsMove'
 import { SECTION_PANELS } from './panelsSection'
+import { SYNTH_PANEL, type SynthCtx } from './synth'
 
 export interface PanelCtx {
   d: DiagramData
@@ -32,9 +33,13 @@ export interface PanelCtx {
   date: string
   /** 지형 분석 (없으면 null) */
   t: TerrainAnalysis | null
+  /** 종합 다이어그램 (종합 도판에만) */
+  synth?: SynthCtx | null
+  /** 다른 도판의 그림을 바탕으로 쓸 때 (종합 도판) */
+  basePanel?: (id: string) => Promise<PanelOutput | null>
 }
 
-export type PanelGroup = '위치' | '땅의 조건' | '지형' | '주변 현황' | '연계와 접근' | '환경' | '사회·경제' | '현장'
+export type PanelGroup = '위치' | '땅의 조건' | '지형' | '주변 현황' | '연계와 접근' | '환경' | '사회·경제' | '현장' | '종합'
 
 export interface PanelDef {
   id: string
@@ -43,7 +48,7 @@ export interface PanelDef {
   /** 자료가 없을 때 안내 */
   needs: string
   /** 도판 틀 반경(m)을 수집 반경과 다르게 (예: 도보권 15분) */
-  frameR?: (d: DiagramData) => number
+  frameR?: (d: DiagramData, extra?: { synth?: SynthCtx | null }) => number
   render: (c: PanelCtx) => PanelOutput | Promise<PanelOutput>
 }
 
@@ -1146,10 +1151,10 @@ export const TERRAIN_PANELS: PanelDef[] = [
   },
 ]
 
-export const PANEL_GROUP_ORDER: PanelGroup[] = ['위치', '땅의 조건', '지형', '주변 현황', '연계와 접근', '환경', '사회·경제', '현장']
+export const PANEL_GROUP_ORDER: PanelGroup[] = ['위치', '땅의 조건', '지형', '주변 현황', '연계와 접근', '환경', '사회·경제', '현장', '종합']
 
 /** 보고서 배치 순서 (위치 → 땅의 조건 → 지형 → 주변 현황 → 연계와 접근 → 환경 → 사회·현장) */
-export const ORDERED_PANELS: PanelDef[] = PANEL_GROUP_ORDER.flatMap((g) => [...PANELS, ...TERRAIN_PANELS, ...SECTION_PANELS, ...MOVE_PANELS, ...ENV_PANELS, ...LIFE_PANELS].filter((p) => p.group === g))
+export const ORDERED_PANELS: PanelDef[] = PANEL_GROUP_ORDER.flatMap((g) => [...PANELS, ...TERRAIN_PANELS, ...SECTION_PANELS, ...MOVE_PANELS, ...ENV_PANELS, ...LIFE_PANELS, SYNTH_PANEL].filter((p) => p.group === g))
 
 export function panelNumber(id: string): number {
   return ORDERED_PANELS.findIndex((p) => p.id === id) + 1

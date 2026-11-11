@@ -105,6 +105,7 @@ const PANEL_TITLES: Record<string, string> = {
   windSummer: '바람 흐름 실험 (여름, 보행 높이)',
   windWinter: '바람 흐름 실험 (겨울, 보행 높이)',
   heat: '여름 열쾌적 실험',
+  synth: '종합 다이어그램',
 }
 
 function panelTitle(id: string): string {

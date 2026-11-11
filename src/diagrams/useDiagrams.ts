@@ -8,6 +8,7 @@ import { observationsOf } from '../model/observations'
 import { siteKey } from '../model/project'
 import type { DiagramSettings, Project } from '../model/types'
 import { buildDiagramData, type DiagramData } from './data'
+import { synthCtxOf } from './synth'
 import { svgBlob } from './export'
 import { ORDERED_PANELS } from './panels'
 import { collectedDate, renderPanel, settingsOf, type RenderedPanel } from './render'
@@ -18,6 +19,16 @@ export interface CachedPanel extends RenderedPanel {
 }
 
 const cache = new Map<string, CachedPanel>()
+
+/** 짧은 열쇠 (문자열 해시) */
+function hashOf(s: string): string {
+  let h = 2166136261
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i)
+    h = Math.imul(h, 16777619)
+  }
+  return (h >>> 0).toString(36) + s.length.toString(36)
+}
 const TERRAIN_IDS = new Set(['terrain', 'sectionA', 'sectionB'])
 const MAX_CACHE = 80
 
@@ -64,6 +75,10 @@ export function useDiagrams(project: Project, vworldKey: string, only?: string[]
   const date = collectedDate(project)
   const ids = (only ?? ORDERED_PANELS.map((p) => p.id)).join(',')
   const allKey = ORDERED_PANELS.map((p) => settingsKey(p.id, settings)).join(';')
+  // 종합 다이어그램: 그림·카드가 바뀌면 그 도판만 다시
+  const synthSig = JSON.stringify([project.synth ?? null, project.cards.filter((c) => ['TENSION', 'OPPORTUNITY', 'HYPOTHESIS'].includes(c.type)).map((c) => [c.id, c.status, c.text, c.fields?.['제목'], c.fields?.['방향']])])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const synth = useMemo(() => synthCtxOf(project), [synthSig])
   const [panels, setPanels] = useState<Record<string, CachedPanel>>({})
   const [busy, setBusy] = useState(false)
   const [terrain, setTerrain] = useState<TerrainAnalysis | null>(null)
@@ -77,19 +92,20 @@ export function useDiagrams(project: Project, vworldKey: string, only?: string[]
     const wanted = ORDERED_PANELS.filter((p) => ids.split(',').includes(p.id))
     void (async () => {
       setBusy(true)
-      const needsTerrain = wanted.some((p) => TERRAIN_IDS.has(p.id))
+      const needsTerrain = wanted.some((p) => TERRAIN_IDS.has(p.id) || (p.id === 'synth' && TERRAIN_IDS.has(synth.state.base)))
       const fine = needsTerrain ? fineTerrainCached(data.ngii, data.center, fineHalfFor(data.R)) : null
       const t = needsTerrain ? await analyzeTerrain(data.center, data.boundary, data.R, fine).catch(() => null) : null
       if (!alive) return
       setTerrain(t)
       for (const def of wanted) {
-        const tKey = TERRAIN_IDS.has(def.id) ? `|${t ? `${t.grid.source}${t.grid.version ?? ''}` : 'no-terrain'}` : ''
+        const tKey = TERRAIN_IDS.has(def.id) || def.id === 'synth' ? `|${t ? `${t.grid.source}${t.grid.version ?? ''}` : 'no-terrain'}` : ''
         // 속도 장면은 수집 뒤에도 늘어나므로 장면 수를 열쇠에 넣는다
         const sKey = def.id === 'speed' || def.id === 'speedLocal' ? `|snaps:${data.speedSnaps.length}` : ''
-        const key = `${dataSig}|${def.id}|${settingsKey(def.id, settings)}|${vworldKey ? 'k' : '-'}${tKey}${sKey}`
+        const yKey = def.id === 'synth' ? `|synth:${hashOf(synthSig)}` : ''
+        const key = `${dataSig}|${def.id}|${settingsKey(def.id, settings)}|${vworldKey ? 'k' : '-'}${tKey}${sKey}${yKey}`
         let hit = cache.get(key)
         if (!hit) {
-          const r = await renderPanel(def, data, settings, vworldKey, date, t)
+          const r = await renderPanel(def, data, settings, vworldKey, date, t, def.id === 'synth' ? { synth } : {})
           hit = { ...r, url: URL.createObjectURL(svgBlob(r.svg)), key }
           cachePut(hit)
         }
@@ -104,7 +120,7 @@ export function useDiagrams(project: Project, vworldKey: string, only?: string[]
       alive = false
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, allKey, vworldKey, ids, date])
+  }, [data, allKey, vworldKey, ids, date, synthSig])
 
   return { data, settings, panels, busy, terrain }
 }

@@ -2,23 +2,27 @@ import { useState } from 'react'
 import CardDetail from '../components/CardDetail'
 import FlowBoard from '../components/FlowBoard'
 import RoundWorkbench from '../components/RoundWorkbench'
+import SynthEditor from '../components/SynthEditor'
 import { mvpProgress } from '../model/cards'
 import { cardTitle, REACTION_LABEL, ROUNDS } from '../model/prompts'
 import { nowIso } from '../model/project'
 import type { Card, Project, RoundId } from '../model/types'
+import type { VWorldConfig } from '../sources/vworld'
 
 interface Props {
   project: Project
   update: (fn: (draft: Project) => void) => void
+  config: VWorldConfig
 }
 
-type Tab = 'rounds' | 'board' | 'tension' | 'hyp'
+type Tab = 'rounds' | 'board' | 'tension' | 'hyp' | 'synth'
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'rounds', label: '챗봇 왕복' },
   { id: 'board', label: '카드 보드' },
   { id: 'tension', label: '긴장·기회' },
   { id: 'hyp', label: '가설 비교' },
+  { id: 'synth', label: '종합 다이어그램' },
 ]
 
 const DIRECTIONS = ['보존할 것', '드러낼 것', '피할 것', '변환할 것']
@@ -30,7 +34,7 @@ function dirOf(c: Card): string {
   return DIRECTIONS.find((d) => v.includes(d.slice(0, 2))) ?? ''
 }
 
-export default function InterpretStep({ project, update }: Props) {
+export default function InterpretStep({ project, update, config }: Props) {
   const [tab, setTab] = useState<Tab>('rounds')
   const [round, setRound] = useState<RoundId>(() => {
     const done = ROUNDS.filter((r) => project.cards.some((c) => c.round === r.id))
@@ -80,8 +84,9 @@ export default function InterpretStep({ project, update }: Props) {
         ))}
       </nav>
 
-      <div className={`interpret-body${selected && tab !== 'rounds' ? ' with-detail' : ''}`}>
+      <div className={`interpret-body${selected && tab !== 'rounds' && tab !== 'synth' ? ' with-detail' : ''}`}>
         <div className="interpret-main">
+          {tab === 'synth' && <SynthEditor project={project} update={update} config={config} />}
           {tab === 'rounds' && (
             <div className="rounds">
               <ol className="round-list">

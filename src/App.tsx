@@ -166,7 +166,7 @@ export default function App() {
                 {step === 'observe' && (
                   <ObserveStep project={project} update={update} config={config} baseMap={baseMap} onBaseMap={setBaseMap} onGoFacts={() => go('facts')} />
                 )}
-                {step === 'interpret' && <InterpretStep project={project} update={update} />}
+                {step === 'interpret' && <InterpretStep project={project} update={update} config={config} />}
                 {step === 'report' && <ReportStep project={project} update={update} config={config} />}
               </main>
             </div>
