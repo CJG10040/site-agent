@@ -51,7 +51,7 @@ export function textWidth(s: string, size: number): number {
   return w
 }
 
-function wrap(text: string, size: number, maxW: number): string[] {
+export function wrap(text: string, size: number, maxW: number): string[] {
   const words = text.split(/(\s+)/)
   const lines: string[] = []
   let cur = ''

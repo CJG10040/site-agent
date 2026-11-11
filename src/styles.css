@@ -2738,6 +2738,150 @@ input[type='datetime-local'] {
   }
 }
 
+/* ───────── Phase 11: 보드 조판 · 3D·CAD 내보내기 ───────── */
+
+.report-view-switch {
+  width: 100%;
+  max-width: 1100px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+}
+
+.board-view {
+  width: 100%;
+  max-width: 1400px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+.board-toolbar {
+  max-width: 1100px;
+}
+
+.board-toolbar .row {
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  align-items: center;
+}
+
+.board-title-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.board-title-field input {
+  width: 260px;
+  max-width: 60vw;
+}
+
+.board-order-box summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.board-order {
+  list-style: none;
+  margin: 8px 0 6px;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 2px 14px;
+}
+
+.board-order li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  min-width: 0;
+}
+
+.board-order .num {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.board-order .t {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.board-pages {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+}
+
+.board-page {
+  display: block;
+  width: min(100%, calc(82vh * var(--board-ratio, 1.41)));
+  height: auto;
+  background: #ffffff;
+  box-shadow: var(--shadow);
+}
+
+.export-3d {
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel);
+}
+
+.export-3d .row {
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+.export-3d table {
+  border-collapse: collapse;
+  font-size: 12.5px;
+  margin-top: 6px;
+}
+
+.export-3d td {
+  padding: 2px 10px 2px 0;
+  vertical-align: top;
+}
+
+.export-3d td:first-child {
+  font-family: ui-monospace, Consolas, monospace;
+  white-space: nowrap;
+}
+
+@media print {
+  .board-view {
+    max-width: none;
+    display: block;
+  }
+
+  .board-pages {
+    display: block;
+  }
+
+  .board-page {
+    box-shadow: none;
+    width: var(--board-w);
+    height: var(--board-h);
+    break-after: page;
+  }
+
+  .board-page:last-child {
+    break-after: auto;
+  }
+}
+
 /* ───────── 연결 진단 ───────── */
 
 dl {

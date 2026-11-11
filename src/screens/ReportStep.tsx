@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import { usePhotoUrl } from '../components/PhotoThumb'
 import { areaM2, siteBoundary } from '../lib/geo'
+import { boardSettingsOf, paperSize } from '../diagrams/board'
 import { svgToPng } from '../diagrams/export'
 import { ORDERED_PANELS, panelNumber } from '../diagrams/panels'
 import { panelFileName } from '../diagrams/render'
@@ -11,6 +12,8 @@ import { downloadBlob, nowIso } from '../model/project'
 import { cardTitle, isRelation, REACTION_LABEL, ROUNDS } from '../model/prompts'
 import type { Card, Project } from '../model/types'
 import type { VWorldConfig } from '../sources/vworld'
+
+const BoardView = lazy(() => import('./BoardView'))
 
 interface Props {
   project: Project
@@ -43,6 +46,7 @@ function Refs({ ids }: { ids: string[] }) {
 export default function ReportStep({ project, update, config }: Props) {
   const [paper, setPaper] = useState<Paper>('a4')
   const [scope, setScope] = useState<Scope>('all')
+  const [view, setView] = useState<'report' | 'board'>('report')
 
   const boundary = useMemo(() => siteBoundary(project.site), [project.site])
 
@@ -69,7 +73,7 @@ export default function ReportStep({ project, update, config }: Props) {
 
   // ── 도판 (⑥ 도판 단계에서 '리포트에 넣기'로 고른 것)
   const includedIds = ORDERED_PANELS.filter((p) => project.diagrams?.panels[p.id]?.include !== false).map((p) => p.id)
-  const { panels: diagramPanels, busy: diagramsBusy, settings: diagramSettings } = useDiagrams(project, config.key, includedIds)
+  const { panels: diagramPanels, busy: diagramsBusy, settings: diagramSettings, data: diagramData, terrain } = useDiagrams(project, config.key, includedIds)
   const diagrams = ORDERED_PANELS.filter((p) => includedIds.includes(p.id) && diagramPanels[p.id] && !diagramPanels[p.id].out.empty)
 
   useEffect(() => {
@@ -81,7 +85,13 @@ export default function ReportStep({ project, update, config }: Props) {
     return () => window.removeEventListener('afterprint', onAfter)
   }, [update])
 
-  const pageCss = paper === 'a4' ? '@page { size: A4 portrait; margin: 12mm; }' : '@page { size: A3 landscape; margin: 12mm; }'
+  const board = paperSize(boardSettingsOf(project.diagrams?.board))
+  const pageCss =
+    view === 'board'
+      ? `@page { size: ${board.w}mm ${board.h}mm; margin: 0; }`
+      : paper === 'a4'
+        ? '@page { size: A4 portrait; margin: 12mm; }'
+        : '@page { size: A3 landscape; margin: 12mm; }'
   const sessions = project.chatLog ?? []
   const chatbots = [...new Set(sessions.map((s) => s.chatbot).filter(Boolean))]
 
@@ -96,6 +106,26 @@ export default function ReportStep({ project, update, config }: Props) {
     <div className="report-page">
       <style>{`@media print { ${pageCss} }`}</style>
 
+      <div className="report-view-switch no-print">
+        <div className="segmented" role="radiogroup" aria-label="보기">
+          <button type="button" role="radio" aria-checked={view === 'report'} className={view === 'report' ? 'on' : ''} onClick={() => setView('report')}>
+            리포트
+          </button>
+          <button type="button" role="radio" aria-checked={view === 'board'} className={view === 'board' ? 'on' : ''} onClick={() => setView('board')}>
+            보드 (도판 조판)
+          </button>
+        </div>
+        <span className="muted small">
+          {view === 'report' ? '사실·관찰·해석·질문·가설을 담은 문서' : "'리포트에 넣기' 도판을 용지 한 장에 앉힌 판넬 — PDF·PNG 300dpi"}
+        </span>
+      </div>
+
+      {view === 'board' ? (
+        <Suspense fallback={<p className="muted">보드를 여는 중…</p>}>
+          <BoardView project={project} update={update} defs={diagrams} panels={diagramPanels} busy={diagramsBusy} data={diagramData} terrain={terrain} />
+        </Suspense>
+      ) : (
+      <>
       <div className="report-toolbar no-print">
         <div className="row">
           <span className="label">판형</span>
@@ -498,6 +528,8 @@ export default function ReportStep({ project, update, config }: Props) {
           )}
         </section>
       </article>
+      </>
+      )}
     </div>
   )
 }

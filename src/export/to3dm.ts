@@ -1,0 +1,239 @@
+// 라이노 .3dm 쓰기 — rhino3dm(MIT, McNeel)을 내보낼 때만 불러온다 (wasm 약 2.7MB).
+// 레이어: 정보 / 대지 경계 / 건물(대지 안·주변·층수 모름) / 지형(면·등고선·계곡선) / 도로(면·중심선) / 필지 / 공원·녹지 / 하천
+// 지면에 놓이는 선·면은 지형 높이를 따라 얹는다(조금 띄움). 지구 위치(Earth Anchor)에 원점의 경위도·해발을 적는다.
+
+import type { RhinoModule } from 'rhino3dm'
+import wasmUrl from 'rhino3dm/rhino3dm.wasm?url'
+import { densify, modelNotes, triangulate, type Poly, type SiteModel, type XY } from './siteModel'
+
+type Rgb = [number, number, number]
+
+interface LayerDef {
+  key: string
+  name: string
+  color: Rgb
+  parent?: string
+}
+
+const LAYERS: LayerDef[] = [
+  { key: 'info', name: '정보', color: [40, 40, 40] },
+  { key: 'site', name: '대지 경계', color: [220, 38, 38] },
+  { key: 'bldg', name: '건물', color: [140, 140, 140] },
+  { key: 'bldgAround', name: '주변 건물 (층수 × 3m)', color: [150, 150, 150], parent: 'bldg' },
+  { key: 'bldgSite', name: '대지 안 기존 건물', color: [230, 150, 150], parent: 'bldg' },
+  { key: 'bldgUnknown', name: '층수 모름 (발자국만)', color: [190, 190, 190], parent: 'bldg' },
+  { key: 'terrain', name: '지형', color: [150, 120, 90] },
+  { key: 'mesh', name: '지형 면 (10m 격자)', color: [215, 205, 185], parent: 'terrain' },
+  { key: 'contour', name: '등고선', color: [176, 130, 90], parent: 'terrain' },
+  { key: 'contourMajor', name: '계곡선 (굵은 등고선)', color: [130, 85, 50], parent: 'terrain' },
+  { key: 'road', name: '도로', color: [90, 90, 90] },
+  { key: 'roadSurf', name: '도로 면 (도로중심선 폭)', color: [120, 120, 120], parent: 'road' },
+  { key: 'roadCenter', name: '도로중심선', color: [200, 160, 40], parent: 'road' },
+  { key: 'parcel', name: '필지', color: [170, 170, 200] },
+  { key: 'park', name: '공원·녹지', color: [90, 160, 90] },
+  { key: 'river', name: '하천', color: [70, 140, 200] },
+]
+
+/** wasm 쪽 메모리 풀기 (타입 선언에는 없지만 embind 객체마다 있음) */
+function free(o: unknown) {
+  ;(o as { delete?: () => void } | null)?.delete?.()
+}
+
+let rhinoP: Promise<RhinoModule> | null = null
+
+function loadRhino(): Promise<RhinoModule> {
+  rhinoP ??= import('rhino3dm/rhino3dm.module.js').then((m) => (m.default as (o: object) => Promise<RhinoModule>)({ locateFile: () => wasmUrl }))
+  return rhinoP
+}
+
+export interface ExportMeta {
+  title: string
+  address: string
+  collected: string
+}
+
+export async function siteModelTo3dm(m: SiteModel, meta: ExportMeta, onStep?: (s: string) => void): Promise<Uint8Array> {
+  onStep?.('라이노 모듈 불러오는 중')
+  const rhino = await loadRhino()
+  const doc = new rhino.File3dm()
+  try {
+    const st = doc.settings()
+    st.modelUnitSystem = rhino.UnitSystem.Meters
+    st.modelAbsoluteTolerance = 0.001
+    // 지구 위치: 모형 원점 = 대지 중심, 진북 방향 반영
+    const ea = st.earthAnchorPoint
+    ea.earthBasepointLatitude = m.origin.lat
+    ea.earthBasepointLongitude = m.origin.lon
+    ea.earthBasepointElevation = m.origin.elev ?? 0
+    ea.earthBasepointElevationZero = rhino.BasepointZero.MeanSeaLevel
+    ea.modelBasePoint = [0, 0, 0]
+    const a = (m.origin.trueNorthDeg * Math.PI) / 180
+    ea.modelNorth = [Math.sin(a), Math.cos(a), 0]
+    ea.modelEast = [Math.cos(a), -Math.sin(a), 0]
+    ea.name = '대지 중심'
+    ea.description = `EPSG:5179 X ${m.origin.x5179.toFixed(2)} Y ${m.origin.y5179.toFixed(2)}`
+    st.earthAnchorPoint = ea
+    doc.applicationName = '대지해석 에이전트'
+    doc.applicationUrl = 'https://cjg10040.github.io/site-agent/'
+
+    // 레이어 (부모를 먼저 넣고 id로 잇는다)
+    const layerIndex = new Map<string, number>()
+    const layerId = new Map<string, string>()
+    for (const def of LAYERS) {
+      const L = new rhino.Layer()
+      L.name = def.name
+      L.color = { r: def.color[0], g: def.color[1], b: def.color[2], a: 255 }
+      if (def.parent) L.parentLayerId = layerId.get(def.parent) ?? ''
+      const idx = doc.layers().add(L)
+      free(L)
+      layerIndex.set(def.key, idx)
+      layerId.set(def.key, doc.layers().get(idx).id)
+    }
+    const attrs = (key: string, name = '', user: Record<string, string> = {}) => {
+      const at = new rhino.ObjectAttributes()
+      at.layerIndex = layerIndex.get(key) ?? 0
+      if (name) at.name = name
+      for (const [k, v] of Object.entries(user)) at.setUserString(k, v)
+      return at
+    }
+    const objs = doc.objects()
+    const addPolyline = (pts: number[][], key: string, name = '', user: Record<string, string> = {}) => {
+      if (pts.length < 2) return
+      const c = new rhino.PolylineCurve(pts)
+      const at = attrs(key, name, user)
+      objs.addCurve(c, at)
+      free(c)
+      free(at)
+    }
+    const draped = (pts: XY[], closed: boolean, lift: number) => {
+      const d = densify(pts, 4, closed).map(([x, y]) => [x, y, m.zAt(x, y) + lift])
+      if (closed && d.length) d.push([...d[0]])
+      return d
+    }
+    /** 지형에 얹은 면들을 메시 하나로 */
+    const drapedMesh = (polys: Poly[], key: string, name: string, lift: number, maxEdge = 6) => {
+      if (!polys.length) return
+      const mesh = new rhino.Mesh()
+      const vs = mesh.vertices()
+      const fs = mesh.faces()
+      for (const p of polys) {
+        const { pts, tris } = triangulate(p, maxEdge)
+        const base = vs.count
+        for (const [x, y] of pts) vs.add(x, y, m.zAt(x, y) + lift)
+        for (let i = 0; i < tris.length; i += 3) fs.addTriFace(base + tris[i], base + tris[i + 1], base + tris[i + 2])
+      }
+      mesh.normals().computeNormals()
+      mesh.compact()
+      const at = attrs(key, name)
+      objs.addMesh(mesh, at)
+      free(mesh)
+      free(at)
+    }
+
+    // ── 정보
+    const notes = modelNotes(m, meta)
+    const strings = doc.strings()
+    for (const [k, v] of notes) strings.set(k, v)
+    {
+      const at = attrs('info', '원점')
+      objs.addTextDot('원점 (대지 중심)', [0, 0, 0], at)
+      free(at)
+    }
+
+    // ── 지형 면
+    onStep?.('지형 면')
+    const t = m.terrain
+    if (t) {
+      const mesh = new rhino.Mesh()
+      const vs = mesh.vertices()
+      const fs = mesh.faces()
+      const id = new Int32Array(t.cols * t.rows).fill(-1)
+      for (let r = 0; r < t.rows; r++)
+        for (let c = 0; c < t.cols; c++) {
+          const z = t.z[r * t.cols + c]
+          if (Number.isNaN(z)) continue
+          id[r * t.cols + c] = vs.add(t.x0 + c * t.cell, t.y0 - r * t.cell, z)
+        }
+      for (let r = 0; r + 1 < t.rows; r++)
+        for (let c = 0; c + 1 < t.cols; c++) {
+          const tl = id[r * t.cols + c]
+          const tr = id[r * t.cols + c + 1]
+          const bl = id[(r + 1) * t.cols + c]
+          const br = id[(r + 1) * t.cols + c + 1]
+          // 북서–남동 대각선으로 나눔 (zAt과 같은 방식), 반시계 = 위를 향함
+          if (tl >= 0 && bl >= 0 && br >= 0) fs.addTriFace(tl, bl, br)
+          if (tl >= 0 && br >= 0 && tr >= 0) fs.addTriFace(tl, br, tr)
+        }
+      mesh.normals().computeNormals()
+      mesh.compact()
+      const at = attrs('mesh', '지형 면')
+      objs.addMesh(mesh, at)
+      free(mesh)
+      free(at)
+    }
+    for (const c of m.contours)
+      addPolyline(
+        c.pts.map(([x, y]) => [x, y, c.level]),
+        c.major ? 'contourMajor' : 'contour',
+        `${c.level >= 0 ? '+' : ''}${c.level}m`,
+        { 높이: String(c.level) },
+      )
+
+    // ── 건물
+    onStep?.('건물')
+    for (const b of m.buildings) {
+      const key = b.top === null ? 'bldgUnknown' : b.onSite ? 'bldgSite' : 'bldgAround'
+      const label = [b.name, b.floors ? `${b.floors}층` : '층수 모름'].filter(Boolean).join(' ')
+      const user: Record<string, string> = { 층수: b.floors ? String(b.floors) : '모름' }
+      if (b.use) user['용도'] = b.use
+      if (b.top !== null) user['높이(m, 어림)'] = (b.top - b.base).toFixed(1)
+      for (const p of b.parts) {
+        const ring = (r: XY[]) => [...r, r[0]].map(([x, y]) => [x, y, b.base])
+        if (b.top === null) {
+          addPolyline(ring(p.outer), key, label, user)
+          continue
+        }
+        const outer = new rhino.PolylineCurve(ring(p.outer))
+        const ex = rhino.Extrusion.create(outer, b.top - b.base, true)
+        free(outer)
+        if (!ex) {
+          addPolyline(ring(p.outer), 'bldgUnknown', label, user)
+          continue
+        }
+        for (const h of p.holes) {
+          const hc = new rhino.PolylineCurve(ring(h))
+          ex.addInnerProfile(hc)
+          free(hc)
+        }
+        const at = attrs(key, label, user)
+        objs.addExtrusion(ex, at)
+        free(ex)
+        free(at)
+      }
+    }
+
+    // ── 도로·필지·공원·하천·대지
+    onStep?.('도로·필지')
+    drapedMesh(m.roads, 'roadSurf', '도로 면', 0.08)
+    for (const r of m.roadCenters) addPolyline(draped(r.pts, false, 0.12), 'roadCenter', r.width ? `폭 ${r.width}m` : '폭 모름')
+    for (const p of m.parcels)
+      for (const poly of p.polys) addPolyline(draped(poly.outer, true, 0.04), 'parcel', p.jibun, { 지번: p.jibun, 지목: p.jimok })
+    for (const a of m.parks) {
+      drapedMesh(a.polys, 'park', a.name, 0.05)
+      for (const poly of a.polys) addPolyline(draped(poly.outer, true, 0.06), 'park', a.name)
+    }
+    for (const a of m.rivers) {
+      drapedMesh(a.polys, 'river', a.name, 0.05)
+      for (const poly of a.polys) addPolyline(draped(poly.outer, true, 0.06), 'river', a.name)
+    }
+    for (const p of m.site) {
+      addPolyline(draped(p.outer, true, 0.15), 'site', '대지 경계')
+      for (const h of p.holes) addPolyline(draped(h, true, 0.15), 'site', '대지 경계 (구멍)')
+    }
+
+    onStep?.('파일 쓰는 중')
+    return doc.toByteArray()
+  } finally {
+    free(doc)
+  }
+}

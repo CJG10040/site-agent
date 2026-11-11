@@ -244,4 +244,25 @@ export interface DiagramState {
   settings: DiagramSettings
   panels: Record<string, PanelNote>
   chatLog?: DiagramChat[]
+  /** ⑨ 리포트의 보드 조판 설정 */
+  board?: BoardSettings
+}
+
+// ───────────────────────── Phase 11 보드 조판 ─────────────────────────
+
+export type BoardPaper = 'A4' | 'A3' | 'A2' | 'A1'
+
+export interface BoardSettings {
+  paper: BoardPaper
+  landscape: boolean
+  /** 열 수 (2~6) */
+  cols: number
+  /** 비우면 프로젝트 이름 */
+  title: string
+  /** 도판 순서 (도판 id). 여기 없는 도판은 기본 순서로 뒤에 */
+  order: string[]
+  /** 제목 아래 대지 개요 한 줄 */
+  overview: boolean
+  /** 도판 아래 결론 문장 */
+  conclusions: boolean
 }
