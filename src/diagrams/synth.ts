@@ -3,7 +3,7 @@
 // 바탕 = 회색 건물·도로(기본), 다른 도판을 골라 연하게 깔 수 있음 / ⑧ 해석·가설 탭에서 그리고 ⑨ 리포트·보드에는 마지막 도판으로.
 
 import { cardTitle } from '../model/prompts'
-import type { Project, SynthItem, SynthState, SynthTone } from '../model/types'
+import type { Card, Project, SynthItem, SynthState, SynthTone } from '../model/types'
 import { esc, textWidth, wrap, type LegendItem, type PanelLayer, type PanelOutput } from './compose'
 import type { Frame } from './frame'
 import { mix } from './palette'
@@ -50,12 +50,17 @@ export const SYNTH_CARD_TYPES = new Set(['TENSION', 'OPPORTUNITY', 'HYPOTHESIS']
 export const CARD_TYPE_LABEL: Record<string, string> = { TENSION: '긴장', OPPORTUNITY: '기회', HYPOTHESIS: '가설' }
 
 export function synthCtxOf(project: Project): SynthCtx {
+  return synthCtxFrom(project.cards, project.synth ?? null)
+}
+
+/** 카드와 그림만으로 (저장한 버전을 다시 그릴 때) */
+export function synthCtxFrom(cardList: Card[], synth: SynthState | null): SynthCtx {
   const cards: Record<string, SynthCard> = {}
-  for (const c of project.cards) {
+  for (const c of cardList) {
     if (!SYNTH_CARD_TYPES.has(c.type) || c.status === 'rejected') continue
     cards[c.id] = { id: c.id, title: cardTitle(c), type: c.type, tone: toneOfDirection(c.fields?.['방향']) }
   }
-  return { state: { ...SYNTH_DEFAULT, ...(project.synth ?? {}) }, cards }
+  return { state: { ...SYNTH_DEFAULT, ...(synth ?? {}) }, cards }
 }
 
 /** 도판 바탕으로 쓰지 않는 것 (지도가 아닌 그림) */

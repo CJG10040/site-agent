@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { usePhotoUrl } from '../components/PhotoThumb'
 import { areaM2, siteBoundary } from '../lib/geo'
 import { boardSettingsOf, paperSize } from '../diagrams/board'
@@ -11,9 +11,12 @@ import { observationsOf } from '../model/observations'
 import { downloadBlob, nowIso } from '../model/project'
 import { cardTitle, isRelation, REACTION_LABEL, ROUNDS } from '../model/prompts'
 import type { Card, Project } from '../model/types'
+import { listVersions, saveVersion } from '../model/db'
+import { countsText, TRIGGER_LABEL, type VersionRecord } from '../model/versions'
 import type { VWorldConfig } from '../sources/vworld'
 
 const BoardView = lazy(() => import('./BoardView'))
+const VersionsView = lazy(() => import('./VersionsView'))
 
 interface Props {
   project: Project
@@ -46,7 +49,15 @@ function Refs({ ids }: { ids: string[] }) {
 export default function ReportStep({ project, update, config }: Props) {
   const [paper, setPaper] = useState<Paper>('a4')
   const [scope, setScope] = useState<Scope>('all')
-  const [view, setView] = useState<'report' | 'board'>('report')
+  const [view, setView] = useState<'report' | 'board' | 'versions'>('report')
+  const [versions, setVersions] = useState<VersionRecord[]>([])
+  const projectRef = useRef(project)
+  projectRef.current = project
+  useEffect(() => {
+    void listVersions(project.id)
+      .then(setVersions)
+      .catch(() => setVersions([]))
+  }, [project.id, view])
 
   const boundary = useMemo(() => siteBoundary(project.site), [project.site])
 
@@ -77,10 +88,16 @@ export default function ReportStep({ project, update, config }: Props) {
   const diagrams = ORDERED_PANELS.filter((p) => includedIds.includes(p.id) && diagramPanels[p.id] && !diagramPanels[p.id].out.empty)
 
   useEffect(() => {
-    const onAfter = () =>
+    const onAfter = () => {
       update((d) => {
         d.reportPrintedAt = nowIso()
       })
+      // 인쇄한 시점의 해석을 버전으로 (바로 앞 버전과 같으면 건너뜀)
+      void saveVersion(projectRef.current, '리포트 인쇄', 'print')
+        .then(() => listVersions(projectRef.current.id))
+        .then(setVersions)
+        .catch(() => undefined)
+    }
     window.addEventListener('afterprint', onAfter)
     return () => window.removeEventListener('afterprint', onAfter)
   }, [update])
@@ -114,13 +131,24 @@ export default function ReportStep({ project, update, config }: Props) {
           <button type="button" role="radio" aria-checked={view === 'board'} className={view === 'board' ? 'on' : ''} onClick={() => setView('board')}>
             보드 (도판 조판)
           </button>
+          <button type="button" role="radio" aria-checked={view === 'versions'} className={view === 'versions' ? 'on' : ''} onClick={() => setView('versions')}>
+            변화 기록
+          </button>
         </div>
         <span className="muted small">
-          {view === 'report' ? '사실·관찰·해석·질문·가설을 담은 문서' : "'리포트에 넣기' 도판을 용지 한 장에 앉힌 판넬 — PDF·PNG 300dpi"}
+          {view === 'report'
+            ? '사실·관찰·해석·질문·가설을 담은 문서'
+            : view === 'board'
+              ? "'리포트에 넣기' 도판을 용지 한 장에 앉힌 판넬 — PDF·PNG 300dpi"
+              : '저장한 조사 버전으로 해석이 어떻게 바뀌었는지 비교'}
         </span>
       </div>
 
-      {view === 'board' ? (
+      {view === 'versions' ? (
+        <Suspense fallback={<p className="muted">불러오는 중…</p>}>
+          <VersionsView project={project} data={diagramData} settings={diagramSettings} vworldKey={config.key} />
+        </Suspense>
+      ) : view === 'board' ? (
         <Suspense fallback={<p className="muted">보드를 여는 중…</p>}>
           <BoardView project={project} update={update} defs={diagrams} panels={diagramPanels} busy={diagramsBusy} data={diagramData} terrain={terrain} />
         </Suspense>
@@ -504,6 +532,18 @@ export default function ReportStep({ project, update, config }: Props) {
 
         <section className="report-sec">
           {H('해석 과정 기록')}
+          {versions.length > 0 && (
+            <>
+              <h3>조사 버전 ({versions.length})</h3>
+              <ul className="report-list small">
+                {[...versions].reverse().map((v) => (
+                  <li key={v.id}>
+                    <strong>{v.name}</strong> — {new Date(v.createdAt).toLocaleDateString('ko-KR')} · {TRIGGER_LABEL[v.trigger]} · {countsText(v.snap)}
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
           {sessions.length === 0 ? (
             <p className="muted">챗봇 왕복 기록이 없습니다.</p>
           ) : (

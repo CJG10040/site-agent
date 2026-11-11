@@ -2,7 +2,8 @@
 // 사진은 base64로 같은 JSON 파일 안에 넣는다 (파일 하나로 옮기기 쉽도록).
 
 import { base64ToBlob, blobToBase64 } from '../lib/photos'
-import { getPhotos, getProject, putPhoto, putProject, type PhotoRecord } from './db'
+import { getPhotos, getProject, listVersions, putPhoto, putProject, putVersions, type PhotoRecord } from './db'
+import type { VersionRecord } from './versions'
 import { newId, nextCardId, nowIso } from './project'
 import { SCHEMA_VERSION, type Card, type Project } from './types'
 
@@ -25,6 +26,8 @@ interface ExportFile {
   exportedAt: string
   project: Project
   photos?: ExportedPhoto[]
+  /** 조사 버전 (Phase 12) */
+  versions?: VersionRecord[]
 }
 
 function photoIdsOf(project: Project): string[] {
@@ -48,7 +51,8 @@ export async function exportProjectFile(project: Project): Promise<{ filename: s
       thumb: await blobToBase64(r.thumb),
     })
   }
-  const data: ExportFile = { app: 'site-agent', schema: SCHEMA_VERSION, exportedAt: nowIso(), project, photos }
+  const versions = await listVersions(project.id).catch(() => [])
+  const data: ExportFile = { app: 'site-agent', schema: SCHEMA_VERSION, exportedAt: nowIso(), project, photos, versions }
   const safeName = (project.brief.projectName || '대지해석').replace(/[\\/:*?"<>|]+/g, '_').slice(0, 40)
   const stamp = new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '')
   return {
@@ -58,7 +62,7 @@ export async function exportProjectFile(project: Project): Promise<{ filename: s
   }
 }
 
-export async function readProjectFile(file: File): Promise<{ project: Project; photos: ExportedPhoto[] }> {
+export async function readProjectFile(file: File): Promise<{ project: Project; photos: ExportedPhoto[]; versions: VersionRecord[] }> {
   const text = await file.text()
   let data: Partial<ExportFile>
   try {
@@ -68,7 +72,7 @@ export async function readProjectFile(file: File): Promise<{ project: Project; p
   }
   if (data.app !== 'site-agent' || !data.project) throw new Error('이 프로그램에서 내보낸 프로젝트 파일이 아닙니다.')
   if ((data.schema ?? 0) > SCHEMA_VERSION) throw new Error('더 새로운 버전에서 만든 파일입니다. 사이트를 새로고침한 뒤 다시 시도하세요.')
-  return { project: data.project, photos: data.photos ?? [] }
+  return { project: data.project, photos: data.photos ?? [], versions: data.versions ?? [] }
 }
 
 function toRecord(p: ExportedPhoto, projectId: string, id = p.id): PhotoRecord {
@@ -95,7 +99,7 @@ export async function importProjectFile(
   file: File,
   decide: (existingName: string) => 'overwrite' | 'copy',
 ): Promise<{ name: string; photoCount: number }> {
-  const { project, photos } = await readProjectFile(file)
+  const { project, photos, versions } = await readProjectFile(file)
   const exists = await getProject(project.id)
   let target = project
   let photoMap = new Map(photos.map((p) => [p.id, p.id]))
@@ -112,6 +116,8 @@ export async function importProjectFile(
   }
   for (const p of photos) await putPhoto(toRecord(p, target.id, photoMap.get(p.id)))
   await putProject(target)
+  // 버전도 같은 프로젝트(사본이면 새 id)로
+  await putVersions(versions.map((v) => (target.id === project.id ? v : { ...v, id: `${v.id}c${target.id.slice(0, 4)}`, projectId: target.id })))
   return { name: target.brief.projectName || '이름 없는 프로젝트', photoCount: photos.length }
 }
 

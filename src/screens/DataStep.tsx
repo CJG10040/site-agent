@@ -10,6 +10,7 @@ import { sunPathFeatures } from '../lib/sun'
 import { applyCollection } from '../model/applyCollection'
 import { applyEnv } from '../model/applyEnv'
 import { hasNgii, refreshNgiiFacts } from '../model/applyNgii'
+import { saveVersion } from '../model/db'
 import NgiiUpload from '../components/NgiiUpload'
 import { siteKey } from '../model/project'
 import type { Project } from '../model/types'
@@ -149,6 +150,8 @@ export default function DataStep(props: Props) {
     if (!boundary) return
     setRunning(true)
     setError(null)
+    // 다시 수집하면 자동 카드가 바뀌므로 그 전 해석을 버전으로 남긴다 (바뀐 것이 없으면 건너뜀)
+    if (project.collectedAt) await saveVersion(project, '다시 수집 전', 'recollect').catch(() => null)
     let last: CollectProgress[] = []
     try {
       const outcome = await collectSiteData(

@@ -3045,6 +3045,172 @@ input[type='datetime-local'] {
   white-space: nowrap;
 }
 
+/* ───────── Phase 12: 조사 버전 ───────── */
+
+.version-save {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.version-save-form {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.version-save-form input {
+  width: 200px;
+  max-width: 40vw;
+}
+
+.version-save-msg {
+  font-size: 12px;
+  color: var(--accent);
+}
+
+.versions-view {
+  width: 100%;
+  max-width: 1100px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.versions-list ul {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.versions-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.versions-compare {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel);
+}
+
+.versions-compare .row {
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px 12px;
+}
+
+.field.inline {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.version-headline {
+  font-size: 14px;
+}
+
+.version-counts td.up {
+  color: #2e7d32;
+  font-weight: 700;
+}
+
+.version-counts td.down {
+  color: #c62828;
+  font-weight: 700;
+}
+
+.version-sec h4 {
+  font-size: 13px;
+  margin: 6px 0 4px;
+}
+
+.version-change {
+  font-size: 13px;
+  margin: 2px 0;
+}
+
+.version-change .label {
+  display: inline-block;
+  min-width: 9em;
+  color: var(--muted);
+}
+
+.versions-view del {
+  color: #9b2c2c;
+  background: #fbeaea;
+  text-decoration: line-through;
+}
+
+.versions-view ins {
+  color: #1e5f2a;
+  background: #e8f5ea;
+  text-decoration: none;
+}
+
+.version-cards {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+}
+
+.version-kind {
+  display: inline-block;
+  min-width: 2.6em;
+  font-size: 11.5px;
+  font-weight: 700;
+  border-radius: 4px;
+  padding: 0 4px;
+  margin-right: 4px;
+  text-align: center;
+}
+
+.kind-added .version-kind {
+  background: #e8f5ea;
+  color: #1e5f2a;
+}
+
+.kind-removed .version-kind {
+  background: #fbeaea;
+  color: #9b2c2c;
+}
+
+.kind-changed .version-kind {
+  background: #fff3e0;
+  color: #9a4a00;
+}
+
+.version-synths {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.version-synth img {
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #ffffff;
+}
+
 /* ───────── 연결 진단 ───────── */
 
 dl {

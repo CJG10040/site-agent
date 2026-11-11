@@ -13,6 +13,7 @@ import DiagramStep from './screens/DiagramStep'
 import FactsStep from './screens/FactsStep'
 import Home from './screens/Home'
 import InterpretStep from './screens/InterpretStep'
+import VersionSave from './components/VersionSave'
 import ObserveStep from './screens/ObserveStep'
 import QuestionStep from './screens/QuestionStep'
 import ReportStep from './screens/ReportStep'
@@ -92,6 +93,7 @@ export default function App() {
           </>
         )}
         <span className="spacer" />
+        {project && <VersionSave project={project} />}
         {project && (
           <button
             type="button"

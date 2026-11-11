@@ -3,6 +3,7 @@
 
 import Dexie, { type EntityTable } from 'dexie'
 import type { Project } from './types'
+import { sameSnap, snapshotOf, type VersionRecord, type VersionTrigger } from './versions'
 
 /** 현장 사진 — 프로젝트 문서와 따로 저장 (크기가 커서) */
 export interface PhotoRecord {
@@ -23,6 +24,7 @@ export interface PhotoRecord {
 const db = new Dexie('site-agent') as Dexie & {
   projects: EntityTable<Project, 'id'>
   photos: EntityTable<PhotoRecord, 'id'>
+  versions: EntityTable<VersionRecord, 'id'>
 }
 
 db.version(1).stores({
@@ -31,6 +33,12 @@ db.version(1).stores({
 db.version(2).stores({
   projects: 'id, updatedAt',
   photos: 'id, projectId',
+})
+// Phase 12: 조사 버전 (해석의 시점별 기록)
+db.version(3).stores({
+  projects: 'id, updatedAt',
+  photos: 'id, projectId',
+  versions: 'id, projectId, createdAt',
 })
 
 export interface ProjectSummary {
@@ -65,10 +73,55 @@ export async function putProject(project: Project): Promise<void> {
 }
 
 export async function deleteProject(id: string): Promise<void> {
-  await db.transaction('rw', db.projects, db.photos, async () => {
+  await db.transaction('rw', db.projects, db.photos, db.versions, async () => {
     await db.projects.delete(id)
     await db.photos.where('projectId').equals(id).delete()
+    await db.versions.where('projectId').equals(id).delete()
   })
+}
+
+// ───────────────────────── 조사 버전 ─────────────────────────
+
+/** 자동 버전은 프로젝트마다 이만큼만 남긴다 (직접 저장한 것은 다 남김) */
+const AUTO_KEEP = 20
+
+export async function listVersions(projectId: string): Promise<VersionRecord[]> {
+  const all = await db.versions.where('projectId').equals(projectId).toArray()
+  return all.sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+}
+
+/**
+ * 지금 해석을 버전으로 저장한다. 자동 저장은 바로 앞 버전과 해석이 같으면 건너뛴다(null).
+ */
+export async function saveVersion(project: Project, name: string, trigger: VersionTrigger): Promise<VersionRecord | null> {
+  const snap = snapshotOf(project)
+  const list = await listVersions(project.id)
+  if (trigger !== 'manual' && list[0] && sameSnap(list[0].snap, snap)) return null
+  const rec: VersionRecord = {
+    id: `v${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
+    projectId: project.id,
+    name: name.trim() || new Date().toLocaleString('ko-KR'),
+    createdAt: new Date().toISOString(),
+    trigger,
+    snap,
+  }
+  await db.versions.put(rec)
+  const autos = [rec, ...list].filter((v) => v.trigger !== 'manual')
+  if (autos.length > AUTO_KEEP) await db.versions.bulkDelete(autos.slice(AUTO_KEEP).map((v) => v.id))
+  return rec
+}
+
+export async function renameVersion(id: string, name: string): Promise<void> {
+  await db.versions.update(id, { name })
+}
+
+export async function deleteVersion(id: string): Promise<void> {
+  await db.versions.delete(id)
+}
+
+/** 프로젝트 파일 가져오기: 버전을 그 프로젝트에 넣는다 (같은 id는 덮어씀) */
+export async function putVersions(records: VersionRecord[]): Promise<void> {
+  if (records.length) await db.versions.bulkPut(records)
 }
 
 export async function putPhoto(photo: PhotoRecord): Promise<void> {
