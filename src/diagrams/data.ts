@@ -103,6 +103,16 @@ export interface DiagramData {
   has: Record<string, boolean>
 }
 
+/**
+ * 지하만 있는 시설(지하상가·지하철역 등): 지상층이 없고, 이름에 '지하'가 있거나 '역'으로 끝나거나,
+ * 지하층은 있는데 건축면적이 0. (예: 금남지하상가·충금지하상가·문화전당역 — 건물통합정보와 도로명주소 건물 양쪽에 있음)
+ */
+export function isUnderground(floors: number | null, name: string, ugrnd: number | null, archarea: number | null): boolean {
+  if (floors && floors > 0) return false
+  if (/지하/.test(name) || /역$/.test(name.trim())) return true
+  return (ugrnd ?? 0) > 0 && !((archarea ?? 0) > 0)
+}
+
 /** 표준노드링크 링크 ID 속성 (브이월드 소문자) */
 export function linkIdOf(p: Record<string, unknown>): string {
   return String(p.link_id ?? p.linkid ?? p.LINK_ID ?? '').trim()
@@ -189,7 +199,7 @@ export function buildDiagramData(project: Project): DiagramData | null {
     const b: Bld = {
       geom: f.geometry,
       floors: floors && floors > 0 ? floors : null,
-      underground: !(floors && floors > 0) && (num(p.ugrnd_flr) ?? 0) > 0 && !((num(p.archarea) ?? 0) > 0),
+      underground: isUnderground(floors, str(p.bld_nm), num(p.ugrnd_flr), num(p.archarea)),
       use: str(p.usability),
       year: Number.isInteger(yr) && yr >= 1900 && yr <= new Date().getFullYear() ? yr : null,
       area: safeArea(f.geometry),
@@ -226,6 +236,7 @@ export function buildDiagramData(project: Project): DiagramData | null {
       name: str(f.properties.buld_nm),
       src: 'addr',
       floorsFromAddr: !!floors,
+      underground: isUnderground(floors, str(f.properties.buld_nm), null, null),
       onSite: inside(c[0], c[1], boundary),
     })
   }

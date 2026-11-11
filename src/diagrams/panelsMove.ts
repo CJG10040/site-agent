@@ -421,7 +421,7 @@ export const MOVE_PANELS: PanelDef[] = [
         const val = l.id ? snap.speeds[l.id] : undefined
         for (const ls of linePositions(l.geom)) {
           const pts = ls.map(([lon, lat]) => c.f.pt(lon, lat))
-          items.push({ d: offsetPath(pts, 4), color: val === undefined ? c.pal.unknown : colors[pedBin(val)], width: val === undefined ? 2 : 5 })
+          items.push({ d: offsetPath(pts, 4), color: val === undefined ? mix('#ffffff', c.pal.ink, 0.42) : colors[pedBin(val)], width: val === undefined ? 1.6 : 5 })
         }
       }
       const v = linkSpeeds(c.d, snap)
@@ -435,7 +435,7 @@ export const MOVE_PANELS: PanelDef[] = [
       }
       return {
         layers: [{ id: '도로_면', svg: roadBase }, faintBuildings(c, 0.5), strokes('차량_속도', items)],
-        legend: [...PED_BINS.map((b, i) => ({ color: colors[i], label: b.label, shape: 'line' as const })), { color: c.pal.unknown, label: '자료 없음 (골목 등)', shape: 'line' as const }],
+        legend: [...PED_BINS.map((b, i) => ({ color: colors[i], label: b.label, shape: 'line' as const })), { color: mix('#ffffff', c.pal.ink, 0.42), label: '속도 자료 없음', shape: 'line' as const }],
         legendTitle: `${snapshotLabel(snap)} (${timeBand(snap)}) · 차가 실제로 달리는 속도 — 느릴수록 걷기 편함`,
         summary: [
           adj.size

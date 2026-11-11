@@ -207,7 +207,7 @@ export async function collectSiteData(input: CollectInput, onProgress: (p: Colle
   if (want('climate')) progress.push({ id: 'kma:wind', label: '바람장미 (관측소 매시 자료 3년)', group: '대중교통·기후', state: 'pending' })
   if (want('traffic')) progress.push({ id: 'its:speed', label: '실시간 도로 속도 (지금 한 장면)', group: '교통', state: 'pending' })
   if (want('network')) progress.push({ id: 'network', label: '길의 연결 (선택도·도보권·가구 계산)', group: '교통', state: 'pending' })
-  if (want('env')) progress.push({ id: 'env', label: '일조·개방감·가시권·수목·바람·열쾌적 (수집이 끝나면 계산)', group: '환경 계산', state: 'pending' })
+  if (want('env')) progress.push({ id: 'env', label: '일조·하늘·가시권·바람·열쾌적 (수집이 끝나면 계산)', group: '환경 계산', state: 'pending' })
   if (want('stores')) progress.push({ id: 'sbiz:stores', label: '상가업소 업종', group: '상권', state: 'pending' })
   if (want('poi')) progress.push({ id: 'kakao:poi', label: '주변 생활 시설 (카카오)', group: '주변 시설', state: 'pending' })
   if (want('terrain')) progress.push({ id: 'terrain', label: '지형 (10m 격자)', group: '토지', state: 'pending' })

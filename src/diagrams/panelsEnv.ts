@@ -444,7 +444,7 @@ function windPanel(season: '여름' | '겨울'): PanelDef {
 
 // ───────────────────────── 여름 열쾌적 (실험) ─────────────────────────
 
-const HEAT_STOPS = ['#fff3c4', '#fbd77a', '#f4a259', '#e4703f', '#c8435a', '#8f2343', '#4f1029']
+const HEAT_STOPS = ['#fff3c4', '#fbd77a', '#f4a259', '#e8774a', '#d4504f', '#b02f4a', '#8c1f3d']
 
 function heatRamp(n: number): string[] {
   return Array.from({ length: n }, (_, i) => {
