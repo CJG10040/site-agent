@@ -185,7 +185,7 @@ export default function DiagramStep({ project, update, config, keys, onGoData, o
       const unknown = m.buildings.filter((b) => b.top === null).length
       setModelMsg({
         kind: 'ok',
-        text: `${kind === '3dm' ? '라이노 파일' : 'DXF'}을 내려받았습니다 — 가로·세로 ${sideLabel(half)}, 건물 ${m.buildings.length.toLocaleString('ko-KR')}동(층수 모름 ${unknown}동은 발자국만), 등고선 ${m.contours.length}개(${m.contourStep}m 간격)${m.terrainSource === 'terrarium' ? ', 지형은 대체 자료(약 30m)' : m.terrainSource ? '' : ', 지형 자료 없음'}.`,
+        text: `${kind === '3dm' ? '라이노 파일을' : 'DXF를'} 내려받았습니다 — 가로·세로 ${sideLabel(half)}, 건물 ${m.buildings.length.toLocaleString('ko-KR')}동(층수 모름 ${unknown}동은 발자국만), 등고선 ${m.contours.length}개(${m.contourStep}m 간격)${m.terrainSource === 'terrarium' ? ', 지형은 대체 자료(약 30m)' : m.terrainSource ? '' : ', 지형 자료 없음'}.`,
       })
     } catch (e) {
       setModelMsg({ kind: 'error', text: `만들지 못했습니다: ${e instanceof Error ? e.message : String(e)}` })

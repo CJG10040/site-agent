@@ -127,54 +127,78 @@ export function buildBoard(panels: BoardPanel[], s: BoardSettings, head: BoardHe
   interface Page {
     head: { svg: string; bottom: number }
     body: string[]
-    y: number
   }
-  const pages: Page[] = []
-  let page: Page | null = null
-  for (const row of rows) {
-    const aspect = Math.max(...row.map((p) => aspectOf(p.svg)))
-    const noteW = cellW - C * 1.8
+  // 줄마다 그림 높이(원래 크기)와 결론 높이
+  const noteW = cellW - C * 1.8
+  const infos = rows.map((row) => {
     const notes = row.map((p) => {
       const t = p.conclusion.trim().replace(/^결론\s*[:：]?\s*/, '')
       return s.conclusions && t ? clampLines(wrap(`결론 ${t}`, C, noteW), 3, C, noteW) : []
     })
     const noteLines = Math.max(0, ...notes.map((n) => n.length))
-    const noteH = noteLines ? C * 0.9 + noteLines * C * 1.42 : 0
-    let imgH = cellW * aspect
-    if (!page || page.y + imgH + noteH > bottom) {
-      page = { head: pages.length ? nextHead() : firstHead(), body: [], y: 0 }
-      page.y = page.head.bottom
-      pages.push(page)
+    return { row, notes, imgH: cellW * Math.max(...row.map((p) => aspectOf(p.svg))), noteH: noteLines ? C * 0.9 + noteLines * C * 1.42 : 0 }
+  })
+
+  const pages: Page[] = []
+  let idx = 0
+  while (idx < infos.length) {
+    const head = pages.length ? nextHead() : firstHead()
+    const avail = bottom - head.bottom
+    // 원래 크기로 몇 줄 들어가는지
+    let n = 0
+    let used = 0
+    while (idx + n < infos.length) {
+      const r = infos[idx + n]
+      const need = r.imgH + r.noteH + (n ? G : 0)
+      if (used + need > avail + 1e-6) break
+      used += need
+      n++
     }
-    // 빈 쪽에도 안 들어가면 줄여서 넣는다
     let scale = 1
-    if (page.y + imgH + noteH > bottom) {
-      scale = Math.max(0.3, (bottom - page.y - noteH) / imgH)
-      imgH *= scale
-    }
-    row.forEach((p, i) => {
-      const x = M + i * (cellW + G)
-      const dw = cellW * scale
-      const dx = x + (cellW - dw) / 2
-      const ph = dw * aspectOf(p.svg)
-      page!.body.push(
-        `<image x="${dx.toFixed(2)}" y="${page!.y.toFixed(2)}" width="${dw.toFixed(2)}" height="${ph.toFixed(2)}" preserveAspectRatio="xMidYMin meet" xlink:href="data:image/svg+xml;base64,${b64(p.svg)}"/>`,
-      )
-      const lines = notes[i]
-      if (lines.length) {
-        const ty = page!.y + imgH + C * 0.9
-        page!.body.push(
-          `<rect x="${x.toFixed(2)}" y="${(ty - C * 0.15).toFixed(2)}" width="${(0.7 * k).toFixed(2)}" height="${(lines.length * C * 1.42).toFixed(2)}" fill="${ACCENT}"/>`,
-          ...lines.map(
-            (l, j) =>
-              `<text x="${(x + C * 1.6).toFixed(2)}" y="${(ty + C * 0.95 + j * C * 1.42).toFixed(2)}" font-size="${C.toFixed(2)}" fill="${INK}">${j === 0 ? `<tspan font-weight="700">결론</tspan> ${esc(l.replace(/^결론\s*/, ''))}` : esc(l)}</text>`,
-          ),
-        )
+    if (n === 0) {
+      // 빈 쪽에도 안 들어가면 줄여서 한 줄
+      n = 1
+      scale = Math.max(0.3, (avail - infos[idx].noteH) / infos[idx].imgH)
+    } else if (idx + n < infos.length) {
+      // 남는 자리가 크면 그림을 조금(최대 25%) 줄여 한 줄 더
+      const set = infos.slice(idx, idx + n + 1)
+      const fixed = set.reduce((a, r) => a + r.noteH, 0) + G * n
+      const sc = (avail - fixed) / set.reduce((a, r) => a + r.imgH, 0)
+      if (sc >= 0.75) {
+        n += 1
+        scale = Math.min(1, sc)
       }
-    })
-    page.y += imgH + noteH + G
+    }
+    const body: string[] = []
+    let y = head.bottom
+    for (const { row, notes, imgH: ih, noteH } of infos.slice(idx, idx + n)) {
+      const imgH = ih * scale
+      row.forEach((p, i) => {
+        const x = M + i * (cellW + G)
+        const dw = cellW * scale
+        const dx = x + (cellW - dw) / 2
+        const ph = dw * aspectOf(p.svg)
+        body.push(
+          `<image x="${dx.toFixed(2)}" y="${y.toFixed(2)}" width="${dw.toFixed(2)}" height="${ph.toFixed(2)}" preserveAspectRatio="xMidYMin meet" xlink:href="data:image/svg+xml;base64,${b64(p.svg)}"/>`,
+        )
+        const lines = notes[i]
+        if (lines.length) {
+          const ty = y + imgH + C * 0.9
+          body.push(
+            `<rect x="${x.toFixed(2)}" y="${(ty - C * 0.15).toFixed(2)}" width="${(0.7 * k).toFixed(2)}" height="${(lines.length * C * 1.42).toFixed(2)}" fill="${ACCENT}"/>`,
+            ...lines.map(
+              (l, j) =>
+                `<text x="${(x + C * 1.6).toFixed(2)}" y="${(ty + C * 0.95 + j * C * 1.42).toFixed(2)}" font-size="${C.toFixed(2)}" fill="${INK}">${j === 0 ? `<tspan font-weight="700">결론</tspan> ${esc(l.replace(/^결론\s*/, ''))}` : esc(l)}</text>`,
+            ),
+          )
+        }
+      })
+      y += imgH + noteH + G
+    }
+    pages.push({ head, body })
+    idx += n
   }
-  if (!pages.length) pages.push({ head: firstHead(), body: [], y: 0 })
+  if (!pages.length) pages.push({ head: firstHead(), body: [] })
 
   return pages.map((p, i) => {
     const fy = h - M * 0.55
