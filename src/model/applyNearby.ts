@@ -12,6 +12,7 @@ import { KAKAO_PUBLIC_URL, KAKAO_SOURCE, POI_CATEGORIES, type PoiCategoryResult 
 import { STORES_PUBLIC_URL, STORES_SERVICE, type StoresResult } from '../sources/stores'
 import { TRANSIT_PUBLIC_URL, TRANSIT_SERVICE, type TransitResult } from '../sources/transit'
 import type { FactContext } from './applyCollection'
+import { mclsLabel, storeTime } from './storeClass'
 import { cleanNames, countBy, fmt, josa, listText, pct, str } from './textUtil'
 import type { Card, SourceRecord } from './types'
 
@@ -557,6 +558,44 @@ export function addStoreFacts(ctx: FactContext, o: ApiOutcome<StoresResult>): vo
     sources: [src],
     confidence: 'medium',
   })
+
+  // 낮·밤 성격, 대지 주변 100m vs 반경 전체 (업종으로 어림)
+  const near100 = r.stores.filter((s) => pointToAreaDistanceM([s.lon, s.lat], ctx.boundary) <= 100)
+  const shares = (list: typeof r.stores) => {
+    const c = { day: 0, allday: 0, night: 0 }
+    for (const s of list) c[storeTime(s.lcls, s.mcls, s.scls)]++
+    return c
+  }
+  const sa = shares(r.stores)
+  const sn = shares(near100)
+  const sText = (c: { day: number; allday: number; night: number }, total: number) => `낮 업종 ${pct(c.day, total)}%·종일(음식·카페·편의점) ${pct(c.allday, total)}%·밤 업종(주점·노래방·PC방·숙박) ${pct(c.night, total)}%`
+  push({
+    auto_key: 'stores-time',
+    topic: '상권',
+    text: `업종으로 어림한 시간 성격은 반경 안 상가 ${fmt(n)}곳이 ${sText(sa, n)}이고, 대지 경계 100m 안 ${fmt(near100.length)}곳은 ${near100.length ? sText(sn, near100.length) : '없음'}이다 (실제 영업시간이 아니라 업종 기준).`,
+    sources: [src],
+    confidence: 'medium',
+  })
+  if (near100.length >= 10) {
+    const key = (s: (typeof r.stores)[number]) => mclsLabel(s.mcls || s.lcls || '분류 없음')
+    const all = new Map<string, number>()
+    const nr = new Map<string, number>()
+    for (const s of r.stores) all.set(key(s), (all.get(key(s)) ?? 0) + 1)
+    for (const s of near100) nr.set(key(s), (nr.get(key(s)) ?? 0) + 1)
+    const lq = [...nr.entries()]
+      .filter(([, c]) => c >= 2)
+      .map(([k, c]) => ({ k, q: c / near100.length / ((all.get(k) ?? 1) / n) }))
+      .filter((x) => x.q >= 1.5)
+      .sort((a, b) => b.q - a.q)
+    const missing = [...all.entries()].filter(([k, c]) => c / n >= 0.03 && !nr.get(k)).map(([k]) => k)
+    push({
+      auto_key: 'stores-special',
+      topic: '상권',
+      text: `대지 경계 100m 안 업종 구성을 반경 전체와 비교하면 ${lq.length ? `${lq.slice(0, 4).map((x) => `${x.k}(${fmt(x.q, 1)}배)`).join(', ')}이 동네보다 많고` : '동네보다 눈에 띄게 많은 업종은 없고'}${missing.length ? `, 동네에 흔한 ${missing.slice(0, 3).join('·')}은 대지 주변에 없다` : ''}.`,
+      sources: [src],
+      confidence: 'medium',
+    })
+  }
 }
 
 // ───────────────────────── 카카오 주변 시설 ─────────────────────────

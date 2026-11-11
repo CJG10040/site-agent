@@ -18,6 +18,7 @@ import { mix, shades, steps, zoningColor, type Palette } from './palette'
 import { projOf } from './move'
 import { arealRings, pointInRings, pointToRingsDist, toXY } from '../lib/xy'
 import { ENV_PANELS } from './panelsEnv'
+import { LIFE_PANELS } from './panelsLife'
 import { MOVE_PANELS } from './panelsMove'
 import { SECTION_PANELS } from './panelsSection'
 
@@ -949,30 +950,6 @@ export const PANELS: PanelDef[] = [
     },
   },
   {
-    id: 'poi',
-    title: '생활 시설',
-    group: '사회·경제',
-    needs: "공간정보에서 '주변 생활 시설'을 수집하세요.",
-    render: (c) => {
-      const ps = c.d.pois.filter((p) => !['FD6', 'CE7'].includes(p.kind))
-      if (!ps.length) return { layers: [baseBuildings(c)], legend: [], summary: [], caption: '', empty: '생활 시설 자료가 없습니다' }
-      const kinds = [...new Map(ps.map((p) => [p.kind, p.label ?? p.kind])).entries()]
-      const colorOf = (k: string) => catColor(c.pal, kinds.findIndex(([x]) => x === k))
-      const nearest = kinds
-        .map(([k, label]) => {
-          const n = ps.filter((p) => p.kind === k).map((p) => ({ p, d: c.f.polar(p.lon, p.lat).d })).sort((a, b) => a.d - b.d)[0]
-          return n ? `${label} ${dist(n.d)}` : ''
-        })
-        .filter(Boolean)
-      return {
-        layers: [baseBuildings(c), { id: '생활시설', svg: ps.map((p) => ptSvg(c, p, 5, colorOf(p.kind))).join('') }],
-        legend: kinds.map(([k, label]) => ({ color: colorOf(k), label, shape: 'dot' as const })),
-        summary: [`분류별 가장 가까운 곳(대지 중심 직선거리): ${nearest.slice(0, 8).join(', ')}`, '분류마다 가까운 15곳까지만 표시 (음식점·카페는 상가 업종 도판에서)'],
-        caption: `카카오 로컬 카테고리 검색 · ${c.date} 수집 · 카카오맵에 등록된 장소 기준`,
-      }
-    },
-  },
-  {
     id: 'observations',
     title: '현장 관찰 위치',
     group: '현장',
@@ -1143,7 +1120,7 @@ export const TERRAIN_PANELS: PanelDef[] = [
 export const PANEL_GROUP_ORDER: PanelGroup[] = ['위치', '땅의 조건', '지형', '주변 현황', '연계와 접근', '환경', '사회·경제', '현장']
 
 /** 보고서 배치 순서 (위치 → 땅의 조건 → 지형 → 주변 현황 → 연계와 접근 → 환경 → 사회·현장) */
-export const ORDERED_PANELS: PanelDef[] = PANEL_GROUP_ORDER.flatMap((g) => [...PANELS, ...TERRAIN_PANELS, ...SECTION_PANELS, ...MOVE_PANELS, ...ENV_PANELS].filter((p) => p.group === g))
+export const ORDERED_PANELS: PanelDef[] = PANEL_GROUP_ORDER.flatMap((g) => [...PANELS, ...TERRAIN_PANELS, ...SECTION_PANELS, ...MOVE_PANELS, ...ENV_PANELS, ...LIFE_PANELS].filter((p) => p.group === g))
 
 export function panelNumber(id: string): number {
   return ORDERED_PANELS.findIndex((p) => p.id === id) + 1

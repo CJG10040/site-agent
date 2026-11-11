@@ -68,6 +68,8 @@ export interface Pt {
   name: string
   kind: string
   label?: string
+  /** 더 자세한 분류 (상가 소분류 등) */
+  detail?: string
 }
 
 export interface DiagramData {
@@ -360,7 +362,7 @@ export function buildDiagramData(project: Project): DiagramData | null {
   const stores: Pt[] = feats('sbiz:stores')
     .map((f): Pt | null => {
       const c = pointOf(f.geometry)
-      return c ? { lon: c[0], lat: c[1], name: str(f.properties.name), kind: str(f.properties.lcls) || '분류 없음', label: str(f.properties.mcls) } : null
+      return c ? { lon: c[0], lat: c[1], name: str(f.properties.name), kind: str(f.properties.lcls) || '분류 없음', label: str(f.properties.mcls), detail: str(f.properties.scls) } : null
     })
     .filter((x): x is Pt => !!x)
   const pois: Pt[] = feats('kakao:poi')
