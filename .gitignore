@@ -13,3 +13,6 @@ tools/terrain/.venv/
 tools/terrain/work/
 __pycache__/
 tools/terrain/reports/*.png
+
+# 사용자가 받아 둔 원자료 (저장소에 올리지 않음)
+수치표고모델(DEM)_90M/
