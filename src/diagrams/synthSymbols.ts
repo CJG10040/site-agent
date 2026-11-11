@@ -28,6 +28,8 @@ export interface SynthCard {
   title: string
   type: string
   tone: SynthTone
+  /** 이 카드의 근거 카드 번호 (관련 카드 + '근거' 칸) — 카드 배지의 근거로 따라감 */
+  refs?: string[]
 }
 
 // ───────────────────────── 기호 목록 ─────────────────────────

@@ -340,6 +340,8 @@ export interface SynthItem {
   spread?: number
   /** 경계 톱니를 반대쪽에 */
   flip?: boolean
+  /** 근거 (2판 12-B): 카드 번호와 도판 id. 카드 배지는 그 카드와 카드의 근거를 따로 적지 않아도 따라감 */
+  evidence?: { cards: string[]; panels: string[] }
 }
 
 export interface SynthState {

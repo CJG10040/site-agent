@@ -76,7 +76,7 @@ export function useDiagrams(project: Project, vworldKey: string, only?: string[]
   const ids = (only ?? ORDERED_PANELS.map((p) => p.id)).join(',')
   const allKey = ORDERED_PANELS.map((p) => settingsKey(p.id, settings)).join(';')
   // 종합 다이어그램: 그림·카드가 바뀌면 그 도판만 다시
-  const synthSig = JSON.stringify([project.synth ?? null, project.cards.filter((c) => ['TENSION', 'OPPORTUNITY', 'HYPOTHESIS'].includes(c.type)).map((c) => [c.id, c.status, c.text, c.fields?.['제목'], c.fields?.['방향']])])
+  const synthSig = JSON.stringify([project.synth ?? null, project.cards.filter((c) => ['TENSION', 'OPPORTUNITY', 'HYPOTHESIS'].includes(c.type)).map((c) => [c.id, c.status, c.text, c.fields?.['제목'], c.fields?.['방향'], c.fields?.['근거'], c.related_card_ids])])
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const synth = useMemo(() => synthCtxOf(project), [synthSig])
   const [panels, setPanels] = useState<Record<string, CachedPanel>>({})

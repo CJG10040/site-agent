@@ -5,9 +5,9 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { FONT } from '../diagrams/compose'
 import { svgBlob, svgToPng } from '../diagrams/export'
 import { makeFrame } from '../diagrams/frame'
-import { ORDERED_PANELS } from '../diagrams/panels'
+import { ORDERED_PANELS, panelNumber } from '../diagrams/panels'
 import { collectedDate, panelFileName, renderPanel } from '../diagrams/render'
-import { CARD_TYPE_LABEL, NOT_MAP_PANELS, SYNTH_DEFAULT, SYNTH_PANEL, synthCtxOf, synthItemsSvg, TONES } from '../diagrams/synth'
+import { CARD_TYPE_LABEL, evidenceOf, evidenceText, hasEvidence, needsEvidence, NOT_MAP_PANELS, SYNTH_DEFAULT, SYNTH_PANEL, synthCtxOf, synthItemsSvg, TONES } from '../diagrams/synth'
 import { BUFFER_WIDTHS, DASH_LABEL, DIRECTION_TONES, SYM_GROUPS, SYM_ORDER, symGlyph, symOf, SYMS, VIEW_SPREADS, WEIGHT_LABEL } from '../diagrams/synthSymbols'
 import { useDiagrams } from '../diagrams/useDiagrams'
 import { fineHalfFor, fineTerrainCached } from '../lib/terrainFine'
@@ -15,6 +15,7 @@ import { analyzeTerrain } from '../lib/terrainSite'
 import { downloadBlob, nowIso } from '../model/project'
 import type { Project, SynthItem, SynthKind, SynthState, SynthSym, SynthTone } from '../model/types'
 import type { VWorldConfig } from '../sources/vworld'
+import RefPicker from './RefPicker'
 
 interface Props {
   project: Project
@@ -252,6 +253,10 @@ export default function SynthEditor({ project, update, config }: Props) {
   const drawWeighted = tool !== 'select' && !!SYMS[tool].weighted
   const sSym: SynthSym = selected ? symOf(selected) : 'dot'
   const sameFamily = selected ? SYM_ORDER.filter((s) => s !== 'note' && s !== 'card' && FAMILY[SYMS[s].geo] === FAMILY[SYMS[sSym].geo]) : []
+  // 근거 (12-B)
+  const shortPanel = (id: string) => `도판 ${panelNumber(id)}`
+  const noEvidence = state.items.filter((i) => needsEvidence(i) && !hasEvidence(evidenceOf(i, synth.cards))).length
+  const selRefs = selected?.kind === 'card' && selected.cardId ? (synth.cards[selected.cardId]?.refs ?? []) : []
 
   if (!data || !frame) {
     return <p className="notice">먼저 ④ 공간정보를 수집해야 종합 다이어그램을 그릴 수 있습니다.</p>
@@ -391,6 +396,27 @@ export default function SynthEditor({ project, update, config }: Props) {
                 <span className="label">{selected.kind === 'card' ? '글 (비우면 카드 제목)' : '글'}</span>
                 <textarea ref={labelRef} rows={3} value={selected.label} onChange={(e) => patchItem(selected.id, { label: e.target.value })} placeholder={selected.kind === 'card' ? synth.cards[selected.cardId ?? '']?.title : '짧게 (예: 금남로 축을 대지까지 끌어들이기)'} />
               </label>
+              {needsEvidence(selected) && (
+                <div className="field synth-evidence">
+                  <span className="label">근거 (카드·도판)</span>
+                  {selected.kind === 'card' && (
+                    <p className="muted small">
+                      카드 {selected.cardId}
+                      {selRefs.length ? `과 그 카드의 근거(${selRefs.join(', ')})` : ''}가 근거로 따라갑니다. 더 이을 것이 있으면 고르세요.
+                    </p>
+                  )}
+                  <RefPicker
+                    project={project}
+                    cardIds={selected.evidence?.cards ?? []}
+                    panelIds={selected.evidence?.panels ?? []}
+                    onChange={(c, p) => patchItem(selected.id, { evidence: c.length || p.length ? { cards: c, panels: p } : undefined })}
+                    cardPlaceholder="+ 근거 카드"
+                    panelPlaceholder="+ 근거 도판"
+                    excludePanels={['synth']}
+                  />
+                  {!hasEvidence(evidenceOf(selected, synth.cards)) && <p className="synth-noev small">근거 없음 — 이 기호를 그린 까닭이 되는 사실·관찰 카드나 도판을 이어 주세요.</p>}
+                </div>
+              )}
               {sameFamily.length > 1 && (
                 <label className="field">
                   <span className="label">기호 바꾸기</span>
@@ -494,6 +520,40 @@ export default function SynthEditor({ project, update, config }: Props) {
             <p className="muted small">
               기호를 고르면 여기서 글·색·굵기·모양을 바꿉니다. 대지의 조건(차량·보행·바람·소음·시선·경계 등)은 <strong>먹색</strong>으로 그려지고, 방향을 정한 해석은 긴장·기회 카드의 '방향'과 같은 네 가지 색입니다.
             </p>
+          )}
+
+          {state.items.length > 0 && (
+            <section className="block">
+              <h3>
+                그린 기호 ({state.items.length}){noEvidence > 0 && <span className="synth-noev-count"> · 근거 없음 {noEvidence}</span>}
+              </h3>
+              <ul className="synth-items">
+                {state.items.map((it) => {
+                  const ev = evidenceOf(it, synth.cards)
+                  const sym = symOf(it)
+                  const name = it.kind === 'card' ? `${it.cardId} ${it.label.trim() || synth.cards[it.cardId ?? '']?.title || ''}` : it.label.trim() || SYMS[sym].label
+                  return (
+                    <li key={it.id}>
+                      <button
+                        type="button"
+                        className={it.id === selectedId ? 'on' : ''}
+                        onClick={() => {
+                          pickTool('select')
+                          setSelectedId(it.id)
+                        }}
+                      >
+                        <span className="synth-item-icon" style={{ color: TONES[it.tone].color }}>
+                          <SymIcon sym={sym} />
+                        </span>
+                        <span className="synth-item-text">{name}</span>
+                        {needsEvidence(it) &&
+                          (hasEvidence(ev) ? <span className="synth-item-ev">{evidenceText(ev, shortPanel)}</span> : <span className="synth-noev small">근거 없음</span>)}
+                      </button>
+                    </li>
+                  )
+                })}
+              </ul>
+            </section>
           )}
 
           <section className="block">

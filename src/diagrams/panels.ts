@@ -37,6 +37,8 @@ export interface PanelCtx {
   synth?: SynthCtx | null
   /** 다른 도판의 그림을 바탕으로 쓸 때 (종합 도판) */
   basePanel?: (id: string) => Promise<PanelOutput | null>
+  /** 도판 id → '도판 12 바람장미' (종합 도판의 근거 표기) */
+  panelLabel?: (id: string) => string
 }
 
 export type PanelGroup = '위치' | '땅의 조건' | '지형' | '주변 현황' | '연계와 접근' | '환경' | '사회·경제' | '현장' | '종합'

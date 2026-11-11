@@ -35,6 +35,12 @@ export interface RenderedPanel {
   out: PanelOutput
 }
 
+/** 도판 id → '도판 12 바람장미' */
+export function panelLabel(id: string): string {
+  const p = ORDERED_PANELS.find((x) => x.id === id)
+  return p ? `도판 ${panelNumber(id)} ${p.title}` : `도판 ${id}`
+}
+
 export function collectedDate(project: Project): string {
   return project.collectedAt ? project.collectedAt.slice(0, 10) : '수집 전'
 }
@@ -59,6 +65,7 @@ export async function renderPanel(
       const bd = ORDERED_PANELS.find((p) => p.id === id && p.id !== def.id)
       return bd ? await bd.render({ ...ctx, synth: null }) : null
     }
+    ctx.panelLabel = panelLabel
     out = await def.render(ctx)
   } catch (e) {
     out = { layers: [], legend: [], summary: [], caption: '', empty: `그리는 중 오류: ${e instanceof Error ? e.message : String(e)}` }

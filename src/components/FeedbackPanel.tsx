@@ -3,10 +3,11 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { ORDERED_PANELS } from '../diagrams/panels'
+import RefPicker from './RefPicker'
 import { listVersions, saveVersion } from '../model/db'
 import { FB_RESPONSE_HINT, FB_STATUS, FB_STATUS_LABEL, FB_WHO, feedbackCounts, feedbackOf } from '../model/feedback'
 import { nextNumber, nowIso } from '../model/project'
-import { cardTitle, TYPE_LABEL } from '../model/prompts'
+import { cardTitle } from '../model/prompts'
 import type { Feedback, FeedbackStatus, Project } from '../model/types'
 import { diffHeadline, diffVersions, snapshotOf, type VersionRecord } from '../model/versions'
 
@@ -31,50 +32,6 @@ interface Draft {
 }
 
 const EMPTY: Draft = { date: '', who: '교수', occasion: '', text: '', cardIds: [], panelIds: [] }
-
-function RefPicker({ project, cardIds, panelIds, onChange }: { project: Project; cardIds: string[]; panelIds: string[]; onChange: (c: string[], p: string[]) => void }) {
-  const cards = project.cards.filter((c) => c.status !== 'rejected')
-  return (
-    <div className="fb-refs">
-      <select
-        value=""
-        onChange={(e) => e.target.value && !cardIds.includes(e.target.value) && onChange([...cardIds, e.target.value], panelIds)}
-        aria-label="관련 카드 더하기"
-      >
-        <option value="">+ 관련 카드</option>
-        {cards.map((c) => (
-          <option key={c.id} value={c.id}>
-            {c.id} {TYPE_LABEL[c.type]} · {cardTitle(c).slice(0, 40)}
-          </option>
-        ))}
-      </select>
-      <select
-        value=""
-        onChange={(e) => e.target.value && !panelIds.includes(e.target.value) && onChange(cardIds, [...panelIds, e.target.value])}
-        aria-label="관련 도판 더하기"
-      >
-        <option value="">+ 관련 도판</option>
-        {ORDERED_PANELS.map((p, i) => (
-          <option key={p.id} value={p.id}>
-            {String(i + 1).padStart(2, '0')} {p.title}
-          </option>
-        ))}
-      </select>
-      <span className="fb-chips">
-        {cardIds.map((id) => (
-          <button key={id} type="button" className="chip small" onClick={() => onChange(cardIds.filter((x) => x !== id), panelIds)} title="빼기">
-            {id} ×
-          </button>
-        ))}
-        {panelIds.map((id) => (
-          <button key={id} type="button" className="chip small" onClick={() => onChange(cardIds, panelIds.filter((x) => x !== id))} title="빼기">
-            도판 {ORDERED_PANELS.find((p) => p.id === id)?.title ?? id} ×
-          </button>
-        ))}
-      </span>
-    </div>
-  )
-}
 
 export default function FeedbackPanel({ project, update, onOpenCard }: Props) {
   const list = feedbackOf(project)

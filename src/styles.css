@@ -2994,6 +2994,87 @@ input[type='datetime-local'] {
   border-style: dashed;
 }
 
+/* 12-B 근거 */
+.synth-evidence .fb-refs select {
+  max-width: 100%;
+  flex: 1 1 130px;
+}
+
+.synth-noev {
+  color: #b3261e;
+  font-weight: 600;
+}
+
+.synth-noev-count {
+  color: #b3261e;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.report-synth-ev {
+  margin-top: 14px;
+  break-inside: avoid;
+}
+
+.report-synth-ev h3 {
+  font-size: 15px;
+  margin: 0 0 6px;
+}
+
+.synth-items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 260px;
+  overflow: auto;
+}
+
+.synth-items button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  background: transparent;
+  padding: 3px 4px;
+  border-radius: 6px;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+}
+
+.synth-items button:hover,
+.synth-items button.on {
+  background: var(--panel-2);
+}
+
+.synth-item-icon {
+  flex: none;
+  display: inline-flex;
+}
+
+.synth-item-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.synth-item-ev {
+  flex: none;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .tone-chip {
   border: 1.5px solid var(--tone);
   color: var(--tone);

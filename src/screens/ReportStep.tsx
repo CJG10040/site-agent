@@ -4,7 +4,9 @@ import { areaM2, siteBoundary } from '../lib/geo'
 import { boardSettingsOf, paperSize } from '../diagrams/board'
 import { svgToPng } from '../diagrams/export'
 import { ORDERED_PANELS, panelNumber } from '../diagrams/panels'
-import { panelFileName } from '../diagrams/render'
+import { panelFileName, panelLabel } from '../diagrams/render'
+import { evidenceOf, evidenceText, hasEvidence, needsEvidence, synthCtxOf } from '../diagrams/synth'
+import { symOf, SYMS, TONES } from '../diagrams/synthSymbols'
 import { useDiagrams } from '../diagrams/useDiagrams'
 import { formatObservedAt, timeBand } from '../lib/photos'
 import { observationsOf } from '../model/observations'
@@ -31,6 +33,45 @@ type Scope = 'all' | 'confirmed'
 
 const HYP_ROWS = ['해석', '해결하려는 긴장', '공간적 행동', '예상 경험', '장점', '위험', '추가 조사', '스케일']
 const DIRECTIONS = ['보존할 것', '드러낼 것', '피할 것', '변환할 것']
+
+/** 종합 다이어그램 기호와 근거 (2판 12-B) */
+function SynthEvidenceTable({ project }: { project: Project }) {
+  const ctx = synthCtxOf(project)
+  const rows = ctx.state.items.filter(needsEvidence)
+  if (!rows.length) return null
+  const missing = rows.filter((it) => !hasEvidence(evidenceOf(it, ctx.cards))).length
+  return (
+    <div className="report-synth-ev">
+      <h3>
+        종합 다이어그램 기호와 근거 <span className="muted small">(근거를 이은 기호 {rows.length - missing}/{rows.length}개)</span>
+      </h3>
+      <table className="report-table synth-ev">
+        <thead>
+          <tr>
+            <th>기호</th>
+            <th>색</th>
+            <th>글</th>
+            <th>근거</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((it) => {
+            const ev = evidenceOf(it, ctx.cards)
+            const card = it.kind === 'card' && it.cardId ? ctx.cards[it.cardId] : undefined
+            return (
+              <tr key={it.id}>
+                <td>{it.kind === 'card' ? `카드 ${it.cardId ?? ''}` : SYMS[symOf(it)].label}</td>
+                <td>{TONES[it.tone].label}</td>
+                <td>{it.label.trim() || card?.title || '—'}</td>
+                <td>{hasEvidence(ev) ? evidenceText(ev, panelLabel) : <span className="synth-noev">근거 없음</span>}</td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
+  )
+}
 
 function statusLabel(c: Card): string {
   if (c.reaction) return REACTION_LABEL[c.reaction]
@@ -310,6 +351,7 @@ export default function ReportStep({ project, update, config }: Props) {
               )
             })}
           </div>
+          {diagrams.some((d) => d.id === 'synth') && <SynthEvidenceTable project={project} />}
         </section>
 
         <section className="report-sec">
