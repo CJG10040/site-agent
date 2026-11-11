@@ -395,6 +395,15 @@ export default function DiagramStep({ project, update, config, keys, onGoData, o
           <input type="range" min={0} max={165} step={15} value={settings.sectionAngle} onChange={(e) => setSettings({ sectionAngle: Number(e.target.value) })} />
         </label>
         <Seg
+          label="단면 범위"
+          value={settings.sectionRange}
+          options={[
+            { v: 'site', label: '대지와 주변' },
+            { v: 'radius', label: '반경 전체' },
+          ]}
+          onChange={(v) => setSettings({ sectionRange: v })}
+        />
+        <Seg
           label="단면 높이"
           value={settings.sectionVex}
           options={[

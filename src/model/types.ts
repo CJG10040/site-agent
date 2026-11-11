@@ -224,6 +224,8 @@ export interface DiagramSettings {
   sectionAngle: number
   /** 단면 높이 과장 배율 (1 = 실제 비율, 2026-11-12 사용자 결정: 기본 1:1 + 과장 고르기) */
   sectionVex: number
+  /** 단면 범위: site 대지와 주변(기본, 2026-11-12) / radius 수집 반경 전체 */
+  sectionRange: 'site' | 'radius'
 }
 
 /** 도판 하나의 결론 */

@@ -24,6 +24,7 @@ export const DEFAULT_SETTINGS: DiagramSettings = {
   planFloors: 5,
   sectionAngle: 0,
   sectionVex: 1,
+  sectionRange: 'site',
 }
 
 export function settingsOf(project: Project): DiagramSettings {
