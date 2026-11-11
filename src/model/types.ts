@@ -192,6 +192,45 @@ export interface Project {
   synth?: SynthState
   /** Phase 12 교수·조교·동료 피드백과 반영 */
   feedback?: Feedback[]
+  /** 도판에서 학생이 고친 것 (2026-11-12): 잘못된 자료 빼기, 도판 위 표기 옮기기·숨기기 */
+  edits?: ProjectEdits
+}
+
+// ───────────────────────── 학생이 고친 것 (2026-11-12) ─────────────────────────
+// 사용자 결정: ⑥ 도판 그림에서 눌러 '잘못된 점·도형 빼기'와 '표기 옮기기' / 모든 도판·분석에 반영 + 기록 / 다시 수집해도 유지.
+
+/** 뺄 수 있는 자료 갈래 */
+export type HideLayer = 'building' | 'stop' | 'station' | 'store' | 'poi' | 'park' | 'facility'
+
+/** 자료 빼기: 수집 자료가 바뀌어도 같은 것을 다시 찾도록 위치(점·도형 가운데)와 이름으로 기억 */
+export interface HideEdit {
+  id: string
+  layer: HideLayer
+  lon: number
+  lat: number
+  name: string
+  /** 목록에 보일 설명 (예: '건물 · 대광아파트 경비실 · 5층') */
+  desc: string
+  reason: string
+  createdAt: string
+}
+
+/** 표기 옮기기·숨기기: 도판 하나의 글자 (같은 글이 여럿이면 몇 번째인지까지) */
+export interface LabelEdit {
+  id: string
+  panelId: string
+  /** 글 + '#' + 같은 글 중 순서 */
+  key: string
+  text: string
+  dx: number
+  dy: number
+  hidden: boolean
+  createdAt: string
+}
+
+export interface ProjectEdits {
+  hides: HideEdit[]
+  labels: LabelEdit[]
 }
 
 // ───────────────────────── Phase 7 도판 ─────────────────────────

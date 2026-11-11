@@ -16,6 +16,7 @@ import type { Card, Project } from '../model/types'
 import { listVersions, saveVersion } from '../model/db'
 import { countsText, TRIGGER_LABEL, type VersionRecord } from '../model/versions'
 import { FB_STATUS_LABEL, feedbackOf } from '../model/feedback'
+import { editsOf } from '../model/edits'
 import { panelNumber as panelNo } from '../diagrams/panels'
 import type { VWorldConfig } from '../sources/vworld'
 
@@ -352,6 +353,33 @@ export default function ReportStep({ project, update, config }: Props) {
             })}
           </div>
           {diagrams.some((d) => d.id === 'synth') && <SynthEvidenceTable project={project} />}
+          {(editsOf(project).hides.length > 0 || editsOf(project).labels.length > 0) && (
+            <div className="report-synth-ev">
+              <h3>
+                학생이 고친 것 <span className="muted small">(뺀 자료 {editsOf(project).hides.length}건 — 모든 도판·분석에서 뺌 · 옮기거나 숨긴 표기 {editsOf(project).labels.length}개)</span>
+              </h3>
+              {editsOf(project).hides.length > 0 && (
+                <table className="report-table">
+                  <thead>
+                    <tr>
+                      <th>뺀 자료</th>
+                      <th>이유</th>
+                      <th>날짜</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {editsOf(project).hides.map((h) => (
+                      <tr key={h.id}>
+                        <td>{h.desc}</td>
+                        <td>{h.reason || '—'}</td>
+                        <td>{h.createdAt.slice(0, 10)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          )}
         </section>
 
         <section className="report-sec">

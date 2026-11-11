@@ -4062,3 +4062,103 @@ dl {
     grid-template-columns: 1fr;
   }
 }
+
+/* ───────── 도판 고치기 (2026-11-12) ───────── */
+.diagram-viewer.panel-editor.editing {
+  width: min(1240px, calc(100vw - 32px));
+}
+
+.panel-editor-bar {
+  align-items: center;
+  gap: 6px;
+}
+
+.panel-editor-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.panel-editor.editing .panel-editor-body {
+  grid-template-columns: minmax(0, 1fr) 300px;
+}
+
+@media (max-width: 900px) {
+  .panel-editor.editing .panel-editor-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.panel-edit-stage {
+  position: relative;
+  user-select: none;
+  touch-action: none;
+}
+
+.panel-edit-svg svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.panel-edit-marks {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.panel-edit-stage.mode-hide {
+  cursor: crosshair;
+}
+
+.panel-edit-stage.mode-label text[data-lk] {
+  cursor: move;
+}
+
+.panel-edit-stage.mode-label text[data-lk]:hover {
+  fill: #c62828;
+}
+
+.panel-editor-side {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.edit-hits,
+.edit-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.edit-hits li,
+.edit-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+  padding: 3px 4px;
+  border-radius: 6px;
+}
+
+.edit-hits li:hover {
+  background: var(--panel-2);
+}
+
+.edit-missing {
+  color: #b3261e;
+  font-weight: 600;
+}
+
+.edits-record h4 {
+  margin: 10px 0 4px;
+  font-size: 14px;
+}

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import type { PanelOutput } from '../diagrams/compose'
 import { svgBlob, svgToPng, zipBlob } from '../diagrams/export'
 import { siteOverview } from '../diagrams/overview'
@@ -6,7 +6,9 @@ import { PALETTES } from '../diagrams/palette'
 import { ORDERED_PANELS, PANEL_GROUP_ORDER, panelNumber, type PanelDef } from '../diagrams/panels'
 import { buildPanelPrompt, parsePanelAnswer } from '../diagrams/prompt'
 import { collectedDate, DEFAULT_SETTINGS, panelFileName } from '../diagrams/render'
-import { useDiagrams, type CachedPanel } from '../diagrams/useDiagrams'
+import { useDiagrams } from '../diagrams/useDiagrams'
+import PanelEditor from '../components/PanelEditor'
+import { editsOf } from '../model/edits'
 import { DXF_LAYERS, siteModelToDxf } from '../export/toDxf'
 import { wgs84ToUtmk } from '../lib/proj'
 import { terrainAround, type TerrainGrid } from '../lib/terrain'
@@ -65,36 +67,10 @@ function Seg<T extends string | number>({ value, options, onChange, label }: { v
   )
 }
 
-function Viewer({ panel, def, onClose, onSvg, onPng }: { panel: CachedPanel; def: PanelDef; onClose: () => void; onSvg: () => void; onPng: () => void }) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
-  return (
-    <div className="dialog-backdrop" onClick={onClose}>
-      <div className="diagram-viewer" role="dialog" aria-modal="true" aria-label={def.title} onClick={(e) => e.stopPropagation()}>
-        <img src={panel.url} alt={def.title} />
-        <div className="row">
-          <button type="button" className="btn small" onClick={onSvg}>
-            SVG
-          </button>
-          <button type="button" className="btn small" onClick={onPng}>
-            PNG
-          </button>
-          <span className="spacer" />
-          <button type="button" className="btn small ghost" onClick={onClose}>
-            닫기
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
 export default function DiagramStep({ project, update, config, keys, onGoData, onNext }: Props) {
   const { data, settings, panels, busy, terrain } = useDiagrams(project, config.key)
   const [viewing, setViewing] = useState<string | null>(null)
+  const edits = editsOf(project)
   const [answer, setAnswer] = useState('')
   const [chatbot, setChatbot] = useState('')
   const [msg, setMsg] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
@@ -533,6 +509,51 @@ export default function DiagramStep({ project, update, config, keys, onGoData, o
         {msg && <p className={`notice ${msg.kind === 'error' ? 'error' : 'ok'}`}>{msg.text}</p>}
       </details>
 
+      {(edits.hides.length > 0 || edits.labels.length > 0) && (
+        <details className="block edits-record">
+          <summary>
+            <strong>학생이 고친 것 ({edits.hides.length + edits.labels.length})</strong>{' '}
+            <span className="muted small">— 도판을 크게 열어 '자료 빼기'·'표기 옮기기'로 고친 것. 다시 수집해도 유지됩니다.</span>
+          </summary>
+          {edits.hides.length > 0 && (
+            <>
+              <h4>뺀 자료 ({edits.hides.length}) — 모든 도판·분석에서 빠짐</h4>
+              <ul className="edit-list">
+                {edits.hides.map((h) => (
+                  <li key={h.id}>
+                    <span>
+                      {h.desc}
+                      {h.reason && <span className="muted"> — {h.reason}</span>} <span className="muted small">{h.createdAt.slice(0, 10)}</span>
+                      {data?.hidden.missing.some((m) => m.id === h.id) && <span className="edit-missing small"> 지금 자료에서 못 찾음</span>}
+                    </span>
+                    <button type="button" className="link-btn small" onClick={() => update((d) => void (d.edits = { ...editsOf(d), hides: editsOf(d).hides.filter((x) => x.id !== h.id) }))}>
+                      되돌리기
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+          {edits.labels.length > 0 && (
+            <>
+              <h4>옮기거나 숨긴 표기 ({edits.labels.length}) — 그 도판에만</h4>
+              <ul className="edit-list">
+                {edits.labels.map((l) => (
+                  <li key={l.id}>
+                    <span>
+                      <span className="muted">{String(panelNumber(l.panelId)).padStart(2, '0')}</span> {l.text || l.key.replace(/#\d+$/, '')} <span className="muted small">{l.hidden ? '숨김' : '옮김'}</span>
+                    </span>
+                    <button type="button" className="link-btn small" onClick={() => update((d) => void (d.edits = { ...editsOf(d), labels: editsOf(d).labels.filter((x) => x.id !== l.id) }))}>
+                      되돌리기
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </details>
+      )}
+
       {busy && <p className="loading">도판을 그리는 중… ({Object.keys(panels).length}/{ORDERED_PANELS.length})</p>}
 
       {PANEL_GROUP_ORDER.map((g) => {
@@ -623,8 +644,18 @@ export default function DiagramStep({ project, update, config, keys, onGoData, o
         </button>
       </div>
 
-      {viewing && viewDef && panels[viewing] && (
-        <Viewer panel={panels[viewing]} def={viewDef} onClose={() => setViewing(null)} onSvg={() => downloadSvg(viewDef)} onPng={() => void downloadPng(viewDef)} />
+      {viewing && viewDef && panels[viewing] && data && (
+        <PanelEditor
+          project={project}
+          update={update}
+          def={viewDef}
+          panel={panels[viewing]}
+          data={data}
+          settings={settings}
+          onClose={() => setViewing(null)}
+          onSvg={() => downloadSvg(viewDef)}
+          onPng={() => void downloadPng(viewDef)}
+        />
       )}
     </div>
   )

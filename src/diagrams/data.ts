@@ -5,7 +5,7 @@ import type { Geometry, LineString, MultiLineString } from 'geojson'
 import { centerOf, isAreal, isLinear, siteBoundary, type Areal } from '../lib/geo'
 import { jimokOf } from '../model/codes'
 import { observationsOf } from '../model/observations'
-import type { Project } from '../model/types'
+import type { HideEdit, HideLayer, Project } from '../model/types'
 import type { EnvResult } from '../sources/env'
 import type { SpeedSnapshot } from '../sources/its'
 import type { NetworkResult } from '../sources/network'
@@ -209,6 +209,8 @@ export interface DiagramData {
   ngii: NgiiData | null
   /** 어떤 자료가 수집되었는지 */
   has: Record<string, boolean>
+  /** 학생이 뺀 자료: 이번에 찾아 뺀 수와 못 찾은 기록 */
+  hidden: { applied: number; missing: HideEdit[] }
 }
 
 /**
@@ -567,7 +569,7 @@ export function buildDiagramData(project: Project): DiagramData | null {
       return { lon: d.location!.lon, lat: d.location!.lat, name: o.text.trim().slice(0, 40), kind, label: o.id.replace('O-', '') }
     })
 
-  return {
+  const out: DiagramData = {
     center,
     R,
     boundary,
@@ -593,5 +595,138 @@ export function buildDiagramData(project: Project): DiagramData | null {
     env,
     ngii,
     has,
+    hidden: { applied: 0, missing: [] },
   }
+  // 학생이 뺀 자료 (다시 수집해도 위치·이름으로 다시 찾아 뺌)
+  out.hidden = applyHides(out, project.edits?.hides ?? [])
+  return out
+}
+
+// ───────────────────────── 학생이 뺀 자료 (2026-11-12) ─────────────────────────
+
+/** 대략 거리(m) — 반경 수백 m 안에서 충분 */
+function metersBetween(lon1: number, lat1: number, lon2: number, lat2: number): number {
+  const kx = 111320 * Math.cos((((lat1 + lat2) / 2) * Math.PI) / 180)
+  return Math.hypot((lon2 - lon1) * kx, (lat2 - lat1) * 110574)
+}
+
+/** 도판에서 누른 곳의 자료 (빼기 후보) */
+export interface HitCandidate {
+  layer: HideLayer
+  lon: number
+  lat: number
+  name: string
+  desc: string
+  /** 누른 곳에서 거리(m) — 가까운 것부터 */
+  dist: number
+}
+
+const LAYER_LABEL: Record<HideLayer, string> = { building: '건물', stop: '버스정류소', station: '지하철역', store: '상가', poi: '생활 시설', park: '공원·녹지·하천', facility: '도시계획시설' }
+
+export function hideLayerLabel(l: HideLayer): string {
+  return LAYER_LABEL[l]
+}
+
+function bldDesc(b: Bld): string {
+  const h = bldHeight(b)
+  return `건물 · ${b.name || '이름 없음'} · ${b.floors ? `${b.floors}층` : '층수 모름'}${h ? ` (약 ${Math.round(h)}m)` : ''}`
+}
+
+/** 누른 곳(경위도)에서 tolM 안의 점과, 누른 곳을 품은 도형 */
+export function featuresAt(d: DiagramData, lon: number, lat: number, tolM: number): HitCandidate[] {
+  const out: HitCandidate[] = []
+  const pts: [HideLayer, Pt[]][] = [
+    ['stop', d.stops],
+    ['station', d.stations],
+    ['store', d.stores],
+    ['poi', d.pois],
+  ]
+  for (const [layer, list] of pts)
+    for (const p of list) {
+      const dist = metersBetween(lon, lat, p.lon, p.lat)
+      if (dist > tolM) continue
+      const extra = layer === 'store' && p.label ? ` (${p.label})` : ''
+      out.push({ layer, lon: p.lon, lat: p.lat, name: p.name, desc: `${LAYER_LABEL[layer]} · ${p.name || '이름 없음'}${extra}`, dist })
+    }
+  for (const b of d.buildings) {
+    if (!inside(lon, lat, b.geom)) continue
+    const c = centroidOf(b.geom)
+    if (c) out.push({ layer: 'building', lon: c[0], lat: c[1], name: b.name, desc: bldDesc(b), dist: tolM + 1 })
+  }
+  const areas: [HideLayer, Area<Record<string, unknown>>[]][] = [
+    ['park', d.parks as Area<Record<string, unknown>>[]],
+    ['facility', d.facilities as Area<Record<string, unknown>>[]],
+  ]
+  for (const [layer, list] of areas)
+    for (const a of list) {
+      if (!inside(lon, lat, a.geom)) continue
+      const c = centroidOf(a.geom)
+      if (c) out.push({ layer, lon: c[0], lat: c[1], name: a.name, desc: `${LAYER_LABEL[layer]} · ${a.name || '이름 없음'}`, dist: tolM + 2 })
+    }
+  return out.sort((a, b) => a.dist - b.dist).slice(0, 12)
+}
+
+/** 뺀 자료를 지금 자료에서 찾아 뺀다. 못 찾은 것은 missing (다시 수집으로 자료가 바뀐 경우 등) */
+function applyHides(d: DiagramData, hides: HideEdit[]): { applied: number; missing: HideEdit[] } {
+  if (!hides.length) return { applied: 0, missing: [] }
+  let applied = 0
+  const missing: HideEdit[] = []
+  const byLayer = (layer: HideLayer) => hides.filter((h) => h.layer === layer)
+  // 점: 3m 안에서 가장 가까운 것 (이름이 같으면 6m까지)
+  const dropPoints = (layer: HideLayer, list: Pt[]): Pt[] => {
+    const hs = byLayer(layer)
+    if (!hs.length) return list
+    const drop = new Set<Pt>()
+    for (const h of hs) {
+      let best: Pt | null = null
+      let bd = Infinity
+      for (const p of list) {
+        if (drop.has(p)) continue
+        const dist = metersBetween(h.lon, h.lat, p.lon, p.lat)
+        if ((dist <= 3 || (dist <= 6 && h.name && p.name === h.name)) && dist < bd) {
+          best = p
+          bd = dist
+        }
+      }
+      if (best) {
+        drop.add(best)
+        applied++
+      } else missing.push(h)
+    }
+    return list.filter((p) => !drop.has(p))
+  }
+  // 도형: 가운데 점이 6m 안 (또는 기억한 점을 품은 도형 중 이름이 같은 것)
+  const dropAreas = <T extends { geom: Areal; name: string }>(layer: HideLayer, list: T[]): T[] => {
+    const hs = byLayer(layer)
+    if (!hs.length) return list
+    const drop = new Set<T>()
+    for (const h of hs) {
+      let best: T | null = null
+      let bd = Infinity
+      for (const a of list) {
+        if (drop.has(a)) continue
+        const c = centroidOf(a.geom)
+        if (!c) continue
+        const dist = metersBetween(h.lon, h.lat, c[0], c[1])
+        const ok = dist <= 6 || (h.name && a.name === h.name && inside(h.lon, h.lat, a.geom))
+        if (ok && dist < bd) {
+          best = a
+          bd = dist
+        }
+      }
+      if (best) {
+        drop.add(best)
+        applied++
+      } else missing.push(h)
+    }
+    return list.filter((a) => !drop.has(a))
+  }
+  d.stops = dropPoints('stop', d.stops)
+  d.stations = dropPoints('station', d.stations)
+  d.stores = dropPoints('store', d.stores)
+  d.pois = dropPoints('poi', d.pois)
+  d.buildings = dropAreas('building', d.buildings)
+  d.parks = dropAreas('park', d.parks)
+  d.facilities = dropAreas('facility', d.facilities)
+  return { applied, missing }
 }

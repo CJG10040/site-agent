@@ -1,6 +1,7 @@
 // 도판 그리기 진입점: 설정 기본값, 도판 한 장 그리기, 파일 이름.
 
-import type { DiagramSettings, Project } from '../model/types'
+import { applyLabelEdits, editNote } from '../model/edits'
+import type { DiagramSettings, LabelEdit, Project } from '../model/types'
 import { composePanel, siteMarkSvg, type PanelOutput } from './compose'
 import type { DiagramData } from './data'
 import { makeFrame } from './frame'
@@ -54,7 +55,7 @@ export async function renderPanel(
   vworldKey: string,
   date: string,
   terrain: TerrainAnalysis | null = null,
-  extra: { synth?: SynthCtx | null } = {},
+  extra: { synth?: SynthCtx | null; labels?: LabelEdit[] } = {},
 ): Promise<RenderedPanel> {
   const R = def.frameR ? def.frameR(data, extra) : data.R
   const frame = makeFrame(data.center[0], data.center[1], R, settings.frame)
@@ -72,14 +73,21 @@ export async function renderPanel(
   } catch (e) {
     out = { layers: [], legend: [], summary: [], caption: '', empty: `그리는 중 오류: ${e instanceof Error ? e.message : String(e)}` }
   }
+  // 학생이 고친 것 (2026-11-12): 뺀 자료 수·옮긴 표기 수를 캡션에, 표기는 글자를 찾아 옮기거나 숨김
+  const labels = extra.labels ?? []
+  const note = editNote(data.hidden?.applied ?? 0, labels.length)
+  if (note && !out.empty) out = { ...out, caption: out.caption ? `${out.caption} · ${note}` : note }
   const site = siteMarkSvg(frame, frame.path(data.boundary, false), data.center, settings, pal)
-  const svg = composePanel(
-    { id: def.id, number: panelNumber(def.id), title: def.title, subtitle: `반경 ${R.toLocaleString('ko-KR')}m · ${date} 수집` },
-    out,
-    frame,
-    settings,
-    pal,
-    site,
+  const svg = applyLabelEdits(
+    composePanel(
+      { id: def.id, number: panelNumber(def.id), title: def.title, subtitle: `반경 ${R.toLocaleString('ko-KR')}m · ${date} 수집` },
+      out,
+      frame,
+      settings,
+      pal,
+      site,
+    ),
+    labels,
   )
   return { id: def.id, svg, out }
 }
