@@ -316,6 +316,10 @@ export default function DiagramStep({ project, update, config, keys, onGoData, o
           <span className="label">그림자 시각 {settings.sunHour}시</span>
           <input type="range" min={7} max={18} step={1} value={settings.sunHour} onChange={(e) => setSettings({ sunHour: Number(e.target.value) })} />
         </label>
+        <label className="num-field">
+          <span className="label">단면 방향 {settings.sectionAngle}°</span>
+          <input type="range" min={0} max={165} step={15} value={settings.sectionAngle} onChange={(e) => setSettings({ sectionAngle: Number(e.target.value) })} />
+        </label>
         {data?.env && (
           <label className="num-field">
             <span className="label">계획 층수 (가시권)</span>

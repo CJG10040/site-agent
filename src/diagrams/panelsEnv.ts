@@ -8,6 +8,7 @@ import { sunAt, SUN_DAYS } from '../lib/sun'
 import { FLOOR_M, windName, type EnvResult } from '../sources/env'
 import type { LegendItem, PanelLayer, PanelOutput } from './compose'
 import { MAP_CX, MAP_CY, MAP_R } from './frame'
+import type { DiagramData } from './data'
 import { siteRingsXY } from './move'
 import { mix, shades, steps } from './palette'
 import type { PanelCtx, PanelDef } from './panels'
@@ -97,6 +98,12 @@ function envOf(c: PanelCtx): EnvResult | null {
   return c.d.env && c.d.env.version === 1 ? c.d.env : null
 }
 
+/** 대지 주변 세밀 칸의 반 폭 (예전 결과는 200m) */
+function fineHalfOf(d: DiagramData): number {
+  const x0 = d.env?.fine?.winter?.x0
+  return typeof x0 === 'number' && x0 < 0 ? -x0 : 200
+}
+
 function emptyOut(text: string): PanelOutput {
   return { layers: [], legend: [], summary: [], caption: '', empty: text }
 }
@@ -141,7 +148,7 @@ function sunPanel(scope: 'site' | 'wide'): PanelDef {
     title: scope === 'site' ? '일조시간 (대지 주변)' : '일조시간 (반경 전체)',
     group: '환경',
     needs: NEED,
-    frameR: scope === 'site' ? () => 200 : undefined,
+    frameR: scope === 'site' ? fineHalfOf : undefined,
     render: (c): PanelOutput => {
       const e = envOf(c)
       if (!e) return emptyOut('환경 계산 결과가 없습니다')
@@ -159,7 +166,7 @@ function sunPanel(scope: 'site' | 'wide'): PanelDef {
       const keyOf = (h: number) => bins.filter((b) => h >= b).length - 1
       const layers: PanelLayer[] = [{ id: '일조시간', svg: gridImage(c, g, (v) => sunColors[keyOf(v / 60)]) }, buildingsLayer(c)]
       const legend: LegendItem[] = bins.map((b, i) => ({ color: sunColors[i], label: i < bins.length - 1 ? `${b}~${bins[i + 1]}시간` : `${b}시간 이상` }))
-      if (day.key === 'winter') {
+      if (day.key === 'winter' && scope === 'site') {
         const cont = unpackGrid(set.cont)
         const total = unpackGrid(set.total)
         const c2 = gridContour(c, cont, 120)
@@ -219,33 +226,6 @@ function sunPanel(scope: 'site' | 'wide'): PanelDef {
 }
 
 // ───────────────────────── 개방감 ─────────────────────────
-
-const SVF_BINS = [0, 0.3, 0.5, 0.7, 0.85]
-const SVF_LABELS = ['30% 미만 (많이 막힘)', '30~50%', '50~70%', '70~85%', '85% 이상 (트임)']
-
-const skyMapPanel: PanelDef = {
-  id: 'skyMap',
-  title: '개방감 (하늘이 보이는 비율)',
-  group: '환경',
-  needs: NEED,
-  render: (c): PanelOutput => {
-    const e = envOf(c)
-    if (!e) return emptyOut('환경 계산 결과가 없습니다')
-    const g = unpackGrid(e.coarse.svf)
-    const colors = c.pal.id === 'mono' ? shades('#111111', SVF_BINS.length).reverse() : [...steps(c.pal, SVF_BINS.length)].reverse()
-    const keyOf = (v: number) => SVF_BINS.filter((b) => v >= b).length - 1
-    const rad = maskOf(c, g, 'radius')
-    const vals: number[] = []
-    for (let k = 0; k < rad.length; k++) if (rad[k] && Number.isFinite(g.at(k))) vals.push(g.at(k))
-    return {
-      layers: [{ id: '개방감', svg: gridImage(c, g, (v) => colors[keyOf(v)]) }, buildingsLayer(c)],
-      legend: SVF_BINS.map((_, i) => ({ color: colors[i], label: SVF_LABELS[i] })),
-      legendTitle: '서 있는 눈높이(1.5m)에서 하늘이 보이는 비율',
-      summary: [`대지 가운데: ${pctText(e.sky.svf)}`, vals.length ? `반경 안 건물 밖 땅의 중앙값: ${pctText(median(vals))}` : ''].filter(Boolean),
-      caption: envCaption(e, '4m 칸 · 16방위 × 300m 안의 건물·지형 + 그 밖 지형 지평선'),
-    }
-  },
-}
 
 const skyDomePanel: PanelDef = {
   id: 'skyDome',
@@ -365,7 +345,7 @@ const viewPanel: PanelDef = {
       layers: [
         { id: '가시권', svg: gridImage(c, g, (v) => (keyOf(v) >= 0 ? colors[keyOf(v)] : null)) },
         buildingsLayer(c),
-        { id: '계획_높이', svg: line ? `<path d="${line}" fill="none" stroke="#ffffff" stroke-width="3.6"/><path d="${line}" fill="none" stroke="${c.pal.accent}" stroke-width="2"/>` : '' },
+        { id: '계획_높이', svg: line ? `<path d="${line}" fill="none" stroke="${c.pal.accent}" stroke-width="1" stroke-opacity="0.85"/>` : '' },
       ],
       legend: [
         ...VIEW_HEIGHTS.map((h, i) => ({ color: colors[i], label: `${h}m(약 ${Math.round(h / FLOOR_M)}층)부터 보임` })),
@@ -377,50 +357,6 @@ const viewPanel: PanelDef = {
         `계획 ${c.st.planFloors}층(${planH}m): ${pctText(n ? nPlan / n : 0)}에서 보임`,
       ],
       caption: envCaption(e, '4m 칸 · 각 칸에서 대지 가운데까지 건물·지형에 가리는지 계산 · 반경 밖에서 보이는 것은 빠짐 · 계획 층수는 도판 설정에서'),
-    }
-  },
-}
-
-// ───────────────────────── 수목 ─────────────────────────
-
-const treesPanel: PanelDef = {
-  id: 'trees',
-  title: '수목 (항공사진 초록)',
-  group: '주변 현황',
-  needs: NEED,
-  render: (c): PanelOutput => {
-    const e = envOf(c)
-    if (!e) return emptyOut('환경 계산 결과가 없습니다')
-    if (!e.trees) return emptyOut('위성영상을 받지 못해 수목을 찾지 못했습니다')
-    const g = unpackGrid(e.trees)
-    const green = c.pal.id === 'mono' ? '#555555' : c.pal.green === '#9ccc8a' ? '#4f9a4a' : c.pal.green
-    const rad = maskOf(c, g, 'radius')
-    const site = siteRingsXY(c.d)
-    let n = 0
-    let t = 0
-    let nNear = 0
-    let tNear = 0
-    // 대지 경계 30m 안: 대지를 감싼 상자 + 30m 안 칸을 거리로
-    for (let r = 0; r < g.ny; r++)
-      for (let col = 0; col < g.nx; col++) {
-        const k = r * g.nx + col
-        if (!rad[k]) continue
-        n++
-        const v = g.raw[k] === 1
-        if (v) t++
-        const x = g.x0 + (col + 0.5) * g.cell
-        const y = g.y0 - (r + 0.5) * g.cell
-        if (Math.abs(x) < 120 && Math.abs(y) < 120 && nearRings(x, y, site, 30)) {
-          nNear++
-          if (v) tNear++
-        }
-      }
-    return {
-      layers: [buildingsLayer(c, mix('#ffffff', c.pal.ink, 0.25)), { id: '수목', svg: gridImage(c, g, (v) => (v === 1 ? green : null)) }],
-      legend: [{ color: green, label: '초록 덮개 (나무 그늘·풀밭)' }],
-      legendTitle: '위성영상에서 초록색인 곳 (2m 칸)',
-      summary: [`반경 안 초록 덮개: ${pctText(n ? t / n : 0)}`, nNear ? `대지 경계 30m 안: ${pctText(tNear / nNear)}` : ''].filter(Boolean),
-      caption: `브이월드 위성영상(줌 17, 약 1m) 색으로 찾음 · 촬영 시기 모름, 그림자 속 나무·낙엽수는 빠지고 초록 지붕·인조잔디가 섞일 수 있어 '최소치·참고용' · 나무 높이는 모름 · ${e.computedAt.slice(0, 10)} 계산`,
     }
   },
 }
@@ -447,9 +383,10 @@ const WIND_LABELS = ['0.3배 미만 (거의 멈춤)', '0.3~0.7배', '0.7~1.1배 
 function windPanel(season: '여름' | '겨울'): PanelDef {
   return {
     id: season === '여름' ? 'windSummer' : 'windWinter',
-    title: `바람 흐름 실험 (${season})`,
+    title: `바람 흐름 실험 (${season}, 보행 높이)`,
     group: '환경',
     needs: "공간정보에서 '환경 계산'과 '기후·바람'을 수집하세요.",
+    frameR: (d) => Math.min(d.R, d.env?.windR ?? d.R),
     render: (c): PanelOutput => {
       const e = envOf(c)
       if (!e) return emptyOut('환경 계산 결과가 없습니다')
@@ -465,7 +402,7 @@ function windPanel(season: '여름' | '겨울'): PanelDef {
       const ux = Math.sin(a)
       const uy = -Math.cos(a)
       let arrows = ''
-      for (const off of [-160, 0, 160]) {
+      for (const off of [-200, 0, 200]) {
         const cx = MAP_CX - ux * (MAP_R - 70) + -uy * off
         const cy = MAP_CY - uy * (MAP_R - 70) + ux * off
         const x2 = cx + ux * 60
@@ -494,12 +431,12 @@ function windPanel(season: '여름' | '겨울'): PanelDef {
       return {
         layers: [{ id: '바람_속도비', svg: gridImage(c, g, (v) => colors[keyOf(v)], toGrid) }, buildingsLayer(c, mix('#ffffff', c.pal.ink, 0.6)), { id: '바람_방향', svg: arrows }],
         legend: WIND_BINS.map((_, i) => ({ color: colors[i], label: WIND_LABELS[i] })),
-        legendTitle: `${season}에 가장 잦은 ${windName(w.fromAz)}풍이 들어올 때, 들어오는 바람 대비 속도`,
+        legendTitle: `보행 높이(지면 위 약 2m)에서 ${season}에 가장 잦은 ${windName(w.fromAz)}풍 대비 속도`,
         summary: [
           near.length ? `대지 주변 30m: 평균 ${fmt(near.reduce((x, y) => x + y, 0) / near.length, 2)}배` : '',
           `계산 영역 중 빨라지는 곳(1.5배 이상) ${pctText(n ? fast / n : 0)}, 거의 멈추는 곳(0.3배 미만) ${pctText(n ? still / n : 0)}`,
         ].filter(Boolean),
-        caption: `실험 · 2D 격자 볼츠만(D2Q9) · 대지 중심 ${fmt(g.nx * g.cell)}m 정사각, ${fmt(g.cell, 1)}m 칸 · 높이 20m(약 7층) 이상 건물은 막고, 낮은 건물은 높이만큼 바람을 줄여 지나가게 함(지붕 위로 넘는 바람을 평면에서 흉내) · 실제 풍속·돌풍 아님 · ${e.computedAt.slice(0, 10)} 계산`,
+        caption: `실험 · 보행 높이(약 2m) 한 층의 평면 흐름, 2D 격자 볼츠만(D2Q9) · 도판보다 넓은 ${fmt(g.nx * g.cell)}m 정사각을 ${fmt(g.cell, 1)}m 칸으로 계산 · 높이 20m(약 7층) 이상 건물은 막고, 낮은 건물은 높이만큼 바람을 줄여 지나가게 함(지붕 위로 넘는 바람을 흉내) · 실제 풍속·돌풍 아님 · ${e.computedAt.slice(0, 10)} 계산`,
       }
     },
   }
@@ -507,55 +444,91 @@ function windPanel(season: '여름' | '겨울'): PanelDef {
 
 // ───────────────────────── 여름 열쾌적 (실험) ─────────────────────────
 
-const HEAT_LABELS = ['26℃ 이하 (스트레스 없음)', '26~32℃ (보통)', '32~38℃ (강함)', '38~46℃ (매우 강함)', '46℃ 초과 (극심)']
-const HEAT_BINS = [-100, 26, 32, 38, 46]
+const HEAT_STOPS = ['#fff3c4', '#fbd77a', '#f4a259', '#e4703f', '#c8435a', '#8f2343', '#4f1029']
+
+function heatRamp(n: number): string[] {
+  return Array.from({ length: n }, (_, i) => {
+    const t = (i / Math.max(1, n - 1)) * (HEAT_STOPS.length - 1)
+    const k = Math.min(Math.floor(t), HEAT_STOPS.length - 2)
+    return mix(HEAT_STOPS[k], HEAT_STOPS[k + 1], t - k)
+  })
+}
+
+/** UTCI 공식 단계 (더위 쪽) */
+function heatCategory(v: number): string {
+  if (v <= 26) return '스트레스 없음'
+  if (v <= 32) return '보통'
+  if (v <= 38) return '강함'
+  if (v <= 46) return '매우 강함'
+  return '극심'
+}
 
 const heatPanel: PanelDef = {
   id: 'heat',
   title: '여름 열쾌적 실험 (UTCI)',
   group: '환경',
   needs: "공간정보에서 '환경 계산'과 '기후·바람'을 수집하세요.",
+  frameR: fineHalfOf,
   render: (c): PanelOutput => {
     const e = envOf(c)
     if (!e) return emptyOut('환경 계산 결과가 없습니다')
-    if (!e.coarse.utci || !e.thermal) return emptyOut("여름 오후 기상 자료가 없어 계산하지 못했습니다 ('기후·바람'을 다시 수집)")
-    const g = unpackGrid(e.coarse.utci)
-    const colors = c.pal.id === 'mono' ? shades('#111111', 5) : c.pal.id === 'cvd' ? ['#fde725', '#f9b641', '#e8674a', '#b12a5b', '#5c126e'] : ['#f6efe1', '#f2c94c', '#ec8a3c', '#c8435a', '#6d1f3a']
-    const keyOf = (v: number) => HEAT_BINS.filter((b) => v > b).length - 1
+    const packed = e.fine.utci ?? e.coarse.utci
+    if (!packed || !e.thermal) return emptyOut("여름 오후 기상 자료가 없어 계산하지 못했습니다 ('기후·바람'을 다시 수집)")
+    const g = unpackGrid(packed)
+    const all: number[] = []
+    for (let k = 0; k < g.nx * g.ny; k++) {
+      const v = g.at(k)
+      if (Number.isFinite(v)) all.push(v)
+    }
+    if (!all.length) return emptyOut('계산된 값이 없습니다')
+    all.sort((a, b) => a - b)
+    const q = (p: number) => all[Math.min(all.length - 1, Math.floor(p * (all.length - 1)))]
+    // 값에 맞춰 2℃ 간격 (많으면 넓힘)
+    let step = 2
+    let lo = Math.floor(q(0.01) / step) * step
+    let hi = Math.ceil(q(0.99) / step) * step
+    while ((hi - lo) / step > 9) {
+      step += 1
+      lo = Math.floor(q(0.01) / step) * step
+      hi = Math.ceil(q(0.99) / step) * step
+    }
+    const n = Math.max(1, Math.round((hi - lo) / step))
+    const colors = c.pal.id === 'mono' ? shades('#111111', n) : c.pal.id === 'cvd' ? steps(c.pal, n) : heatRamp(n)
+    const keyOf = (v: number) => Math.max(0, Math.min(n - 1, Math.floor((v - lo) / step)))
     const site = siteRingsXY(c.d)
     const near: number[] = []
-    const rad = maskOf(c, g, 'radius')
-    const cnt = [0, 0, 0, 0, 0]
-    let n = 0
+    let strong = 0
     for (let r = 0; r < g.ny; r++)
       for (let col = 0; col < g.nx; col++) {
-        const k = r * g.nx + col
-        const v = g.at(k)
+        const v = g.at(r * g.nx + col)
         if (!Number.isFinite(v)) continue
-        if (rad[k]) {
-          n++
-          cnt[keyOf(v)]++
-        }
+        if (v > 38) strong++
         const x = g.x0 + (col + 0.5) * g.cell
         const y = g.y0 - (r + 0.5) * g.cell
-        if (Math.abs(x) < 120 && Math.abs(y) < 120 && nearRings(x, y, site, 30)) near.push(v)
+        if (Math.abs(x) < 150 && Math.abs(y) < 150 && nearRings(x, y, site, 30)) near.push(v)
       }
     const t = e.thermal
+    const legend: LegendItem[] = Array.from({ length: n }, (_, i) => {
+      const a = lo + i * step
+      const b = a + step
+      const label = i === 0 ? `${b}℃ 이하` : i === n - 1 ? `${a}℃ 이상` : `${a}~${b}℃`
+      return { color: colors[i], label: `${label} (${heatCategory(a + step / 2)})` }
+    })
     return {
       layers: [{ id: '체감_더위', svg: gridImage(c, g, (v) => colors[keyOf(v)]) }, buildingsLayer(c, mix('#ffffff', c.pal.ink, 0.6))],
-      legend: HEAT_BINS.map((_, i) => ({ color: colors[i], label: HEAT_LABELS[i] })),
-      legendTitle: `체감 더위 UTCI · ${t.label} (기온 ${fmt(t.ta, 1)}℃, 습도 ${fmt(t.rh)}%, 관측 풍속 ${fmt(t.ws, 1)}m/s)`,
+      legend,
+      legendTitle: `체감 더위 UTCI · ${t.label} (기온 ${fmt(t.ta, 1)}℃, 습도 ${fmt(t.rh)}%, 관측 풍속 ${fmt(t.ws, 1)}m/s) · 괄호는 공식 단계`,
       summary: [
         near.length ? `대지 주변 30m: ${fmt(Math.min(...near), 1)}~${fmt(Math.max(...near), 1)}℃ (중앙 ${fmt(median(near), 1)}℃)` : '',
-        n ? `반경 안 건물 밖 땅 중 '매우 강함' 이상: ${pctText((cnt[3] + cnt[4]) / n)}` : '',
+        `도판 안 건물 밖 땅 중 '매우 강함'(38℃ 초과) 이상: ${pctText(strong / all.length)}`,
         `조건: 최근 3년 7~8월 14~16시 중 더운 쪽 10% 날(${fmt(t.days)}일) 평균`,
       ].filter(Boolean),
-      caption: `실험 · UTCI 다항식(jsthermalcomfort, MIT) · 평균복사온도는 햇빛·그늘(건물·지형·초록 덮개)·개방감으로 단순 어림, 바람은 관측 풍속 × 여름 바람 실험 속도비 · 표면 재료·실제 바람 반영 안 됨 · ${e.computedAt.slice(0, 10)} 계산`,
+      caption: `실험 · UTCI 다항식(jsthermalcomfort, MIT) · ${fmt(g.cell, 1)}m 칸 · 평균복사온도는 햇빛·그늘(건물·지형)·하늘 비율로 단순 어림, 바람은 관측 풍속 × 여름 바람 실험 속도비 · 나무 그늘·표면 재료는 반영 안 됨 · ${e.computedAt.slice(0, 10)} 계산`,
     }
   },
 }
 
-export const ENV_PANELS: PanelDef[] = [sunPanel('site'), sunPanel('wide'), skyMapPanel, skyDomePanel, viewPanel, treesPanel, windPanel('여름'), windPanel('겨울'), heatPanel]
+export const ENV_PANELS: PanelDef[] = [sunPanel('site'), sunPanel('wide'), skyDomePanel, viewPanel, windPanel('여름'), windPanel('겨울'), heatPanel]
 
 export function envPanelIds(): string[] {
   return ENV_PANELS.map((p) => p.id)

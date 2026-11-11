@@ -10,7 +10,8 @@ import { WALK_R } from '../sources/network'
 import { CALM_MS, DIR16, prevailing, SEASONS, WIND_BINS } from '../sources/wind'
 import { esc, type LegendItem, type PanelLayer, type PanelOutput } from './compose'
 import { MAP_CX, MAP_CY, MAP_R } from './frame'
-import { blockView, encView, linkSpeeds, netView, projOf, SPEED_BINS, speedBin, topShare, walkAt, walkshed, walkToPoint, WALK_BANDS, WALK_SPEED } from './move'
+import { blockView, encView, linkSpeeds, netView, projOf, siteRingsXY, topShare, walkAt, walkshed, walkToPoint, WALK_BANDS, WALK_SPEED } from './move'
+import type { DiagramData } from './data'
 import { mix, shades, steps } from './palette'
 import type { PanelCtx, PanelDef } from './panels'
 
@@ -73,6 +74,36 @@ function offsetPath(pts: [number, number][], px: number): string {
     return [p[0] - (dy / L) * px, p[1] + (dx / L) * px]
   })
   return out.map(([x, y], i) => `${i ? 'L' : 'M'}${x.toFixed(1)} ${y.toFixed(1)}`).join('')
+}
+
+/** 거시: 실제 속도 ÷ 제한속도 */
+const CONGESTION_BINS = [
+  { label: '제한속도의 30% 미만 (정체)', min: 0 },
+  { label: '30~50% (서행)', min: 0.3 },
+  { label: '50~70%', min: 0.5 },
+  { label: '70~90%', min: 0.7 },
+  { label: '90% 이상 (원활)', min: 0.9 },
+]
+function congestionBin(r: number): number {
+  return CONGESTION_BINS.filter((b) => r >= b.min).length - 1
+}
+
+/** 미시: 보행자가 느끼는 차량 속도 (안전속도 5030 기준) */
+const PED_BINS = [
+  { label: '시속 20km 미만 (아주 느림)', short: '아주 느림', min: 0 },
+  { label: '20~30km (이면도로 수준)', short: '이면도로 수준', min: 20 },
+  { label: '30~40km', short: '보통', min: 30 },
+  { label: '40~50km', short: '빠름', min: 40 },
+  { label: '50km 이상 (빠름·소음)', short: '아주 빠름', min: 50 },
+]
+function pedBin(v: number): number {
+  return PED_BINS.filter((b) => v >= b.min).length - 1
+}
+
+/** 대지가 다 보이는 주변 (대지 꼭짓점 중 가장 먼 곳 + 60m, 최소 200m) */
+function localFrameR(d: DiagramData): number {
+  const far = Math.max(0, ...siteRingsXY(d).flat().map(([x, y]) => Math.hypot(x, y)))
+  return Math.min(d.R, Math.max(200, Math.ceil((far + 60) / 10) * 10))
 }
 
 /** 순위 구간 (선택도) */
@@ -326,7 +357,7 @@ export const MOVE_PANELS: PanelDef[] = [
   // ───────────────────────── 실시간 도로 속도 ─────────────────────────
   {
     id: 'speed',
-    title: '실시간 도로 속도',
+    title: '도로 혼잡 (거시, 제한속도 대비)',
     group: '연계와 접근',
     needs: "공간정보에서 '실시간 도로 속도'를 수집하세요 (국가교통정보센터 키).",
     render: (c): PanelOutput => {
@@ -335,43 +366,84 @@ export const MOVE_PANELS: PanelDef[] = [
       if (!c.d.links.length) return { layers: [faintBuildings(c)], legend: [], summary: [], caption: '', empty: '표준노드링크(도로망) 도형이 없어 그릴 수 없습니다' }
       const idx = c.st.speedSnap >= 0 && c.st.speedSnap < snaps.length ? c.st.speedSnap : snaps.length - 1
       const snap = snaps[idx]
-      const v = linkSpeeds(c.d, snap)
-      const colors =
-        c.pal.id === 'mono'
-          ? ['#111111', '#555555', '#8a8a8a', '#b5b5b5', '#d9d9d9']
-          : c.pal.id === 'cvd'
-            ? ['#d55e00', '#e69f00', '#f0e442', '#56b4e9', '#0072b2']
-            : ['#d7301f', '#f2862e', '#f2c94c', '#8cc084', '#3a8f5c']
+      const colors = c.pal.id === 'mono' ? ['#111111', '#555555', '#8a8a8a', '#b5b5b5', '#d9d9d9'] : c.pal.id === 'cvd' ? ['#d55e00', '#e69f00', '#f0e442', '#56b4e9', '#0072b2'] : ['#d7301f', '#f2862e', '#f2c94c', '#8cc084', '#3a8f5c']
       const items: { d: string; color: string; width: number }[] = []
-      c.d.links.forEach((l, i) => {
+      let lenAll = 0
+      let lenJam = 0
+      const jamNames = new Set<string>()
+      c.d.links.forEach((l) => {
+        const val = l.id ? snap.speeds[l.id] : undefined
+        const r = val !== undefined && l.maxSpd ? val / l.maxSpd : null
+        for (const ls of linePositions(l.geom)) {
+          const pts = ls.map(([lon, lat]) => c.f.pt(lon, lat))
+          items.push({ d: offsetPath(pts, 2.6), color: r === null ? c.pal.unknown : colors[congestionBin(r)], width: r === null ? 1.6 : 3.6 })
+          if (r !== null && c.f.inside(ls[0][0], ls[0][1])) {
+            const len = pts.slice(1).reduce((acc, q, i) => acc + Math.hypot(q[0] - pts[i][0], q[1] - pts[i][1]), 0) / c.f.s
+            lenAll += len
+            if (r < 0.3) {
+              lenJam += len
+              if (l.name) jamNames.add(l.name)
+            }
+          }
+        }
+      })
+      return {
+        layers: [faintBuildings(c, 0.45), strokes('혼잡', items)],
+        legend: [...CONGESTION_BINS.map((b, i) => ({ color: colors[i], label: b.label, shape: 'line' as const })), { color: c.pal.unknown, label: '자료 없음·제한속도 모름', shape: 'line' as const }],
+        legendTitle: `${snapshotLabel(snap)} (${timeBand(snap)}) · 실제 속도 ÷ 제한속도`,
+        summary: [
+          `${snapshotLabel(snap)} ${timeBand(snap)} 장면${snaps.length > 1 ? ` (받은 장면 ${snaps.length}개 중 ${idx + 1}번째)` : ''}`,
+          lenAll ? `반경 안 차도 중 제한속도의 30%도 못 내는 구간(정체): 길이로 ${pctText(lenJam / lenAll)}${jamNames.size ? ` — ${[...jamNames].slice(0, 4).join(', ')}` : ''}` : '반경 안 차도에 속도 자료가 없음',
+        ],
+        caption: `국가교통정보센터 교통소통정보(민간 내비·공공 자료 융합 추정 속도) ÷ 표준노드링크 제한속도 · 좁은 길이 원래 느린 것은 막힘으로 치지 않도록 제한속도 대비로 봄 · 교통량(차 수)이 아니며 받은 순간의 장면`,
+      }
+    },
+  },
+  {
+    id: 'speedLocal',
+    title: '대지 주변 차량 속도 (미시, 보행 체감)',
+    group: '연계와 접근',
+    needs: "공간정보에서 '실시간 도로 속도'를 수집하세요 (국가교통정보센터 키).",
+    frameR: localFrameR,
+    render: (c): PanelOutput => {
+      const snaps = c.d.speedSnaps
+      if (!snaps.length) return { layers: [faintBuildings(c)], legend: [], summary: [], caption: '', empty: '받은 속도 장면이 없습니다' }
+      const idx = c.st.speedSnap >= 0 && c.st.speedSnap < snaps.length ? c.st.speedSnap : snaps.length - 1
+      const snap = snaps[idx]
+      const colors = c.pal.id === 'mono' ? ['#d9d9d9', '#b5b5b5', '#8a8a8a', '#555555', '#111111'] : c.pal.id === 'cvd' ? ['#0072b2', '#56b4e9', '#f0e442', '#e69f00', '#d55e00'] : ['#3a8f5c', '#8cc084', '#f2c94c', '#f2862e', '#d7301f']
+      // 바탕: 실제 폭으로 그린 도로 면
+      const roadBase = c.d.roads
+        .map((r) => ({ d: c.f.path(r.geom), w: Math.max(1.5, (r.width ?? 4) * c.f.s) }))
+        .map((x) => `<path d="${x.d}" fill="none" stroke="${mix('#ffffff', c.pal.ink, 0.12)}" stroke-width="${x.w.toFixed(1)}" stroke-linecap="round" stroke-linejoin="round"/>`)
+        .join('')
+      const items: { d: string; color: string; width: number }[] = []
+      for (const l of c.d.links) {
         const val = l.id ? snap.speeds[l.id] : undefined
         for (const ls of linePositions(l.geom)) {
           const pts = ls.map(([lon, lat]) => c.f.pt(lon, lat))
-          items.push({ d: offsetPath(pts, 2.6), color: val === undefined ? c.pal.unknown : colors[speedBin(val)], width: val === undefined ? 1.6 : 3.6 })
+          items.push({ d: offsetPath(pts, 4), color: val === undefined ? c.pal.unknown : colors[pedBin(val)], width: val === undefined ? 2 : 5 })
         }
-        void i
-      })
-      const adjNames = new Map<string, number[]>()
+      }
+      const v = linkSpeeds(c.d, snap)
+      const adj = new Map<string, number[]>()
       for (const a of v.adjacent) {
         if (a.v === null) continue
         const n = c.d.links[a.i].name || '이름 없는 도로'
-        const list = adjNames.get(n)
+        const list = adj.get(n)
         if (list) list.push(a.v)
-        else adjNames.set(n, [a.v])
+        else adj.set(n, [a.v])
       }
-      const known = v.inRadius.filter((x) => x.v !== null)
-      const lenAll = known.reduce((s, x) => s + x.len, 0)
-      const slow = known.filter((x) => (x.v as number) < 15).reduce((s, x) => s + x.len, 0)
       return {
-        layers: [faintBuildings(c, 0.45), strokes('통행_속도', items)],
-        legend: [...SPEED_BINS.map((b, i) => ({ color: colors[i], label: b.label, shape: 'line' as const })), { color: c.pal.unknown, label: '자료 없음', shape: 'line' as const }],
-        legendTitle: `${snapshotLabel(snap)} (${timeBand(snap)})`,
+        layers: [{ id: '도로_면', svg: roadBase }, faintBuildings(c, 0.5), strokes('차량_속도', items)],
+        legend: [...PED_BINS.map((b, i) => ({ color: colors[i], label: b.label, shape: 'line' as const })), { color: c.pal.unknown, label: '자료 없음 (골목 등)', shape: 'line' as const }],
+        legendTitle: `${snapshotLabel(snap)} (${timeBand(snap)}) · 차가 실제로 달리는 속도 — 느릴수록 걷기 편함`,
         summary: [
-          `${snapshotLabel(snap)} ${timeBand(snap)} 장면${snaps.length > 1 ? ` (받은 장면 ${snaps.length}개 중 ${idx + 1}번째)` : ''}`,
-          adjNames.size ? `대지에 붙은 차도: ${[...adjNames.entries()].map(([n, vs]) => `${n} 시속 ${fmt(vs.reduce((a, b) => a + b, 0) / vs.length)}km`).join(', ')}` : '대지에 붙은 차도에 속도 자료가 없음',
-          known.length ? `반경 안 속도가 나온 차도 중 시속 15km 미만(막힘): 길이로 ${pctText(lenAll ? slow / lenAll : 0)}` : '반경 안 차도에 속도 자료가 없음',
+          adj.size
+            ? `대지에 붙은 차도: ${[...adj.entries()].map(([n, vs]) => { const m = vs.reduce((a, b) => a + b, 0) / vs.length; return `${n} 시속 ${fmt(m)}km(${PED_BINS[pedBin(m)].short})` }).join(', ')}`
+            : '대지에 붙은 차도에 속도 자료가 없음 (이면도로·골목이면 대체로 느린 길)',
+          '회색 바탕 폭 = 도로중심선의 실제 도로 폭',
         ],
-        caption: `국가교통정보센터 교통소통정보(민간 내비·공공 자료 융합 추정 속도) · 표준노드링크(브이월드) · 방향별로 진행 방향 오른쪽에 그림 · 교통량(차 수)이 아니며 받은 순간의 장면`,
+        caption: `국가교통정보센터 교통소통정보 · 표준노드링크(브이월드) · 도로 폭: 국토지리정보원 도로중심선 · 기준: 안전속도 5030(이면도로 30km/h, 간선 50km/h) · 방향별로 진행 방향 오른쪽 · 받은 순간의 장면`,
       }
     },
   },

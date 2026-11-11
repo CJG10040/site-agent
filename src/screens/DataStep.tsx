@@ -175,7 +175,7 @@ export default function DataStep(props: Props) {
           const r = await computeEnv(after, config, (text) => setEnv({ state: 'running', message: text }))
           setEnv({
             state: 'ok',
-            message: `${Math.round((performance.now() - t0) / 1000)}초${r.trees ? ` · 위성영상 ${r.treeTiles}장${r.treeFailed ? `(${r.treeFailed}장 실패)` : ''}` : ''}${r.thermal ? '' : ' · 열쾌적은 기후·바람 필요'}`,
+            message: `${Math.round((performance.now() - t0) / 1000)}초${r.thermal ? '' : ' · 열쾌적은 기후·바람 필요'}`,
           })
           update((d) => {
             applyEnv(d, r, null)

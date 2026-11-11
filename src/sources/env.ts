@@ -10,7 +10,7 @@ import { sunAt, sunAtDate, SUN_DAYS } from '../lib/sun'
 import { sampleAt, terrainAround } from '../lib/terrain'
 import { arealRings, localProj } from '../lib/xy'
 import type { Project } from '../model/types'
-import { tileUrl, type VWorldConfig } from './vworld'
+import type { VWorldConfig } from './vworld'
 import { DIR16, prevailing } from './wind'
 
 export const FLOOR_M = 3
@@ -89,7 +89,11 @@ function run(job: EnvJob, onProgress: (t: string) => void): Promise<EnvOutput> {
   })
 }
 
+/** 바람 실험 도판 반경: 대지 주변을 자세히 (최대 300m) */
+export const WIND_R = 300
+
 export async function computeEnv(project: Project, config: VWorldConfig, onProgress: (t: string) => void): Promise<EnvResult> {
+  void config
   const d = buildDiagramData(project)
   if (!d) throw new Error('대지가 정해지지 않았습니다')
   if (!d.buildings.length) throw new Error("'주변 건물' 자료가 없어 계산할 수 없습니다")
@@ -116,16 +120,21 @@ export async function computeEnv(project: Project, config: VWorldConfig, onProgr
   }
   const hot = wind?.hot ?? null
   const ts = sunAtDate(lon, lat, THERMAL_DAY.month, THERMAL_DAY.day, THERMAL_DAY.hour)
+  const site = arealRings(p, d.boundary)
+  // 대지가 다 보이도록: 대지 꼭짓점 중 가장 먼 곳 + 60m (최소 200m, 최대 600m)
+  const far = Math.max(0, ...site.flat().map(([x, y]) => Math.hypot(x, y)))
+  const fineHalf = Math.min(600, Math.max(200, Math.ceil((far + 60) / 10) * 10))
   const job: EnvJob = {
     R,
     proj: p,
-    site: arealRings(p, d.boundary),
+    site,
     buildings,
     terrain: terr?.t ?? null,
     sun: { summer: steps(lon, lat, 'summer'), equinox: steps(lon, lat, 'equinox'), winter: steps(lon, lat, 'winter') },
     thermal: hot ? { alt: ts.altitude, az: ts.azimuth, ta: hot.ta, rh: hot.rh, ws: hot.ws } : null,
     winds,
-    tileUrl: config.key.trim() ? tileUrl(config.key, 'Satellite') : null,
+    fineHalf,
+    windR: Math.min(R, WIND_R),
   }
   const out = await run(job, onProgress)
   return {

@@ -1,11 +1,11 @@
-// 환경 계산 전체를 화면이 멈추지 않게 따로 돈다: 일조시간(대지 주변 2m·반경 4m) → 개방감 → 대지 하늘 → 가시권 → 수목 → 바람 실험 → 열쾌적 실험.
+// 환경 계산 전체를 화면이 멈추지 않게 따로 돈다:
+// 일조시간(대지 주변 세밀·반경 4m) → 개방감 → 대지 하늘 → 가시권 → 바람 실험(보행 높이) → 열쾌적 실험(대지 주변 세밀).
 
 import type { XY } from '../network'
-import { buildModel, shadowAt, skyDome, skyViewMap, sunHours, terrainHorizon, visibleHeight, type EnvBuilding, type SunStep } from './compute'
+import { buildModel, shadowAt, skyDome, skyViewMap, sunHours, terrainHorizon, visibleHeight, type EnvBuilding, type Model, type SunStep } from './compute'
 import { cellAt, cellXY, gridAround, packGrid, type GridSpec, type LocalTerrain, type PackedGrid } from './grid'
 import { lbmWind } from './lbm'
 import { utciAt } from './thermal'
-import { detectTrees } from './trees'
 
 export interface EnvJob {
   R: number
@@ -16,7 +16,10 @@ export interface EnvJob {
   sun: { summer: SunStep[]; equinox: SunStep[]; winter: SunStep[] }
   thermal: { alt: number; az: number; ta: number; rh: number; ws: number } | null
   winds: { season: string; fromAz: number }[]
-  tileUrl: string | null
+  /** 대지 주변 세밀 칸의 반 폭(m) — 대지가 다 보이게 */
+  fineHalf: number
+  /** 바람 실험 도판 반경(m) */
+  windR: number
 }
 
 export interface SunSet {
@@ -39,13 +42,16 @@ export interface WindOut {
 }
 
 export interface EnvOutput {
-  fine: SunSet
+  fine: SunSet & { utci?: PackedGrid | null }
   coarse: SunSet & { svf: PackedGrid; view: PackedGrid; utci: PackedGrid | null; tmrt: PackedGrid | null }
   sky: { horizon: number[]; svf: number }
+  /** (Phase 10 첫판의 위성영상 수목 — 지금은 계산하지 않음) */
   trees: PackedGrid | null
   treeTiles: number
   treeFailed: number
   winds: WindOut[]
+  /** 바람 실험 도판 반경 */
+  windR?: number
   terrainFlat: boolean
   ms: Record<string, number>
 }
@@ -54,8 +60,8 @@ export type EnvMessage = { type: 'progress'; text: string } | { type: 'done'; ou
 
 const post = (m: EnvMessage) => (self as unknown as Worker).postMessage(m)
 
-function sunSet(job: EnvJob, g: GridSpec, label: string, hz: ReturnType<typeof terrainHorizon>): SunSet {
-  const m = buildModel(g, job.buildings, job.terrain, job.site)
+function sunSet(job: EnvJob, m: Model, label: string, hz: ReturnType<typeof terrainHorizon>): SunSet {
+  const g = m.g
   post({ type: 'progress', text: `일조시간 (${label}) 동지` })
   const w = sunHours(m, job.buildings, hz, job.sun.winter, true)
   post({ type: 'progress', text: `일조시간 (${label}) 춘·추분` })
@@ -82,17 +88,20 @@ self.onmessage = async (ev: MessageEvent<EnvJob>) => {
   }
   try {
     post({ type: 'progress', text: '지형 지평선' })
-    const hz = terrainHorizon(job.terrain, job.R + 100)
+    const hz = terrainHorizon(job.terrain, Math.max(job.R, job.fineHalf) + 100)
     lap('horizon')
 
-    const fineG = gridAround(200, 2)
-    const fine = sunSet(job, fineG, '대지 주변', hz)
+    // 대지 주변 세밀 칸: 2m (넓은 대지는 칸 수가 300×300을 넘지 않게 키움)
+    const fineCell = Math.max(2, Math.ceil(((job.fineHalf * 2) / 300) * 2) / 2)
+    const fineG = gridAround(job.fineHalf, fineCell)
+    const fm = buildModel(fineG, job.buildings, job.terrain, job.site)
+    const fine = sunSet(job, fm, '대지 주변', hz)
     lap('sunFine')
     const coarseG = gridAround(job.R, 4)
-    const coarseSun = sunSet(job, coarseG, '반경 전체', hz)
+    const cm = buildModel(coarseG, job.buildings, job.terrain, job.site)
+    const coarseSun = sunSet(job, cm, '반경 전체', hz)
     lap('sunCoarse')
 
-    const cm = buildModel(coarseG, job.buildings, job.terrain, job.site)
     post({ type: 'progress', text: '개방감' })
     const svf = skyViewMap(cm, hz)
     lap('svf')
@@ -102,19 +111,8 @@ self.onmessage = async (ev: MessageEvent<EnvJob>) => {
     const view = visibleHeight(cm)
     lap('view')
 
-    // 수목
-    let trees: { mask: Uint8Array; tiles: number; failed: number } | null = null
-    const treeG = gridAround(job.R, 2)
-    if (job.tileUrl) {
-      post({ type: 'progress', text: '수목 (위성영상 받는 중)' })
-      trees = await detectTrees({ tileUrl: job.tileUrl, ...job.proj, g: treeG }, job.buildings, (f) =>
-        post({ type: 'progress', text: `수목 (위성영상 ${Math.round(f * 100)}%)` }),
-      )
-    }
-    lap('trees')
-
-    // 바람 실험
-    const side = Math.min(job.R * 2, 800)
+    // 바람 실험: 도판 원(windR)을 어느 방향에서도 다 덮게 정사각 영역 + 들어오고 나가는 여유
+    const side = job.windR * 2 + 120
     const heightAt = (x: number, y: number) => {
       const k = cellAt(coarseG, x, y)
       return k >= 0 ? cm.bld[k] : 0
@@ -124,7 +122,9 @@ self.onmessage = async (ev: MessageEvent<EnvJob>) => {
     for (const w of job.winds) {
       post({ type: 'progress', text: `바람 흐름 실험 (${w.season})` })
       const f = lbmWind(heightAt, w.fromAz, side, {
-        n: Math.max(120, Math.min(200, Math.round(side / 4))),
+        n: Math.max(140, Math.min(240, Math.round(side / 3.5))),
+        steps: 2800,
+        avg: 900,
         onProgress: (p) => post({ type: 'progress', text: `바람 흐름 실험 (${w.season}) ${Math.round(p * 100)}%` }),
       })
       flows.push(f)
@@ -136,41 +136,25 @@ self.onmessage = async (ev: MessageEvent<EnvJob>) => {
     }
     lap('wind')
 
-    // 열쾌적 실험 (여름 바람 결과가 있으면 그 속도 비를 씀)
-    let utciG: PackedGrid | null = null
-    let tmrtG: PackedGrid | null = null
+    // 열쾌적 실험: 대지 주변 세밀 칸 (여름 바람 실험의 속도 비를 씀)
+    let utciFine: PackedGrid | null = null
     if (job.thermal) {
-      post({ type: 'progress', text: '열쾌적 실험' })
+      post({ type: 'progress', text: '열쾌적 실험 (개방감 계산)' })
       const th = job.thermal
-      const sh = shadowAt(cm, job.buildings, hz, new Int32Array(coarseG.nx * coarseG.ny).fill(-1), th)
-      // 지형 그림자는 지평선 칸을 다시 찾아 확인
-      const tanAlt = Math.tan((th.alt * Math.PI) / 180)
+      const fsvf = skyViewMap(fm, hz)
+      post({ type: 'progress', text: '열쾌적 실험' })
+      const hidx = new Int32Array(fineG.nx * fineG.ny)
+      for (let k = 0; k < hidx.length; k++) {
+        const [x, y] = cellXY(fineG, k)
+        hidx[k] = cellAt(hz, x, y)
+      }
+      const sh = shadowAt(fm, job.buildings, hz, hidx, th)
       const summer = flows[job.winds.findIndex((w) => w.season === '여름')] ?? flows[0]
-      const N = coarseG.nx * coarseG.ny
+      const N = fineG.nx * fineG.ny
       const u = new Float32Array(N).fill(NaN)
-      const tm = new Float32Array(N).fill(NaN)
       for (let k = 0; k < N; k++) {
-        if (cm.bld[k] > 0) continue
-        const [x, y] = cellXY(coarseG, k)
-        let lit = !sh[k]
-        if (lit && !hz.flat) {
-          const hk = cellAt(hz, x, y)
-          if (hk >= 0) {
-            const f = ((((th.az % 360) + 360) % 360) / 360) * 32
-            const a0 = Math.floor(f) % 32
-            const tt = hz.tan[hk * 32 + a0]
-            if (tt > tanAlt) lit = false
-          }
-        }
-        let tree = false
-        if (trees) {
-          let cnt = 0
-          for (const [dx, dy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]] as XY[]) {
-            const kk = cellAt(treeG, x + dx, y + dy)
-            if (kk >= 0 && trees.mask[kk]) cnt++
-          }
-          tree = cnt >= 2
-        }
+        if (fm.bld[k] > 0) continue
+        const [x, y] = cellXY(fineG, k)
         let ratio = 1
         if (summer) {
           const s = x * summer.d[0] + y * summer.d[1]
@@ -182,25 +166,23 @@ self.onmessage = async (ev: MessageEvent<EnvJob>) => {
             if (Number.isFinite(v)) ratio = Math.min(1.5, Math.max(0.2, v))
           }
         }
-        const r = utciAt({ ta: th.ta, rh: th.rh, alt: th.alt, ws: th.ws }, lit, Number.isFinite(svf[k]) ? svf[k] : 0.5, tree, ratio)
-        u[k] = r.utci
-        tm[k] = r.tmrt
+        u[k] = utciAt({ ta: th.ta, rh: th.rh, alt: th.alt, ws: th.ws }, !sh[k], Number.isFinite(fsvf[k]) ? fsvf[k] : 0.5, false, ratio).utci
       }
-      utciG = packGrid(coarseG, u, 0.25)
-      tmrtG = packGrid(coarseG, tm, 0.5)
+      utciFine = packGrid(fineG, u, 0.25)
     }
     lap('thermal')
 
     post({
       type: 'done',
       out: {
-        fine,
-        coarse: { ...coarseSun, svf: packGrid(coarseG, svf, 1 / 250), view: packGrid(coarseG, view, 1), utci: utciG, tmrt: tmrtG },
+        fine: { ...fine, utci: utciFine },
+        coarse: { ...coarseSun, svf: packGrid(coarseG, svf, 1 / 250), view: packGrid(coarseG, view, 1), utci: null, tmrt: null },
         sky,
-        trees: trees ? packGrid(treeG, trees.mask, 1) : null,
-        treeTiles: trees?.tiles ?? 0,
-        treeFailed: trees?.failed ?? 0,
+        trees: null,
+        treeTiles: 0,
+        treeFailed: 0,
         winds,
+        windR: job.windR,
         terrainFlat: hz.flat,
         ms,
       },

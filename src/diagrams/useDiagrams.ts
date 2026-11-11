@@ -17,7 +17,7 @@ export interface CachedPanel extends RenderedPanel {
 }
 
 const cache = new Map<string, CachedPanel>()
-const TERRAIN_IDS = new Set(['terrain', 'slope', 'aspect'])
+const TERRAIN_IDS = new Set(['terrain', 'sectionA', 'sectionB'])
 const MAX_CACHE = 80
 
 function cachePut(p: CachedPanel) {
@@ -37,9 +37,10 @@ function settingsKey(id: string, s: DiagramSettings): string {
   if (id === 'low') return `${common}|${s.lowFloors}`
   if (id === 'sun') return `${common}|${s.sunDay}|${s.sunHour}`
   if (id === 'wind') return `${common}|${s.windSeason}`
-  if (id === 'speed') return `${common}|${s.speedSnap}`
+  if (id === 'speed' || id === 'speedLocal') return `${common}|${s.speedSnap}`
   if (id === 'sunSite' || id === 'sunWide') return `${common}|${s.sunDay}`
   if (id === 'viewshed') return `${common}|${s.planFloors}`
+  if (id === 'sectionA' || id === 'sectionB') return `${common}|${s.sectionAngle}`
   return common
 }
 
@@ -80,7 +81,7 @@ export function useDiagrams(project: Project, vworldKey: string, only?: string[]
       for (const def of wanted) {
         const tKey = TERRAIN_IDS.has(def.id) ? `|${t ? `${t.grid.source}${t.grid.version ?? ''}` : 'no-terrain'}` : ''
         // 속도 장면은 수집 뒤에도 늘어나므로 장면 수를 열쇠에 넣는다
-        const sKey = def.id === 'speed' ? `|snaps:${data.speedSnaps.length}` : ''
+        const sKey = def.id === 'speed' || def.id === 'speedLocal' ? `|snaps:${data.speedSnaps.length}` : ''
         const key = `${dataSig}|${def.id}|${settingsKey(def.id, settings)}|${vworldKey ? 'k' : '-'}${tKey}${sKey}`
         let hit = cache.get(key)
         if (!hit) {

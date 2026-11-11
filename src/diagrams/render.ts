@@ -21,6 +21,7 @@ export const DEFAULT_SETTINGS: DiagramSettings = {
   windSeason: 0,
   speedSnap: -1,
   planFloors: 5,
+  sectionAngle: 0,
 }
 
 export function settingsOf(project: Project): DiagramSettings {

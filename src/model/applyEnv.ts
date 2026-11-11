@@ -189,8 +189,9 @@ function drafts(d: DiagramData, e: EnvResult, src: string): DraftFact[] {
     out.push(F('env-wind', `2D 바람 흐름 실험(격자 볼츠만)에서 ${parts.join(', ')}이다. 높은 건물(20m 이상)만 막고 낮은 건물은 바람이 줄며 지나가게 단순화한 평면 계산이라 실제 바람과 다를 수 있다.`, 'low'))
 
   // 열쾌적 실험
-  if (e.coarse.utci && e.thermal) {
-    const u = unpackGrid(e.coarse.utci)
+  const utciPacked = e.fine.utci ?? e.coarse.utci
+  if (utciPacked && e.thermal) {
+    const u = unpackGrid(utciPacked)
     const near = nearMask(u, site, 30, Math.min(d.R, 200))
     const v: number[] = []
     for (let k = 0; k < near.length; k++) if (near[k] && Number.isFinite(u.at(k))) v.push(u.at(k))

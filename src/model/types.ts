@@ -216,6 +216,8 @@ export interface DiagramSettings {
   speedSnap: number
   /** 가시권에서 강조할 계획 층수 */
   planFloors: number
+  /** 단면 방향 회전(°, 시계방향): 0이면 남북·동서 */
+  sectionAngle: number
 }
 
 /** 도판 하나의 결론 */

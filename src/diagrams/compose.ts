@@ -34,6 +34,8 @@ export interface PanelOutput {
   hideBase?: boolean
   /** 축척 막대를 그리지 않음 (지도가 아닌 그림) */
   noScale?: boolean
+  /** 원·사각 지도 틀 없이 도판 영역 전체에 그림 (단면도 등): 틀·방위표·축척·대지 표시 없음, 자르지 않음 */
+  noFrame?: boolean
 }
 
 export const FONT = "Pretendard, 'Pretendard Variable', 'Malgun Gothic', 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif"
@@ -127,19 +129,21 @@ export function composePanel(meta: ComposeMeta, out: PanelOutput, frame: Frame, 
   const captionLines = wrap(out.caption, 13, SHEET_W - 80)
   const height = Math.ceil(captionTop + captionLines.length * 19 + 28)
 
-  // 방위표·축척
-  const nx = MAP_CX + MAP_R - 10
-  const ny = MAP_CY - MAP_R + 14
+  // 방위표·축척 (사각 틀은 모서리에서 조금 안쪽으로)
+  const sq = frame.shape !== 'circle'
+  const nx = MAP_CX + MAP_R - (sq ? 40 : 10)
+  const ny = MAP_CY - MAP_R + (sq ? 30 : 14)
   const north = `<g id="방위표"><path d="M${nx} ${ny} L${nx + 11} ${ny + 32} L${nx} ${ny + 25} L${nx - 11} ${ny + 32} Z" fill="${pal.ink}"/><text x="${nx}" y="${ny + 52}" font-size="16" font-weight="700" text-anchor="middle" fill="${pal.ink}">N</text></g>`
   const len = niceLength(frame.R * 0.45)
   const lenPx = len * frame.s
-  const sx = MAP_CX - MAP_R + (frame.shape === 'circle' ? 40 : 16)
-  const sy = MAP_CY + MAP_R - 18
+  const sx = MAP_CX - MAP_R + (sq ? 30 : 40)
+  const sy = MAP_CY + MAP_R - (sq ? 30 : 18)
   const scale = `<g id="축척"><rect x="${sx}" y="${sy}" width="${lenPx.toFixed(1)}" height="6" fill="${pal.ink}"/><rect x="${sx}" y="${sy - 6}" width="2" height="12" fill="${pal.ink}"/><rect x="${(sx + lenPx - 2).toFixed(1)}" y="${sy - 6}" width="2" height="12" fill="${pal.ink}"/><text x="${(sx + lenPx + 10).toFixed(1)}" y="${sy + 7}" font-size="15" fill="${pal.ink}">${len >= 1000 ? `${len / 1000}km` : `${len}m`}</text></g>`
 
   const layers = out.layers
-    .map((l) => `<g id="${esc(l.id.replace(/\s+/g, '_'))}"${l.noClip ? '' : ` clip-path="url(#${clipId})"`}>${l.svg}</g>`)
+    .map((l) => `<g id="${esc(l.id.replace(/\s+/g, '_'))}"${l.noClip || out.noFrame ? '' : ` clip-path="url(#${clipId})"`}>${l.svg}</g>`)
     .join('')
+  const nf = !!out.noFrame
 
   const bg = settings.background === 'white' ? `<rect id="바탕색" width="${SHEET_W}" height="${height}" fill="#ffffff"/>` : ''
   const emptyNote = out.empty
@@ -152,17 +156,21 @@ export function composePanel(meta: ComposeMeta, out: PanelOutput, frame: Frame, 
     `<defs><clipPath id="${clipId}">${frameShape}</clipPath></defs>`,
     bg,
     `<g id="도판_${meta.number}_${esc(meta.title.replace(/[\s·()]+/g, '_'))}">`,
-    frame.shape === 'circle'
-      ? `<circle id="틀_바탕" cx="${MAP_CX}" cy="${MAP_CY}" r="${MAP_R}" fill="#ffffff"/>`
-      : `<rect id="틀_바탕" x="${MAP_CX - MAP_R}" y="${MAP_CY - MAP_R}" width="${MAP_R * 2}" height="${MAP_R * 2}" fill="#ffffff"/>`,
+    nf
+      ? ''
+      : frame.shape === 'circle'
+        ? `<circle id="틀_바탕" cx="${MAP_CX}" cy="${MAP_CY}" r="${MAP_R}" fill="#ffffff"/>`
+        : `<rect id="틀_바탕" x="${MAP_CX - MAP_R}" y="${MAP_CY - MAP_R}" width="${MAP_R * 2}" height="${MAP_R * 2}" fill="#ffffff"/>`,
     layers,
-    out.hideBase ? '' : `<g id="대지" clip-path="url(#${clipId})">${siteSvg}</g>`,
-    frame.shape === 'circle'
-      ? `<circle id="틀" cx="${MAP_CX}" cy="${MAP_CY}" r="${MAP_R}" fill="none" stroke="${pal.ink}" stroke-opacity="0.45" stroke-width="1.5"/>`
-      : `<rect id="틀" x="${MAP_CX - MAP_R}" y="${MAP_CY - MAP_R}" width="${MAP_R * 2}" height="${MAP_R * 2}" fill="none" stroke="${pal.ink}" stroke-opacity="0.45" stroke-width="1.5"/>`,
+    out.hideBase || nf ? '' : `<g id="대지" clip-path="url(#${clipId})">${siteSvg}</g>`,
+    nf
+      ? ''
+      : frame.shape === 'circle'
+        ? `<circle id="틀" cx="${MAP_CX}" cy="${MAP_CY}" r="${MAP_R}" fill="none" stroke="${pal.ink}" stroke-opacity="0.45" stroke-width="1.5"/>`
+        : `<rect id="틀" x="${MAP_CX - MAP_R}" y="${MAP_CY - MAP_R}" width="${MAP_R * 2}" height="${MAP_R * 2}" fill="none" stroke="${pal.ink}" stroke-opacity="0.45" stroke-width="1.5"/>`,
     emptyNote,
-    north,
-    out.noScale ? '' : scale,
+    nf ? '' : north,
+    out.noScale || nf ? '' : scale,
     `<g id="제목"><text x="40" y="1012" font-size="34" font-weight="700" fill="${pal.ink}"><tspan fill="${pal.subtle}" font-weight="400">${String(meta.number).padStart(2, '0')}  </tspan>${esc(meta.title)}</text>`,
     `<text x="40" y="1046" font-size="17" fill="${pal.subtle}">${esc(meta.subtitle)}</text></g>`,
     `<g id="범례">${out.legendTitle ? `<text x="40" y="${legendTop - 10}" font-size="16" font-weight="700" fill="${pal.ink}">${esc(out.legendTitle)}</text>` : ''}${legendSvg}</g>`,

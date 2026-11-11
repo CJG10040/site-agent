@@ -7,7 +7,7 @@ import type { Position } from 'geojson'
 import { geometryToAreaDistanceM, lineToAreaDistanceM, overlapsSite, pointToAreaDistanceM, radiusCircle, type Areal } from '../lib/geo'
 import { wgs84ToUtmk } from '../lib/proj'
 import { sunAt, sunPathFeatures, SUN_DAYS } from '../lib/sun'
-import { contourInterval, contourLines, FLAT_DEG, rangeText, SLOPE_BINS, type TerrainAnalysis } from '../lib/terrainSite'
+import { contourInterval, contourLines, rangeText, type TerrainAnalysis } from '../lib/terrainSite'
 import type { DiagramSettings } from '../model/types'
 import { ALL_LAYERS } from '../sources/vworldLayers'
 import { aerialImage } from './aerial'
@@ -15,8 +15,11 @@ import { esc, type PanelLayer, type PanelOutput } from './compose'
 import type { Bld, DiagramData, Pt } from './data'
 import { centroidOf, dir8, MAP_CX, MAP_CY, MAP_R, type Frame } from './frame'
 import { mix, shades, steps, zoningColor, type Palette } from './palette'
+import { projOf } from './move'
+import { arealRings, pointInRings, pointToRingsDist, toXY } from '../lib/xy'
 import { ENV_PANELS } from './panelsEnv'
 import { MOVE_PANELS } from './panelsMove'
+import { SECTION_PANELS } from './panelsSection'
 
 export interface PanelCtx {
   d: DiagramData
@@ -59,7 +62,10 @@ function frameArea(f: Frame): number {
   return f.shape === 'circle' ? Math.PI * f.R * f.R : 4 * f.R * f.R
 }
 
-/** 같은 색끼리 path 하나로 묶어 그룹으로 (파일이 작아지고 일러스트레이터에서 항목별로 고르기 쉬움) */
+/**
+ * 같은 범례끼리 그룹으로 (일러스트레이터에서 항목별로 고르기 쉬움).
+ * 도형마다 따로 칠하고(구멍만 짝홀 규칙) 투명도는 그룹 전체에 준다 — 같은 범례 도형이 겹쳐도 비거나 진해지지 않음.
+ */
 function grouped(items: { d: string; key: string }[], styles: Record<string, { fill?: string; stroke?: string; width?: number; opacity?: number; label: string }>): string {
   const byKey = new Map<string, string[]>()
   for (const it of items) {
@@ -73,9 +79,14 @@ function grouped(items: { d: string; key: string }[], styles: Record<string, { f
     const st = styles[key]
     if (!st) continue
     const fill = st.fill ?? 'none'
-    const stroke = st.stroke ? ` stroke="${st.stroke}" stroke-width="${st.width ?? 1}" stroke-linejoin="round" stroke-linecap="round"` : ''
-    const op = st.opacity !== undefined ? ` fill-opacity="${st.opacity}"` : ''
-    out += `<g id="${esc(st.label.replace(/\s+/g, '_'))}"><path d="${ds.join('')}" fill="${fill}"${op}${stroke} fill-rule="evenodd"/></g>`
+    const fills =
+      fill === 'none'
+        ? ''
+        : `<g${st.opacity !== undefined ? ` opacity="${st.opacity}"` : ''}>${ds.map((d) => `<path d="${d}" fill="${fill}" fill-rule="evenodd"/>`).join('')}</g>`
+    const strokes = st.stroke
+      ? `<path d="${ds.join('')}" fill="none" stroke="${st.stroke}" stroke-width="${st.width ?? 1}" stroke-linejoin="round" stroke-linecap="round"/>`
+      : ''
+    out += `<g id="${esc(st.label.replace(/\s+/g, '_'))}">${fills}${strokes}</g>`
   }
   return out
 }
@@ -369,36 +380,6 @@ export const PANELS: PanelDef[] = [
           siteArea ? `대지 필지 합계 약 ${fmt(siteArea)}㎡ — 반경 안 필지 중 이보다 큰 것 ${pct(bigger, lots.length)}%` : '',
         ].filter(Boolean),
         caption: `연속지적도(브이월드) 도형으로 계산한 면적 · ${c.date} 수집 · 도로·하천·구거 등 지목은 회색`,
-      }
-    },
-  },
-  {
-    id: 'terrainClass',
-    title: '필지 지형등급',
-    group: '지형',
-    needs: "공간정보에서 '토지'를 수집하세요 (반경 안 필지의 토지특성).",
-    render: (c) => {
-      const ps = c.d.parcels
-      if (!ps.some((p) => p.hg)) return { layers: [], legend: [], summary: [], caption: '', empty: '필지별 토지특성 자료가 없습니다' }
-      const order = ['저지', '평지', '완경사', '급경사', '고지']
-      const def = { 저지: '#9ec5e8', 평지: '#ece6d3', 완경사: '#d9b26f', 급경사: '#b5651d', 고지: '#7a3b10' } as Record<string, string>
-      const seq = steps(c.pal, order.length)
-      const color = (k: string, i: number) => (c.pal.id === 'default' ? def[k] : seq[i])
-      const styles: Record<string, { fill: string; stroke: string; width: number; label: string }> = { unknown: { fill: c.pal.unknown, stroke: '#ffffff', width: 0.6, label: '미상' } }
-      order.forEach((k, i) => (styles[k] = { fill: color(k, i), stroke: '#ffffff', width: 0.6, label: k }))
-      const keyOf = (hg: string) => order.find((k) => hg.startsWith(k)) ?? 'unknown'
-      const items = ps.map((p) => ({ d: c.f.path(p.geom, false), key: keyOf(p.hg) }))
-      const known = ps.filter((p) => keyOf(p.hg) !== 'unknown')
-      const share = order.map((k) => [k, known.filter((p) => keyOf(p.hg) === k).length] as const).filter(([, n]) => n > 0)
-      const siteK = [...new Set(ps.filter((p) => p.onSite).map((p) => keyOf(p.hg)).filter((k) => k !== 'unknown'))]
-      return {
-        layers: [{ id: '지형등급', svg: grouped(items, styles) }],
-        legend: [...order.map((k, i) => ({ color: color(k, i), label: k })), { color: c.pal.unknown, label: '미상' }],
-        summary: [
-          `반경 안 필지 ${fmt(known.length)}곳의 지형높이 등급: ${share.map(([k, n]) => (pct(n, known.length) >= 1 ? `${k} ${pct(n, known.length)}%` : `${k} ${fmt(n)}필지`)).join(', ')}`,
-          siteK.length ? `대지 필지는 ${siteK.join('·')}` : '',
-        ].filter(Boolean),
-        caption: `국토교통부 토지특성(개별공시지가 조사, 브이월드) · ${c.date} 수집 · 주변과 비교한 등급이며 실제 경사도(°)가 아님`,
       }
     },
   },
@@ -877,19 +858,93 @@ export const PANELS: PanelDef[] = [
       const ss = c.d.stores
       if (!ss.length) return { layers: [baseBuildings(c)], legend: [], summary: [], caption: '', empty: '상가업소 자료가 없습니다' }
       const counts = new Map<string, number>()
-      for (const s of ss) counts.set(s.kind, (counts.get(s.kind) ?? 0) + 1)
+      for (const st of ss) counts.set(st.kind, (counts.get(st.kind) ?? 0) + 1)
       const kinds = [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([k]) => k)
       const top = kinds.slice(0, 7)
-      const colorOf = (k: string) => (top.includes(k) ? catColor(c.pal, top.indexOf(k)) : c.pal.unknown)
-      const near = ss.filter((s) => pointToAreaDistanceM([s.lon, s.lat], c.d.boundary) <= 50)
+      const other = mix('#ffffff', c.pal.ink, 0.45)
+      const colorOf = (k: string) => (top.includes(k) ? catColor(c.pal, top.indexOf(k)) : other)
+      // 상가를 건물에 담는다: 건물 안이면 그 건물, 아니면 8m 안 가장 가까운 건물
+      const p = projOf(c.d)
+      const blds = c.d.buildings.map((b) => ({ b, rings: arealRings(p, b.geom) }))
+      const CELL = 25
+      const grid = new Map<string, number[]>()
+      blds.forEach((x, i) => {
+        let x0 = Infinity
+        let y0 = Infinity
+        let x1 = -Infinity
+        let y1 = -Infinity
+        for (const [px, py] of x.rings[0] ?? []) {
+          x0 = Math.min(x0, px)
+          y0 = Math.min(y0, py)
+          x1 = Math.max(x1, px)
+          y1 = Math.max(y1, py)
+        }
+        for (let gx = Math.floor((x0 - 8) / CELL); gx <= Math.floor((x1 + 8) / CELL); gx++)
+          for (let gy = Math.floor((y0 - 8) / CELL); gy <= Math.floor((y1 + 8) / CELL); gy++) {
+            const k = `${gx},${gy}`
+            const l = grid.get(k)
+            if (l) l.push(i)
+            else grid.set(k, [i])
+          }
+      })
+      const per = new Map<number, Map<string, number>>()
+      const loose: Pt[] = []
+      for (const st of ss) {
+        const q = toXY(p, [st.lon, st.lat])
+        const cand = grid.get(`${Math.floor(q[0] / CELL)},${Math.floor(q[1] / CELL)}`) ?? []
+        let hit = cand.find((i) => pointInRings(q, blds[i].rings))
+        if (hit === undefined) {
+          let best = 8
+          for (const i of cand) {
+            const dd = pointToRingsDist(q, blds[i].rings)
+            if (dd < best) {
+              best = dd
+              hit = i
+            }
+          }
+        }
+        if (hit === undefined) {
+          loose.push(st)
+          continue
+        }
+        const m = per.get(hit) ?? new Map<string, number>()
+        m.set(st.kind, (m.get(st.kind) ?? 0) + 1)
+        per.set(hit, m)
+      }
+      const byColor = new Map<string, string[]>()
+      const withStores = new Set(per.keys())
+      const domCount = new Map<string, number>()
+      for (const [i, m] of per) {
+        const dom = [...m.entries()].sort((a, b) => b[1] - a[1])[0][0]
+        const col = colorOf(dom)
+        domCount.set(dom, (domCount.get(dom) ?? 0) + 1)
+        const l = byColor.get(col)
+        const d = c.f.path(blds[i].b.geom, false)
+        if (l) l.push(d)
+        else byColor.set(col, [d])
+      }
+      const basePath = blds
+        .filter((_, i) => !withStores.has(i))
+        .map((x) => c.f.path(x.b.geom, false))
+        .join('')
+      let shops = ''
+      for (const [col, ds] of byColor) shops += `<path d="${ds.join('')}" fill="${col}" stroke="#ffffff" stroke-width="0.6"/>`
+      const near = ss.filter((st) => pointToAreaDistanceM([st.lon, st.lat], c.d.boundary) <= 50)
+      const domTop = [...domCount.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3)
       return {
-        layers: [baseBuildings(c), { id: '상가', svg: ss.map((s) => ptSvg(c, s, 3.4, colorOf(s.kind))).join('') }],
-        legend: [...top.map((k) => ({ color: colorOf(k), label: k, shape: 'dot' as const })), ...(kinds.length > 7 ? [{ color: c.pal.unknown, label: '그 밖의 업종', shape: 'dot' as const }] : [])],
+        layers: [
+          { id: '바탕_건물', svg: basePath ? `<path d="${basePath}" fill="${c.pal.base}"/>` : '' },
+          { id: '상가_건물', svg: shops },
+          { id: '건물_밖_상가', svg: loose.map((st) => ptSvg(c, st, 2.6, colorOf(st.kind))).join('') },
+        ],
+        legend: [...top.map((k) => ({ color: colorOf(k), label: k })), ...(kinds.length > 7 ? [{ color: other, label: '그 밖의 업종' }] : []), { color: c.pal.base, label: '상가 자료 없는 건물' }],
+        legendTitle: '건물마다 가장 많은 상가 업종으로 칠함',
         summary: [
           `상가업소 ${fmt(ss.length)}곳: ${kinds.slice(0, 3).map((k) => `${k} ${pct(counts.get(k) ?? 0, ss.length)}%`).join(', ')}`,
-          `대지 경계 50m 안 ${near.length}곳`,
+          `상가가 있는 건물 ${fmt(withStores.size)}동${domTop.length ? ` — ${domTop.map(([k, n]) => `${k} 위주 ${fmt(n)}동`).join(', ')}` : ''}`,
+          `대지 경계 50m 안 상가 ${near.length}곳`,
         ],
-        caption: `소상공인시장진흥공단 상가(상권)정보 · ${c.date} 수집 · 분기 갱신 자료로 최근 개·폐업이 빠졌을 수 있음`,
+        caption: `소상공인시장진흥공단 상가(상권)정보 · 상가 좌표가 들어 있는(또는 8m 안) 건물에 담음${loose.length ? `, 건물을 못 찾은 ${fmt(loose.length)}곳은 점` : ''} · ${c.date} 수집 · 분기 갱신 자료로 최근 개·폐업이 빠졌을 수 있음`,
       }
     },
   },
@@ -1042,8 +1097,6 @@ function terrainCaption(t: TerrainAnalysis, extra = ''): string {
 
 const signed = (v: number) => `${v > 0 ? '+' : ''}${fmt(v, 0)}`
 
-const ASPECT_COLORS = ['#4c78a8', '#72b7b2', '#54a24b', '#eeca3b', '#f58518', '#e45756', '#b279a2', '#9d755d']
-const ASPECT_NAMES = ['북', '북동', '동', '남동', '남', '남서', '서', '북서']
 
 export const TERRAIN_PANELS: PanelDef[] = [
   {
@@ -1085,74 +1138,12 @@ export const TERRAIN_PANELS: PanelDef[] = [
       }
     },
   },
-  {
-    id: 'slope',
-    title: '경사도',
-    group: '지형',
-    needs: "공간정보에서 '지형'을 수집하거나 대지를 정하면 그려집니다.",
-    render: (c) => {
-      const t = c.t
-      if (!t) return { layers: [], legend: [], summary: [], caption: '', empty: '지형 자료를 받지 못했습니다' }
-      const labels = ['5° 미만', '5~10°', '10~15°', '15~20°', '20° 이상']
-      const colors = steps(c.pal, labels.length)
-      const raster = terrainRaster(c, t, (k) => {
-        const s = t.slope[k]
-        if (Number.isNaN(s)) return null
-        return colors[SLOPE_BINS.filter((b) => s >= b).length]
-      })
-      return {
-        layers: [{ id: '경사도', svg: raster }, { id: '바탕_건물', svg: `<path d="${c.d.buildings.map((b) => c.f.path(b.geom, false)).join('')}" fill="none" stroke="${c.pal.ink}" stroke-opacity="0.18" stroke-width="0.5"/>` }],
-        legend: labels.map((l, i) => ({ color: colors[i], label: l })),
-        summary: [
-          `반경 안 땅의 경사도: ${labels.map((l, i) => [l, Math.round(t.slopeShare[i] * 100)] as const).filter(([, p]) => p > 0).map(([l, p]) => `${l} ${p}%`).join(', ')}`,
-          `대지 평균 경사 약 ${fmt(t.site.meanSlope, 1)}°`,
-        ],
-        caption: terrainCaption(t, ' · 경사는 50m 평활 (조례의 평균경사도 산정과 다름)'),
-      }
-    },
-  },
-  {
-    id: 'aspect',
-    title: '경사 방향',
-    group: '지형',
-    needs: "공간정보에서 '지형'을 수집하거나 대지를 정하면 그려집니다.",
-    render: (c) => {
-      const t = c.t
-      if (!t) return { layers: [], legend: [], summary: [], caption: '', empty: '지형 자료를 받지 못했습니다' }
-      const base = c.pal.id === 'default' ? ASPECT_COLORS : c.pal.id === 'cvd' ? c.pal.cat : shades(c.pal.ink, 8)
-      const counts = new Array(8).fill(0)
-      let sloped = 0
-      const raster = terrainRaster(c, t, (k) => {
-        const s = t.slope[k]
-        const a = t.aspect[k]
-        if (Number.isNaN(s) || Number.isNaN(a) || s < FLAT_DEG) return null
-        const i = Math.round(a / 45) % 8
-        return mix('#ffffff', base[i], Math.min(1, 0.35 + (s - FLAT_DEG) / 20))
-      })
-      for (let k = 0; k < t.slope.length; k++) {
-        const s = t.slope[k]
-        if (Number.isNaN(s) || s < FLAT_DEG) continue
-        sloped++
-        counts[Math.round(t.aspect[k] / 45) % 8]++
-      }
-      const top = counts.map((n, i) => [ASPECT_NAMES[i], n] as const).sort((a, b) => b[1] - a[1])[0]
-      return {
-        layers: [{ id: '경사_방향', svg: raster }, { id: '바탕_건물', svg: `<path d="${c.d.buildings.map((b) => c.f.path(b.geom, false)).join('')}" fill="none" stroke="${c.pal.ink}" stroke-opacity="0.18" stroke-width="0.5"/>` }],
-        legend: ASPECT_NAMES.map((n, i) => ({ color: base[i], label: `${n}향` })),
-        summary: [
-          sloped ? `경사(${FLAT_DEG}° 이상)가 있는 땅에서 가장 많은 비탈 방향: ${top[0]}향 (${pct(top[1], sloped)}%)` : `반경 안이 거의 평지 (${FLAT_DEG}° 미만)`,
-          t.site.aspect === null ? '대지는 평지에 가까워 비탈 방향이 뚜렷하지 않음' : `대지는 ${dir8(t.site.aspect)}향 비탈 (남향은 볕, 북향은 그늘 쪽)`,
-        ],
-        caption: terrainCaption(t, ` · 경사 ${FLAT_DEG}° 미만은 칠하지 않음, 진할수록 가파름 · 50m 평활`),
-      }
-    },
-  },
 ]
 
 export const PANEL_GROUP_ORDER: PanelGroup[] = ['위치', '땅의 조건', '지형', '주변 현황', '연계와 접근', '환경', '사회·경제', '현장']
 
 /** 보고서 배치 순서 (위치 → 땅의 조건 → 지형 → 주변 현황 → 연계와 접근 → 환경 → 사회·현장) */
-export const ORDERED_PANELS: PanelDef[] = PANEL_GROUP_ORDER.flatMap((g) => [...PANELS, ...TERRAIN_PANELS, ...MOVE_PANELS, ...ENV_PANELS].filter((p) => p.group === g))
+export const ORDERED_PANELS: PanelDef[] = PANEL_GROUP_ORDER.flatMap((g) => [...PANELS, ...TERRAIN_PANELS, ...SECTION_PANELS, ...MOVE_PANELS, ...ENV_PANELS].filter((p) => p.group === g))
 
 export function panelNumber(id: string): number {
   return ORDERED_PANELS.findIndex((p) => p.id === id) + 1
