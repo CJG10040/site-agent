@@ -280,14 +280,47 @@ export interface Feedback {
 
 // ───────────────────────── Phase 12 종합 다이어그램 ─────────────────────────
 
-/** 색 = 방향 (긴장·기회 카드의 '방향'과 같은 네 가지 + 그 밖) */
+/** 색 = 방향 (긴장·기회 카드의 '방향'과 같은 네 가지) + neutral = 조건(방향 없음, 먹색) */
 export type SynthTone = 'keep' | 'reveal' | 'avoid' | 'transform' | 'neutral'
-export type SynthKind = 'arrow' | 'area' | 'point' | 'note' | 'card'
+/**
+ * 모양(점을 어떻게 찍는가): arrow 방향 있는 꺾은선, line 방향 없는 꺾은선(2판), vector 기준점→방향 두 점(2판),
+ * area 다각형, point 한 점, note 글상자(+지시선 끝), card 카드 배지
+ */
+export type SynthKind = 'arrow' | 'line' | 'vector' | 'area' | 'point' | 'note' | 'card'
+
+/**
+ * 기호(뜻) — 2판(2026-11-11). 1판 그림에는 없고, 없으면 모양에서 정함 (symOf).
+ * 흐름: arrow·car·walk·wind / 두 점: noise·view·entry / 선: edge·frontage·axis·buffer·line /
+ * 점: dot·star·bolt·landmark·node / 면: zone·bubble·keepout / note·card
+ */
+export type SynthSym =
+  | 'arrow'
+  | 'car'
+  | 'walk'
+  | 'wind'
+  | 'noise'
+  | 'view'
+  | 'entry'
+  | 'edge'
+  | 'frontage'
+  | 'axis'
+  | 'buffer'
+  | 'line'
+  | 'dot'
+  | 'star'
+  | 'bolt'
+  | 'landmark'
+  | 'node'
+  | 'zone'
+  | 'bubble'
+  | 'keepout'
+  | 'note'
+  | 'card'
 
 export interface SynthItem {
   id: string
   kind: SynthKind
-  /** 경위도 점: 화살표 2개 이상, 영역 3개 이상, 포인트·카드 1개, 글상자 1개(+ 지시선 끝 1개) */
+  /** 경위도 점: 꺾은선 2개 이상, 두 점 기호 2개, 영역 3개 이상, 포인트·카드 1개, 글상자 1개(+ 지시선 끝 1개) */
   pts: [number, number][]
   tone: SynthTone
   /** 글 (카드는 비우면 카드 제목) */
@@ -295,8 +328,18 @@ export interface SynthItem {
   cardId?: string
   /** 화살표 양쪽 */
   both?: boolean
-  /** 포인트 모양: 점·별(중요한 곳)·번개(긴장 지점) */
+  /** 1판 포인트 모양 (2판은 sym) */
   mark?: 'dot' | 'star' | 'bolt'
+  /** 기호 (없으면 1판 — 모양에서 정함) */
+  sym?: SynthSym
+  /** 굵기: 3 주 · 2 부(기본) · 1 작은 것 */
+  weight?: 1 | 2 | 3
+  /** 일반 화살표·선의 선 모양 */
+  dash?: 'solid' | 'dash' | 'dot'
+  /** 시선 부채꼴 폭(°) 또는 완충대 폭(m) */
+  spread?: number
+  /** 경계 톱니를 반대쪽에 */
+  flip?: boolean
 }
 
 export interface SynthState {

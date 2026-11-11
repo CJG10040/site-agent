@@ -10,6 +10,8 @@ export interface LegendItem {
   label: string
   /** box 면, dot 점, square 네모 점, line 선, outline 테두리 */
   shape?: 'box' | 'dot' | 'square' | 'line' | 'outline'
+  /** 직접 그린 작은 그림 (26×18, 원점 0,0) — 있으면 shape 대신 (종합 다이어그램 기호) */
+  glyph?: string
 }
 
 export interface PanelLayer {
@@ -66,6 +68,7 @@ export function wrap(text: string, size: number, maxW: number): string[] {
 }
 
 function swatch(item: LegendItem, x: number, y: number, pal: Palette): string {
+  if (item.glyph) return `<g transform="translate(${x - 2} ${y})">${item.glyph}</g>`
   const c = esc(item.color)
   switch (item.shape) {
     case 'dot':

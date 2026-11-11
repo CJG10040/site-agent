@@ -7,12 +7,13 @@ import { svgBlob, svgToPng } from '../diagrams/export'
 import { makeFrame } from '../diagrams/frame'
 import { ORDERED_PANELS } from '../diagrams/panels'
 import { collectedDate, panelFileName, renderPanel } from '../diagrams/render'
-import { CARD_TYPE_LABEL, KIND_LABEL, NOT_MAP_PANELS, SYNTH_DEFAULT, SYNTH_PANEL, synthCtxOf, synthItemsSvg, TONE_ORDER, TONES } from '../diagrams/synth'
+import { CARD_TYPE_LABEL, NOT_MAP_PANELS, SYNTH_DEFAULT, SYNTH_PANEL, synthCtxOf, synthItemsSvg, TONES } from '../diagrams/synth'
+import { BUFFER_WIDTHS, DASH_LABEL, DIRECTION_TONES, SYM_GROUPS, SYM_ORDER, symGlyph, symOf, SYMS, VIEW_SPREADS, WEIGHT_LABEL } from '../diagrams/synthSymbols'
 import { useDiagrams } from '../diagrams/useDiagrams'
 import { fineHalfFor, fineTerrainCached } from '../lib/terrainFine'
 import { analyzeTerrain } from '../lib/terrainSite'
 import { downloadBlob, nowIso } from '../model/project'
-import type { Project, SynthItem, SynthState, SynthTone } from '../model/types'
+import type { Project, SynthItem, SynthKind, SynthState, SynthSym, SynthTone } from '../model/types'
 import type { VWorldConfig } from '../sources/vworld'
 
 interface Props {
@@ -21,17 +22,20 @@ interface Props {
   config: VWorldConfig
 }
 
-type Tool = 'select' | 'arrow' | 'area' | 'point' | 'note' | 'card'
+/** 고르기 또는 그릴 기호 */
+type Tool = 'select' | SynthSym
 type LL = [number, number]
+type Weight = 1 | 2 | 3
+type Dash = NonNullable<SynthItem['dash']>
 
-const TOOLS: { id: Tool; label: string; help: string }[] = [
-  { id: 'select', label: '고르기·옮기기', help: '기호를 눌러 고르고 끌어 옮깁니다. 고른 기호의 꼭짓점(흰 점)을 끌면 모양이 바뀝니다. Delete로 지웁니다.' },
-  { id: 'arrow', label: '화살표', help: '지도를 차례로 눌러 꺾은 선을 그리고, 마지막 점에서 두 번 누르거나 Enter로 마칩니다 (흐름·축·시선).' },
-  { id: 'area', label: '영역', help: '꼭짓점을 차례로 누르고 두 번 누르거나 Enter로 닫습니다 (구역·덩어리·보존할 곳).' },
-  { id: 'point', label: '포인트', help: '지도를 누른 곳에 점·별·번개(긴장 지점)를 놓습니다.' },
-  { id: 'note', label: '글상자', help: '누른 곳에 글상자를 놓고 오른쪽에서 글을 씁니다. 지시선은 오른쪽 버튼으로 끝을 찍습니다.' },
-  { id: 'card', label: '카드 놓기', help: '오른쪽 카드 목록에서 [놓기]를 누른 뒤 지도에서 놓을 곳을 누릅니다.' },
-]
+const SELECT_HELP = '기호를 눌러 고르고 끌어 옮깁니다. 고른 기호의 꼭짓점(흰 점)을 끌면 모양이 바뀝니다. Delete로 지웁니다.'
+
+/** 서로 바꿀 수 있는 기호 (점 찍는 방식이 같은 것) */
+const FAMILY: Record<SynthKind, string> = { arrow: 'path', line: 'path', vector: 'vector', point: 'point', area: 'area', note: 'note', card: 'card' }
+
+function SymIcon({ sym }: { sym: SynthSym }) {
+  return <svg className="synth-sym-icon" viewBox="0 0 26 18" width="26" height="18" aria-hidden="true" dangerouslySetInnerHTML={{ __html: symGlyph(sym, 'currentColor') }} />
+}
 
 const RADII = [150, 300, 500, 800]
 const TERRAIN_BASES = new Set(['terrain'])
@@ -44,7 +48,10 @@ export default function SynthEditor({ project, update, config }: Props) {
   const state = synth.state
   const [tool, setTool] = useState<Tool>('select')
   const [tone, setTone] = useState<SynthTone>('reveal')
-  const [mark, setMark] = useState<'dot' | 'star' | 'bolt'>('bolt')
+  const [weight, setWeight] = useState<Weight>(2)
+  const [dash, setDash] = useState<Dash>('solid')
+  /** 조건 기호를 그린 뒤 해석 기호로 돌아올 때 쓸 방향색 */
+  const lastDir = useRef<SynthTone>('reveal')
   const [draft, setDraft] = useState<LL[]>([])
   const [hover, setHover] = useState<[number, number] | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -99,10 +106,39 @@ export default function SynthEditor({ project, update, config }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data, baseKey])
 
+  const geo: SynthKind | null = tool === 'select' ? null : SYMS[tool].geo
+  const multi = geo === 'arrow' || geo === 'line' || geo === 'area'
+
+  /** 새 기호 (지금 고른 색·굵기·선 모양으로) */
+  const make = (sym: SynthSym, pts: LL[]): Omit<SynthItem, 'id'> => {
+    const def = SYMS[sym]
+    return {
+      kind: def.geo,
+      sym,
+      pts,
+      tone,
+      label: '',
+      ...(def.weighted && weight !== 2 ? { weight } : {}),
+      ...((sym === 'arrow' || sym === 'line') && dash !== 'solid' ? { dash } : {}),
+      ...(sym === 'view' ? { spread: 60 } : sym === 'buffer' ? { spread: 15 } : {}),
+    }
+  }
+
+  const pickTool = (t: Tool) => {
+    setTool(t)
+    setDraft([])
+    setHover(null)
+    if (t !== 'card') setPlacingCard(null)
+    if (t === 'select' || t === 'card' || t === 'note') return
+    // 대지의 조건(바람·차량·소음 등)은 먹색, 해석 기호는 방향색으로 (사용자 결정 2026-11-11)
+    if (SYMS[t].cond) setTone('neutral')
+    else if (tone === 'neutral') setTone(lastDir.current)
+  }
+
   const finishDraft = () => {
     const pts = draft.filter((p, i) => i === 0 || Math.hypot(p[0] - draft[i - 1][0], p[1] - draft[i - 1][1]) > 1e-7)
-    if (tool === 'arrow' && pts.length >= 2) add({ kind: 'arrow', pts, tone, label: '' })
-    if (tool === 'area' && pts.length >= 3) add({ kind: 'area', pts, tone, label: '' })
+    if (tool !== 'select' && (geo === 'arrow' || geo === 'line') && pts.length >= 2) add(make(tool, pts))
+    if (tool !== 'select' && geo === 'area' && pts.length >= 3) add(make(tool, pts))
     setDraft([])
     setHover(null)
   }
@@ -162,10 +198,18 @@ export default function SynthEditor({ project, update, config }: Props) {
       } else setSelectedId(null)
       return
     }
-    if (tool === 'arrow' || tool === 'area') setDraft((d) => [...d, ll])
-    else if (tool === 'point') add({ kind: 'point', pts: [ll], tone, mark, label: '' })
+    if (multi) setDraft((d) => [...d, ll])
+    else if (geo === 'vector') {
+      // 첫 점 = 기준(보는 곳·소리 나는 곳·입구), 둘째 점 = 방향
+      if (!draft.length) setDraft([ll])
+      else {
+        add(make(tool as SynthSym, [draft[0], ll]))
+        setDraft([])
+        setHover(null)
+      }
+    } else if (geo === 'point') add(make(tool as SynthSym, [ll]))
     else if (tool === 'note') {
-      add({ kind: 'note', pts: [ll], tone, label: '' })
+      add({ kind: 'note', sym: 'note', pts: [ll], tone, label: '' })
       setTimeout(() => labelRef.current?.focus(), 50)
     } else if (tool === 'card' && placingCard) {
       add({ kind: 'card', pts: [ll], tone: synth.cards[placingCard]?.tone ?? tone, label: '', cardId: placingCard })
@@ -204,7 +248,10 @@ export default function SynthEditor({ project, update, config }: Props) {
   const placed = new Set(state.items.filter((i) => i.kind === 'card').map((i) => i.cardId))
   const baseOptions = ORDERED_PANELS.filter((p) => !NOT_MAP_PANELS.has(p.id))
   const final = panels.synth
-  const toolHelp = TOOLS.find((t) => t.id === tool)?.help ?? ''
+  const toolHelp = tool === 'select' ? SELECT_HELP : SYMS[tool].help
+  const drawWeighted = tool !== 'select' && !!SYMS[tool].weighted
+  const sSym: SynthSym = selected ? symOf(selected) : 'dot'
+  const sameFamily = selected ? SYM_ORDER.filter((s) => s !== 'note' && s !== 'card' && FAMILY[SYMS[s].geo] === FAMILY[SYMS[sSym].geo]) : []
 
   if (!data || !frame) {
     return <p className="notice">먼저 ④ 공간정보를 수집해야 종합 다이어그램을 그릴 수 있습니다.</p>
@@ -215,28 +262,39 @@ export default function SynthEditor({ project, update, config }: Props) {
 
   return (
     <div className="synth">
-      <div className="synth-toolbar">
-        <div className="segmented small" role="radiogroup" aria-label="도구">
-          {TOOLS.map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              role="radio"
-              aria-checked={tool === t.id}
-              className={tool === t.id ? 'on' : ''}
-              onClick={() => {
-                setTool(t.id)
-                setDraft([])
-                setHover(null)
-                if (t.id !== 'card') setPlacingCard(null)
-              }}
-            >
-              {t.label}
-            </button>
-          ))}
+      <div className="synth-palette" role="radiogroup" aria-label="기호">
+        <div className="synth-pal-group">
+          <button type="button" role="radio" aria-checked={tool === 'select'} className={`synth-sym-btn select${tool === 'select' ? ' on' : ''}`} onClick={() => pickTool('select')}>
+            고르기·옮기기
+          </button>
         </div>
-        <div className="synth-tones" role="radiogroup" aria-label="색 (방향)">
-          {TONE_ORDER.map((t) => {
+        {SYM_GROUPS.map((g) => (
+          <div key={g} className="synth-pal-group">
+            <span className="synth-pal-label">{g}</span>
+            {SYM_ORDER.filter((s) => SYMS[s].group === g).map((s) => (
+              <button
+                key={s}
+                type="button"
+                role="radio"
+                aria-checked={tool === s}
+                title={SYMS[s].help}
+                aria-label={SYMS[s].label}
+                className={`synth-sym-btn${tool === s ? ' on' : ''}`}
+                onClick={() => {
+                  pickTool(s)
+                  if (s !== 'card') setSelectedId(null)
+                }}
+              >
+                <SymIcon sym={s} />
+                {SYMS[s].label}
+              </button>
+            ))}
+          </div>
+        ))}
+      </div>
+      <div className="synth-toolbar">
+        <div className="synth-tones" role="radiogroup" aria-label="색 (조건 먹색 / 설계 방향)">
+          {(['neutral', ...DIRECTION_TONES] as SynthTone[]).map((t) => {
             // 고르기 도구일 때만 고른 기호의 색을 바꾸고, 그리는 도구에서는 다음에 그릴 색
             const editing = selected && tool === 'select'
             const on = editing ? selected.tone === t : tone === t
@@ -246,29 +304,42 @@ export default function SynthEditor({ project, update, config }: Props) {
                 type="button"
                 role="radio"
                 aria-checked={on}
-                className={`tone-chip${on ? ' on' : ''}`}
+                className={`tone-chip${on ? ' on' : ''}${t === 'neutral' ? ' cond' : ''}`}
                 style={{ ['--tone' as string]: TONES[t].color }}
                 onClick={() => {
                   setTone(t)
+                  if (t !== 'neutral') lastDir.current = t
                   if (editing) patchItem(selected.id, { tone: t })
                 }}
               >
-                {TONES[t].label}
+                {t === 'neutral' ? '조건 (먹색)' : TONES[t].label}
               </button>
             )
           })}
         </div>
-        {tool === 'point' && (
-          <select value={mark} onChange={(e) => setMark(e.target.value as typeof mark)} aria-label="포인트 모양">
-            <option value="bolt">번개 (긴장 지점)</option>
-            <option value="star">별 (중요한 곳)</option>
-            <option value="dot">점</option>
+        {drawWeighted && (
+          <div className="segmented small" role="radiogroup" aria-label="굵기">
+            {([3, 2, 1] as Weight[]).map((w) => (
+              <button key={w} type="button" role="radio" aria-checked={weight === w} className={weight === w ? 'on' : ''} onClick={() => setWeight(w)}>
+                {WEIGHT_LABEL[w]}
+              </button>
+            ))}
+          </div>
+        )}
+        {(tool === 'arrow' || tool === 'line') && (
+          <select value={dash} onChange={(e) => setDash(e.target.value as Dash)} aria-label="선 모양">
+            {(Object.keys(DASH_LABEL) as Dash[]).map((k) => (
+              <option key={k} value={k}>
+                {DASH_LABEL[k]}
+              </option>
+            ))}
           </select>
         )}
       </div>
       <p className="help">
         {leaderFor ? '지시선 끝을 지도에서 누르세요 (Esc로 취소).' : placingCard ? `${placingCard} 카드를 놓을 곳을 지도에서 누르세요.` : toolHelp}
-        {draft.length > 0 && ` — 점 ${draft.length}개 · Enter 또는 두 번 눌러 마치기 · Esc 취소`}
+        {draft.length > 0 && geo === 'vector' && ' — 이제 방향 쪽을 누르세요 · Esc 취소'}
+        {draft.length > 0 && multi && ` — 점 ${draft.length}개 · Enter 또는 두 번 눌러 마치기 · Esc 취소`}
       </p>
 
       <div className="synth-body">
@@ -283,13 +354,13 @@ export default function SynthEditor({ project, update, config }: Props) {
               onPointerDown={onDown}
               onPointerMove={onMove}
               onPointerUp={onUp}
-              onDoubleClick={() => (tool === 'arrow' || tool === 'area') && finishDraft()}
+              onDoubleClick={() => multi && finishDraft()}
             >
               <g dangerouslySetInnerHTML={{ __html: synthItemsSvg(items, frame, synth.cards, selectedId, true) }} />
               {draftPx.length > 0 && (
                 <polyline
-                  points={[...draftPx, ...(tool === 'area' && draftPx.length > 2 ? [draftPx[0]] : [])].map(([x, y]) => `${x},${y}`).join(' ')}
-                  fill={tool === 'area' ? TONES[tone].color : 'none'}
+                  points={[...draftPx, ...(geo === 'area' && draftPx.length > 2 ? [draftPx[0]] : [])].map(([x, y]) => `${x},${y}`).join(' ')}
+                  fill={geo === 'area' ? TONES[tone].color : 'none'}
                   fillOpacity={0.12}
                   stroke={TONES[tone].color}
                   strokeWidth={4}
@@ -313,25 +384,90 @@ export default function SynthEditor({ project, update, config }: Props) {
           {selected ? (
             <section className="block">
               <h3>
-                고른 기호: {KIND_LABEL[selected.kind]}
+                고른 기호: {SYMS[sSym].label}
                 {selected.cardId ? ` ${selected.cardId}` : ''}
               </h3>
               <label className="field">
                 <span className="label">{selected.kind === 'card' ? '글 (비우면 카드 제목)' : '글'}</span>
                 <textarea ref={labelRef} rows={3} value={selected.label} onChange={(e) => patchItem(selected.id, { label: e.target.value })} placeholder={selected.kind === 'card' ? synth.cards[selected.cardId ?? '']?.title : '짧게 (예: 금남로 축을 대지까지 끌어들이기)'} />
               </label>
-              {selected.kind === 'arrow' && (
-                <label className="check-row small">
-                  <input type="checkbox" checked={!!selected.both} onChange={(e) => patchItem(selected.id, { both: e.target.checked })} />
-                  양쪽 화살표
+              {sameFamily.length > 1 && (
+                <label className="field">
+                  <span className="label">기호 바꾸기</span>
+                  <select
+                    value={sSym}
+                    onChange={(e) => {
+                      const ns = e.target.value as SynthSym
+                      patchItem(selected.id, { sym: ns, kind: SYMS[ns].geo, mark: undefined })
+                    }}
+                  >
+                    {sameFamily.map((s) => (
+                      <option key={s} value={s}>
+                        {SYMS[s].label}
+                      </option>
+                    ))}
+                  </select>
                 </label>
               )}
-              {selected.kind === 'point' && (
-                <select value={selected.mark ?? 'dot'} onChange={(e) => patchItem(selected.id, { mark: e.target.value as SynthItem['mark'] })} aria-label="포인트 모양">
-                  <option value="bolt">번개 (긴장 지점)</option>
-                  <option value="star">별 (중요한 곳)</option>
-                  <option value="dot">점</option>
-                </select>
+              {SYMS[sSym].weighted && (
+                <div className="field">
+                  <span className="label">굵기 (중요도)</span>
+                  <div className="segmented small" role="radiogroup" aria-label="굵기">
+                    {([3, 2, 1] as Weight[]).map((w) => (
+                      <button key={w} type="button" role="radio" aria-checked={(selected.weight ?? 2) === w} className={(selected.weight ?? 2) === w ? 'on' : ''} onClick={() => patchItem(selected.id, { weight: w === 2 ? undefined : w })}>
+                        {WEIGHT_LABEL[w]}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {(sSym === 'arrow' || sSym === 'line') && (
+                <label className="field">
+                  <span className="label">선 모양</span>
+                  <select value={selected.dash ?? 'solid'} onChange={(e) => patchItem(selected.id, { dash: e.target.value === 'solid' ? undefined : (e.target.value as Dash) })}>
+                    {(Object.keys(DASH_LABEL) as Dash[]).map((k) => (
+                      <option key={k} value={k}>
+                        {DASH_LABEL[k]}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              {sSym === 'view' && (
+                <label className="field">
+                  <span className="label">부채꼴 폭</span>
+                  <select value={selected.spread ?? 60} onChange={(e) => patchItem(selected.id, { spread: Number(e.target.value) })}>
+                    {VIEW_SPREADS.map((v) => (
+                      <option key={v} value={v}>
+                        {v}°
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              {sSym === 'buffer' && (
+                <label className="field">
+                  <span className="label">띠 폭</span>
+                  <select value={selected.spread ?? 15} onChange={(e) => patchItem(selected.id, { spread: Number(e.target.value) })}>
+                    {BUFFER_WIDTHS.map((v) => (
+                      <option key={v} value={v}>
+                        {v}m
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              {(sSym === 'arrow' || sSym === 'car' || sSym === 'walk') && (
+                <label className="check-row small">
+                  <input type="checkbox" checked={!!selected.both} onChange={(e) => patchItem(selected.id, { both: e.target.checked })} />
+                  양쪽 방향
+                </label>
+              )}
+              {sSym === 'edge' && (
+                <label className="check-row small">
+                  <input type="checkbox" checked={!!selected.flip} onChange={(e) => patchItem(selected.id, { flip: e.target.checked })} />
+                  톱니를 반대쪽에
+                </label>
               )}
               {selected.kind === 'note' && (
                 <div className="row">
@@ -355,7 +491,9 @@ export default function SynthEditor({ project, update, config }: Props) {
               </div>
             </section>
           ) : (
-            <p className="muted small">기호를 고르면 여기서 글·색·모양을 바꿉니다. 새 기호는 위의 색으로 그려집니다(긴장·기회 카드의 '방향'과 같은 네 가지).</p>
+            <p className="muted small">
+              기호를 고르면 여기서 글·색·굵기·모양을 바꿉니다. 대지의 조건(차량·보행·바람·소음·시선·경계 등)은 <strong>먹색</strong>으로 그려지고, 방향을 정한 해석은 긴장·기회 카드의 '방향'과 같은 네 가지 색입니다.
+            </p>
           )}
 
           <section className="block">

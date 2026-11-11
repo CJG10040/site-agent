@@ -7,6 +7,7 @@ import { areaM2, siteBoundary } from '../lib/geo'
 import { siteKey } from './project'
 import { REACTION_LABEL, TYPE_LABEL } from './prompts'
 import { FB_STATUS_LABEL } from './feedback'
+import { symLabel } from '../diagrams/synthSymbols'
 import type { Brief, Card, CardType, Feedback, FirstQuestion, Project, SynthState } from './types'
 
 export type VersionTrigger = 'manual' | 'recollect' | 'print' | 'feedback'
@@ -129,8 +130,7 @@ function synthLabels(s: SynthState | null, cards: Card[]): string[] {
       const c = i.cardId ? byId.get(i.cardId) : undefined
       return `카드 ${i.cardId ?? ''} ${i.label.trim() || (c ? cardTitleOf(c) : '')}`.trim()
     }
-    const kind = i.kind === 'arrow' ? '화살표' : i.kind === 'area' ? '영역' : i.kind === 'note' ? '글상자' : '포인트'
-    return `${kind}: ${i.label.trim() || '(글 없음)'}`
+    return `${symLabel(i)}: ${i.label.trim() || '(글 없음)'}`
   })
 }
 
