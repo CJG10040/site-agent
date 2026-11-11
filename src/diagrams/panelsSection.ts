@@ -181,6 +181,10 @@ function sectionPanel(which: 'A' | 'B'): PanelDef {
 
       // ── 주요 높이·거리 표기 (2026-11-12 사용자 요청: 주요 부분의 높이도 함께)
       let notes = ''
+      /** 글자 자리 (겹치지 않게) */
+      const boxes: { x0: number; x1: number; y0: number; y1: number }[] = []
+      const free = (bx: { x0: number; x1: number; y0: number; y1: number }) => !boxes.some((o) => o.x0 < bx.x1 && bx.x0 < o.x1 && o.y0 < bx.y1 && bx.y0 < o.y1)
+      const textW = (t: string, size: number) => t.length * size * 0.58 + 6
       // 대지 지반: 가운데(+ 양 끝이 0.5m 넘게 다르면 양 끝도), 흙 속에
       if (visSite.length) {
         const a0 = visSite[0][0]
@@ -196,6 +200,8 @@ function sectionPanel(which: 'A' | 'B'): PanelDef {
       // 양 끝 지반
       notes += `<text x="${(X0 + 4).toFixed(1)}" y="${(py(prof[0].z) + 20).toFixed(1)}" font-size="12" fill="${c.pal.subtle}">${sgn(prof[0].z)}m</text>`
       notes += `<text x="${(X1 - 4).toFixed(1)}" y="${(py(prof[prof.length - 1].z) + 20).toFixed(1)}" font-size="12" text-anchor="end" fill="${c.pal.subtle}">${sgn(prof[prof.length - 1].z)}m</text>`
+      // 왼쪽 높이 눈금 글자 자리
+      boxes.push({ x0: 0, x1: X0 + 2, y0: TOP - 40, y1: BASE + 40 })
       // 지형 기복이 3m 넘으면 가장 높은 곳·낮은 곳
       if (tMax - tMin >= 3) {
         const hi = prof.reduce((m, x) => (x.z > m.z ? x : m))
@@ -206,6 +212,11 @@ function sectionPanel(which: 'A' | 'B'): PanelDef {
         ] as const) {
           const X = px(q.s)
           const Y = py(q.z)
+          // 양 끝(끝 지반 글이 이미 있음) 가까이면 뺌
+          if (X - X0 < 40 || X1 - X < 40) continue
+          const t = `${top ? '높은 곳' : '낮은 곳'} ${sgn(q.z)}m`
+          const ty = Y + (top ? -15 : 27)
+          boxes.push({ x0: X - textW(t, 12) / 2, x1: X + textW(t, 12) / 2, y0: ty - 12, y1: ty + 3 })
           notes += `<path d="M${X.toFixed(1)} ${(Y + (top ? -3 : 3)).toFixed(1)}l-5 ${top ? -8 : 8}h10z" fill="${c.pal.subtle}"/><text x="${X.toFixed(1)}" y="${(Y + (top ? -15 : 27)).toFixed(1)}" font-size="12" text-anchor="middle" fill="${c.pal.subtle}" ${HALO}>${top ? '높은 곳' : '낮은 곳'} ${sgn(q.z)}m</text>`
         }
       }
@@ -218,6 +229,8 @@ function sectionPanel(which: 'A' | 'B'): PanelDef {
         const y = Math.min(py(gz(s0)), py(gz(s1))) - 12
         const x0 = px(s0)
         const x1 = px(s1)
+        const t = `${fmt(gap)}m`
+        boxes.push({ x0: Math.min(x0, (x0 + x1) / 2 - textW(t, 12) / 2), x1: Math.max(x1, (x0 + x1) / 2 + textW(t, 12) / 2), y0: y - 18, y1: y + 6 })
         return (
           `<g stroke="${c.pal.ink}" stroke-width="1"><line x1="${x0.toFixed(1)}" y1="${y.toFixed(1)}" x2="${x1.toFixed(1)}" y2="${y.toFixed(1)}"/>` +
           `<line x1="${x0.toFixed(1)}" y1="${(y - 5).toFixed(1)}" x2="${x0.toFixed(1)}" y2="${(y + 5).toFixed(1)}"/><line x1="${x1.toFixed(1)}" y1="${(y - 5).toFixed(1)}" x2="${x1.toFixed(1)}" y2="${(y + 5).toFixed(1)}"/></g>` +
@@ -230,22 +243,23 @@ function sectionPanel(which: 'A' | 'B'): PanelDef {
       const labelOf = (k: Cut) => `${fmt(k.h)}m${k.floors ? ` · ${k.floors}층` : ''}${k.measured ? ' (실측)' : ''}`
       const order: Cut[] = []
       for (const k of [leftAdj, rightAdj, ...[...cuts].sort((a, b) => b.h - a.h)]) if (k && k.known && !order.includes(k)) order.push(k)
-      const boxes: { x0: number; x1: number; y0: number; y1: number }[] = []
       let nLabels = 0
       for (const k of order) {
         if (nLabels >= 8) break
         const text = labelOf(k)
-        const w = text.length * 7.2 + 8
-        const cx = (px(k.s0) + px(k.s1)) / 2
+        const w = textW(text, 12.5)
+        const bc = (px(k.s0) + px(k.s1)) / 2
+        // 도판 양 끝·눈금 밖으로 나가지 않게
+        const cx = Math.max(X0 + 6 + w / 2, Math.min(X1 - w / 2, bc))
         const topY = py(baseOf(k) + k.h)
         let placed = false
         for (let tryN = 0, y = topY - 8; tryN < 4 && !placed; tryN++, y -= 18) {
           const bx = { x0: cx - w / 2, x1: cx + w / 2, y0: y - 13, y1: y + 3 }
           if (bx.y0 < TOP - 30) break
-          if (boxes.some((o) => o.x0 < bx.x1 && bx.x0 < o.x1 && o.y0 < bx.y1 && bx.y0 < o.y1)) continue
+          if (!free(bx)) continue
           boxes.push(bx)
           placed = true
-          if (tryN) notes += `<line x1="${cx.toFixed(1)}" y1="${(y + 3).toFixed(1)}" x2="${cx.toFixed(1)}" y2="${(topY - 2).toFixed(1)}" stroke="${c.pal.subtle}" stroke-width="0.8"/>`
+          if (tryN || Math.abs(cx - bc) > 2) notes += `<line x1="${cx.toFixed(1)}" y1="${(y + 3).toFixed(1)}" x2="${bc.toFixed(1)}" y2="${(topY - 2).toFixed(1)}" stroke="${c.pal.subtle}" stroke-width="0.8"/>`
           notes += `<text x="${cx.toFixed(1)}" y="${y.toFixed(1)}" font-size="12.5" font-weight="${k === leftAdj || k === rightAdj ? 700 : 500}" text-anchor="middle" fill="${c.pal.ink}" ${HALO}>${text}</text>`
         }
         if (placed) nLabels++
