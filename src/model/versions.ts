@@ -6,11 +6,12 @@
 import { areaM2, siteBoundary } from '../lib/geo'
 import { siteKey } from './project'
 import { REACTION_LABEL, TYPE_LABEL } from './prompts'
-import type { Brief, Card, CardType, FirstQuestion, Project, SynthState } from './types'
+import { FB_STATUS_LABEL } from './feedback'
+import type { Brief, Card, CardType, Feedback, FirstQuestion, Project, SynthState } from './types'
 
-export type VersionTrigger = 'manual' | 'recollect' | 'print'
+export type VersionTrigger = 'manual' | 'recollect' | 'print' | 'feedback'
 
-export const TRIGGER_LABEL: Record<VersionTrigger, string> = { manual: '직접 저장', recollect: '다시 수집 전 자동', print: '리포트 인쇄 때 자동' }
+export const TRIGGER_LABEL: Record<VersionTrigger, string> = { manual: '직접 저장', recollect: '다시 수집 전 자동', print: '리포트 인쇄 때 자동', feedback: '피드백 받을 때' }
 
 export interface VersionSnap {
   brief: Brief
@@ -22,6 +23,8 @@ export interface VersionSnap {
   conclusions: Record<string, string>
   panelSummary: string
   synth: SynthState | null
+  /** 피드백과 반영 (예전 버전에는 없음) */
+  feedback?: Feedback[]
 }
 
 export interface VersionRecord {
@@ -55,6 +58,7 @@ export function snapshotOf(p: Project): VersionSnap {
     conclusions,
     panelSummary: p.panelSummary ?? '',
     synth: p.synth ?? null,
+    feedback: p.feedback ?? [],
   })
 }
 
@@ -67,6 +71,7 @@ export function sameSnap(a: VersionSnap, b: VersionSnap): boolean {
       s.panelSummary,
       s.question,
       s.synth?.items ?? [],
+      (s.feedback ?? []).map((f) => [f.id, f.text, f.status, f.response]),
     ])
   return key(a) === key(b)
 }
@@ -105,6 +110,8 @@ export interface VersionDiff {
   summary: { before: string; after: string } | null
   question: { label: string; before: string; after: string }[]
   synth: { a: number; b: number; added: string[]; removed: string[] }
+  /** 피드백: 새로 적은 것, 반영 상태가 바뀐 것 */
+  feedback: { added: Feedback[]; changed: { id: string; text: string; before: string; after: string; response: string }[] }
   siteChanged: boolean
   recollected: boolean
 }
@@ -179,7 +186,13 @@ export function diffVersions(a: VersionSnap, b: VersionSnap): VersionDiff {
 
   const sa = synthLabels(a.synth, a.cards)
   const sb = synthLabels(b.synth, b.cards)
+  const fa = new Map((a.feedback ?? []).map((f) => [f.id, f]))
+  const fbAdded = (b.feedback ?? []).filter((f) => !fa.has(f.id))
+  const fbChanged = (b.feedback ?? [])
+    .filter((f) => fa.has(f.id) && fa.get(f.id)!.status !== f.status)
+    .map((f) => ({ id: f.id, text: f.text, before: FB_STATUS_LABEL[fa.get(f.id)!.status], after: FB_STATUS_LABEL[f.status], response: f.response }))
   return {
+    feedback: { added: fbAdded, changed: fbChanged },
     counts,
     cards,
     conclusions,
@@ -196,13 +209,17 @@ export function diffHeadline(d: VersionDiff): string {
   const removed = d.cards.filter((c) => c.kind === 'removed').length
   const changed = d.cards.filter((c) => c.kind === 'changed').length
   const parts = [
-    added ? `카드 ${added}개 생김` : '',
-    removed ? `${removed}개 빠짐` : '',
-    changed ? `${changed}개 바뀜` : '',
+    // 카드 변화는 처음 나오는 것에만 '카드'를 붙인다 (예: 카드 1개 생김, 2개 바뀜 / 카드 1개 바뀜)
+    [added ? `${added}개 생김` : '', removed ? `${removed}개 빠짐` : '', changed ? `${changed}개 바뀜` : '']
+      .filter(Boolean)
+      .map((s, i) => (i === 0 ? `카드 ${s}` : s))
+      .join(', '),
     d.conclusions.length ? `도판 결론 ${d.conclusions.length}개 바뀜` : '',
     d.synth.added.length || d.synth.removed.length ? `종합 다이어그램 기호 +${d.synth.added.length} −${d.synth.removed.length}` : '',
     d.question.length ? '첫 질문 바뀜' : '',
     d.summary ? '요약문 바뀜' : '',
+    d.feedback.added.length ? `피드백 ${d.feedback.added.length}개 적음` : '',
+    d.feedback.changed.length ? `피드백 반영 상태 ${d.feedback.changed.length}개 바뀜` : '',
   ].filter(Boolean)
   return parts.length ? parts.join(', ') : '바뀐 것 없음'
 }

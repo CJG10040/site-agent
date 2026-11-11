@@ -12,6 +12,7 @@ import { wgs84ToUtmk } from '../lib/proj'
 import { terrainAround, type TerrainGrid } from '../lib/terrain'
 import { compositeGrid, fineHalfFor, fineTerrainCached } from '../lib/terrainFine'
 import { upsertDrafts } from '../model/applyCollection'
+import { FB_STATUS_LABEL, feedbackForPanel } from '../model/feedback'
 import { appendSpeedSnapshot } from '../model/applyMove'
 import { downloadBlob, nowIso } from '../model/project'
 import { splitPrompt } from '../model/prompts'
@@ -545,6 +546,11 @@ export default function DiagramStep({ project, update, config, keys, onGoData, o
                           ))}
                         </ul>
                       )}
+                      {feedbackForPanel(project, def.id).map((f) => (
+                        <p key={f.id} className="small diagram-feedback">
+                          <span className={`fb-badge status-${f.status}`}>{FB_STATUS_LABEL[f.status]}</span> {f.id} {f.who}: {f.text}
+                        </p>
+                      ))}
                       {!empty && (
                         <>
                           <label className="field">

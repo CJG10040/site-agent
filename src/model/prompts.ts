@@ -4,6 +4,7 @@
 
 import { formatObservedAt, timeBand } from '../lib/photos'
 import { areaM2, siteBoundary } from '../lib/geo'
+import { feedbackBlock } from './feedback'
 import { observationsOf } from './observations'
 import type { Card, Project, Reaction, RoundId } from './types'
 
@@ -138,6 +139,8 @@ export function contextBlock(project: Project): string {
   const addr = project.site.address?.road || project.site.address?.parcel || project.site.parcels[0]?.addr
   if (addr) lines.push(`- 위치: ${addr}`)
   if (boundary) lines.push(`- 대지 면적: 약 ${Math.round(areaM2(boundary)).toLocaleString('ko-KR')}㎡ (도형 계산값), 주변 조사 반경 ${project.site.radiusM}m`)
+  const fb = feedbackBlock(project, panelTitle)
+  if (fb) lines.push('', fb)
   return lines.join('\n')
 }
 

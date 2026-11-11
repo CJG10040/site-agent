@@ -3,6 +3,7 @@ import CardDetail from '../components/CardDetail'
 import FlowBoard from '../components/FlowBoard'
 import RoundWorkbench from '../components/RoundWorkbench'
 import SynthEditor from '../components/SynthEditor'
+import FeedbackPanel from '../components/FeedbackPanel'
 import { mvpProgress } from '../model/cards'
 import { cardTitle, REACTION_LABEL, ROUNDS } from '../model/prompts'
 import { nowIso } from '../model/project'
@@ -15,7 +16,7 @@ interface Props {
   config: VWorldConfig
 }
 
-type Tab = 'rounds' | 'board' | 'tension' | 'hyp' | 'synth'
+type Tab = 'rounds' | 'board' | 'tension' | 'hyp' | 'synth' | 'feedback'
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'rounds', label: '챗봇 왕복' },
@@ -23,6 +24,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'tension', label: '긴장·기회' },
   { id: 'hyp', label: '가설 비교' },
   { id: 'synth', label: '종합 다이어그램' },
+  { id: 'feedback', label: '피드백' },
 ]
 
 const DIRECTIONS = ['보존할 것', '드러낼 것', '피할 것', '변환할 것']
@@ -87,6 +89,7 @@ export default function InterpretStep({ project, update, config }: Props) {
       <div className={`interpret-body${selected && tab !== 'rounds' && tab !== 'synth' ? ' with-detail' : ''}`}>
         <div className="interpret-main">
           {tab === 'synth' && <SynthEditor project={project} update={update} config={config} />}
+          {tab === 'feedback' && <FeedbackPanel project={project} update={update} onOpenCard={setSelected} />}
           {tab === 'rounds' && (
             <div className="rounds">
               <ol className="round-list">

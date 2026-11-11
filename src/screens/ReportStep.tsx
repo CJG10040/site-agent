@@ -13,6 +13,8 @@ import { cardTitle, isRelation, REACTION_LABEL, ROUNDS } from '../model/prompts'
 import type { Card, Project } from '../model/types'
 import { listVersions, saveVersion } from '../model/db'
 import { countsText, TRIGGER_LABEL, type VersionRecord } from '../model/versions'
+import { FB_STATUS_LABEL, feedbackOf } from '../model/feedback'
+import { panelNumber as panelNo } from '../diagrams/panels'
 import type { VWorldConfig } from '../sources/vworld'
 
 const BoardView = lazy(() => import('./BoardView'))
@@ -490,6 +492,43 @@ export default function ReportStep({ project, update, config }: Props) {
                 </li>
               ))}
             </ul>
+          </section>
+        )}
+
+        {feedbackOf(project).length > 0 && (
+          <section className="report-sec">
+            {H(`받은 피드백과 반영 (${feedbackOf(project).length})`)}
+            <table className="report-table feedback">
+              <thead>
+                <tr>
+                  <th>번호</th>
+                  <th>날짜·누가</th>
+                  <th>피드백</th>
+                  <th>관련</th>
+                  <th>상태</th>
+                  <th>반영·판단</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[...feedbackOf(project)]
+                  .sort((x, y) => x.date.localeCompare(y.date) || x.id.localeCompare(y.id))
+                  .map((f) => (
+                    <tr key={f.id}>
+                      <td className="rid">{f.id}</td>
+                      <td className="small">
+                        {f.date}
+                        <br />
+                        {f.who}
+                        {f.occasion ? ` · ${f.occasion}` : ''}
+                      </td>
+                      <td>{f.text}</td>
+                      <td className="small">{[...f.cardIds, ...f.panelIds.map((p) => `도판 ${panelNo(p)}`)].join(', ')}</td>
+                      <td className="small">{FB_STATUS_LABEL[f.status]}</td>
+                      <td className="small">{f.response}</td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
           </section>
         )}
 

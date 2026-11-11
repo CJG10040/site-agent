@@ -190,6 +190,8 @@ export interface Project {
   diagrams?: DiagramState
   /** Phase 12 종합 다이어그램 (⑧ 해석·가설에서 그림) */
   synth?: SynthState
+  /** Phase 12 교수·조교·동료 피드백과 반영 */
+  feedback?: Feedback[]
 }
 
 // ───────────────────────── Phase 7 도판 ─────────────────────────
@@ -248,6 +250,32 @@ export interface DiagramState {
   chatLog?: DiagramChat[]
   /** ⑨ 리포트의 보드 조판 설정 */
   board?: BoardSettings
+}
+
+// ───────────────────────── Phase 12 교수 피드백 ─────────────────────────
+
+/** 아직 안 정함 · 반영함 · 보류 · 다르게 판단 */
+export type FeedbackStatus = 'open' | 'applied' | 'hold' | 'disagree'
+
+export interface Feedback {
+  /** 예: "FB-01" */
+  id: string
+  /** 받은 날 (YYYY-MM-DD) */
+  date: string
+  /** 누가: 교수·조교·동료·외부 전문가 … */
+  who: string
+  /** 어느 자리에서: 중간 크리틱·개별 지도 … */
+  occasion: string
+  text: string
+  cardIds: string[]
+  panelIds: string[]
+  status: FeedbackStatus
+  /** 어떻게 반영했는지, 또는 왜 보류·다르게 판단했는지 */
+  response: string
+  /** 받은 시점에 저장한 조사 버전 (받은 뒤 바뀐 것을 보여 줌) */
+  versionId: string | null
+  createdAt: string
+  updatedAt: string
 }
 
 // ───────────────────────── Phase 12 종합 다이어그램 ─────────────────────────

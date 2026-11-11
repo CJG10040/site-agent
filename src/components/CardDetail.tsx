@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { dependents, setReaction } from '../model/cards'
+import { FB_STATUS_LABEL, feedbackForCard } from '../model/feedback'
 import { cardTitle, isAiCard, REACTION_LABEL, TYPE_LABEL } from '../model/prompts'
 import { nowIso } from '../model/project'
 import type { Card, Project, Reaction } from '../model/types'
@@ -165,6 +166,20 @@ export default function CardDetail({ project, cardId, update, onSelect, onClose 
                 <button type="button" className="ref-chip" onClick={() => onSelect(u)}>
                   <span className="card-id">{u}</span> {cardTitle(byId.get(u)!).slice(0, 60)}
                 </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {feedbackForCard(project, card.id).length > 0 && (
+        <section className="detail-refs">
+          <h4>받은 피드백</h4>
+          <ul className="detail-feedback">
+            {feedbackForCard(project, card.id).map((f) => (
+              <li key={f.id}>
+                <span className="card-id">{f.id}</span> <span className={`fb-badge status-${f.status}`}>{FB_STATUS_LABEL[f.status]}</span> {f.date} {f.who}: {f.text}
+                {f.response && <span className="muted small"> → {f.response}</span>}
               </li>
             ))}
           </ul>

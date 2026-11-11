@@ -286,6 +286,23 @@ export default function VersionsView({ project, data, settings, vworldKey }: Pro
                 </div>
               )}
 
+              {(diff.feedback.added.length > 0 || diff.feedback.changed.length > 0) && (
+                <div className="version-sec">
+                  <h4>피드백</h4>
+                  {diff.feedback.added.map((f) => (
+                    <p key={f.id} className="version-change">
+                      <span className="version-kind kind-added-badge">적음</span> <span className="rid">{f.id}</span> {f.date} {f.who}: {f.text}
+                    </p>
+                  ))}
+                  {diff.feedback.changed.map((f) => (
+                    <p key={f.id} className="version-change">
+                      <span className="rid">{f.id}</span> {f.text.slice(0, 60)} — <del>{f.before}</del> → <ins>{f.after}</ins>
+                      {f.response && <span className="muted small"> ({f.response.slice(0, 80)})</span>}
+                    </p>
+                  ))}
+                </div>
+              )}
+
               {(diff.synth.a > 0 || diff.synth.b > 0) && (
                 <div className="version-sec">
                   <h4>종합 다이어그램</h4>
