@@ -4,9 +4,9 @@
 export type StoreTime = 'day' | 'allday' | 'night'
 
 export const STORE_TIME_LABEL: Record<StoreTime, string> = {
-  day: '낮 업종 (소매·학원·병원·사무·서비스)',
-  allday: '종일 업종 (음식·카페·편의점)',
-  night: '밤 업종 (주점·노래방·PC방·숙박)',
+  day: '낮 (소매·학원·병원 등)',
+  allday: '종일 (음식·카페·편의점)',
+  night: '밤 (주점·노래방·숙박 등)',
 }
 
 export function storeTime(lcls: string, mcls: string, scls = ''): StoreTime {

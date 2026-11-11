@@ -583,7 +583,7 @@ export function addStoreFacts(ctx: FactContext, o: ApiOutcome<StoresResult>): vo
     for (const s of r.stores) all.set(key(s), (all.get(key(s)) ?? 0) + 1)
     for (const s of near100) nr.set(key(s), (nr.get(key(s)) ?? 0) + 1)
     const lq = [...nr.entries()]
-      .filter(([, c]) => c >= 2)
+      .filter(([, c]) => c >= 3)
       .map(([k, c]) => ({ k, q: c / near100.length / ((all.get(k) ?? 1) / n) }))
       .filter((x) => x.q >= 1.5)
       .sort((a, b) => b.q - a.q)
@@ -591,7 +591,7 @@ export function addStoreFacts(ctx: FactContext, o: ApiOutcome<StoresResult>): vo
     push({
       auto_key: 'stores-special',
       topic: '상권',
-      text: `대지 경계 100m 안 업종 구성을 반경 전체와 비교하면 ${lq.length ? `${lq.slice(0, 4).map((x) => `${x.k}(${fmt(x.q, 1)}배)`).join(', ')}이 동네보다 많고` : '동네보다 눈에 띄게 많은 업종은 없고'}${missing.length ? `, 동네에 흔한 ${missing.slice(0, 3).join('·')}은 대지 주변에 없다` : ''}.`,
+      text: `대지 경계 100m 안 업종 구성을 반경 전체와 비교하면 ${lq.length ? `동네보다 많은 업종은 ${lq.slice(0, 4).map((x) => `${x.k}(${fmt(x.q, 1)}배)`).join(', ')}${missing.length ? '이고' : '이다'}` : `동네보다 눈에 띄게 많은 업종은 ${missing.length ? '없고' : '없다'}`}${missing.length ? `, 동네에 흔한 ${missing.slice(0, 3).join('·')}은 대지 주변에 없다` : ''}.`,
       sources: [src],
       confidence: 'medium',
     })

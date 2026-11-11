@@ -148,7 +148,7 @@ const storesTimePanel: PanelDef = {
         { color: col.day, label: STORE_TIME_LABEL.day },
         { color: col.allday, label: STORE_TIME_LABEL.allday },
         { color: col.night, label: STORE_TIME_LABEL.night },
-        { color: col.mixed, label: '섞임 (어느 쪽도 절반 못 넘음)' },
+        { color: col.mixed, label: '섞임 (절반 넘는 쪽 없음)' },
       ],
       legendTitle: '건물마다 상가 업종의 시간 성격 (절반 넘는 쪽)',
       summary: [
@@ -188,7 +188,7 @@ const storesComparePanel: PanelDef = {
     const allN = ss.length
     const lq = (k: string) => (nearN && allC.get(k) ? (nearC.get(k) ?? 0) / nearN / ((allC.get(k) as number) / allN) : 0)
     const topAll = [...allC.entries()].sort((a, b) => b[1] - a[1]).slice(0, 9).map(([k]) => k)
-    const topNear = [...nearC.entries()].filter(([, n]) => n >= 2).sort((a, b) => lq(b[0]) - lq(a[0])).slice(0, 4).map(([k]) => k)
+    const topNear = [...nearC.entries()].filter(([, n]) => n >= 3).sort((a, b) => lq(b[0]) - lq(a[0])).slice(0, 4).map(([k]) => k)
     const rows = [...new Set([...topAll, ...topNear])].slice(0, 12)
     rows.sort((a, b) => ((nearC.get(b) ?? 0) / Math.max(1, nearN) + (allC.get(b) ?? 0) / allN) - ((nearC.get(a) ?? 0) / Math.max(1, nearN) + (allC.get(a) ?? 0) / allN))
     const maxShare = Math.max(...rows.map((k) => Math.max((allC.get(k) ?? 0) / allN, nearN ? (nearC.get(k) ?? 0) / nearN : 0)), 0.01)
@@ -206,13 +206,13 @@ const storesComparePanel: PanelDef = {
       const a = (allC.get(k) ?? 0) / allN
       const nShare = nearN ? (nearC.get(k) ?? 0) / nearN : 0
       const q = lq(k)
-      const tag = nearN >= 5 && (nearC.get(k) ?? 0) >= 2 && q >= 1.5 ? `×${fmt(q, 1)} 많음` : nearN >= 5 && !(nearC.get(k) ?? 0) && a >= 0.03 ? '대지 주변엔 없음' : ''
+      const tag = nearN >= 5 && (nearC.get(k) ?? 0) >= 3 && q >= 1.5 ? `×${fmt(q, 1)} 많음` : nearN >= 5 && !(nearC.get(k) ?? 0) && a >= 0.03 ? '대지 주변엔 없음' : ''
       svg += `<text x="${X0 - 14}" y="${(y + rowH * 0.48).toFixed(1)}" font-size="16" font-weight="${tag ? 700 : 500}" text-anchor="end" fill="${c.pal.ink}">${esc(k)}</text>`
       svg += `<rect x="${X0}" y="${(y + 6).toFixed(1)}" width="${(bx(nShare) - X0).toFixed(1)}" height="${(rowH * 0.32).toFixed(1)}" fill="${nearColor}"/>`
       svg += `<rect x="${X0}" y="${(y + 6 + rowH * 0.36).toFixed(1)}" width="${(bx(a) - X0).toFixed(1)}" height="${(rowH * 0.32).toFixed(1)}" fill="${allColor}"/>`
       svg += `<text x="${(Math.max(bx(nShare), bx(a)) + 8).toFixed(1)}" y="${(y + rowH * 0.48).toFixed(1)}" font-size="13" fill="${c.pal.subtle}">${pctText(nShare)} / ${pctText(a)}${tag ? `  <tspan font-weight="700" fill="${nearColor}">${tag}</tspan>` : ''}</text>`
     })
-    const more = rows.filter((k) => nearN >= 5 && (nearC.get(k) ?? 0) >= 2 && lq(k) >= 1.5).map((k) => `${k}(×${fmt(lq(k), 1)})`)
+    const more = rows.filter((k) => nearN >= 5 && (nearC.get(k) ?? 0) >= 3 && lq(k) >= 1.5).map((k) => `${k}(×${fmt(lq(k), 1)})`)
     const none = rows.filter((k) => nearN >= 5 && !(nearC.get(k) ?? 0) && (allC.get(k) ?? 0) / allN >= 0.03)
     return {
       layers: [{ id: '비교', svg }],
@@ -291,6 +291,21 @@ const poiMapPanel: PanelDef = {
     let lines = ''
     let labels = ''
     const edge = MAP_R - 14
+    const boxes: { x0: number; x1: number; y0: number; y1: number }[] = []
+    const place = (x: number, y: number, w: number, anchor: 'start' | 'end'): number => {
+      const x0 = anchor === 'start' ? x : x - w
+      const x1 = anchor === 'start' ? x + w : x
+      for (const dy of [0, 18, -18, 36, -36, 54, -54]) {
+        const y0 = y + dy - 14
+        const y1 = y + dy + 4
+        if (!boxes.some((b) => b.x0 < x1 && x0 < b.x1 && b.y0 < y1 && y0 < b.y1)) {
+          boxes.push({ x0, x1, y0, y1 })
+          return y + dy
+        }
+      }
+      boxes.push({ x0, x1, y0: y - 14, y1: y + 4 })
+      return y
+    }
     for (const x of near.values()) {
       const g = groupOf(groups, x.p.kind)
       if (!g) continue
@@ -307,7 +322,9 @@ const poiMapPanel: PanelDef = {
       lines += `<path d="M${MAP_CX} ${MAP_CY}L${px.toFixed(1)} ${py.toFixed(1)}" stroke="${g.color}" stroke-width="2" stroke-dasharray="5 4" fill="none"/>`
       const lx = px + (px >= MAP_CX ? 14 : -14)
       const anchor = px >= MAP_CX ? 'start' : 'end'
-      labels += `<text x="${lx.toFixed(1)}" y="${(py + 5).toFixed(1)}" font-size="14" font-weight="700" text-anchor="${anchor}" fill="${g.color}" stroke="#ffffff" stroke-width="4" paint-order="stroke">${esc(x.p.label ?? x.p.kind)} ${minText(x.min)}${out ? ' (도판 밖)' : ''}</text>`
+      const text = `${x.p.label ?? x.p.kind} ${minText(x.min)}${out ? ' (도판 밖)' : ''}`
+      const ly = place(lx, py + 5, text.length * 13, anchor)
+      labels += `<text x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" font-size="14" font-weight="700" text-anchor="${anchor}" fill="${g.color}" stroke="#ffffff" stroke-width="4" paint-order="stroke">${esc(text)}</text>`
       if (out) labels += iconSvg(x.p.kind, px, py, 11, g.color)
     }
     let icons = ''
@@ -364,8 +381,8 @@ const poiReachPanel: PanelDef = {
     const rows = groups.flatMap((g) => g.codes.map((code) => ({ g, code, label: list.find((x) => x.p.kind === code)?.p.label ?? '' }))).filter((r) => r.label)
     const top = 120
     const rowH = Math.min(62, Math.floor(780 / Math.max(1, rows.length)))
-    const COLS = [330, 520, 710]
-    const NEAREST_X = 900
+    const COLS = [300, 465, 630]
+    const NEAREST_X = 945
     let svg = ''
     BANDS.forEach((b, i) => {
       svg += `<text x="${COLS[i]}" y="${top - 40}" font-size="17" font-weight="700" fill="${c.pal.ink}">${b}분 안</text><text x="${COLS[i]}" y="${top - 20}" font-size="13" fill="${c.pal.subtle}">${fmt(b * WALK_SPEED)}m</text>`
