@@ -278,3 +278,237 @@ export function boxMesh(b: Box, ground: number): { v: number[][]; f: number[][] 
   ]
   return { v, f }
 }
+
+// ───────────────────────── 정밀도로지도 신호등·표지판·지주·방호시설 (2026-11-13) ─────────────────────────
+
+/** 지주: 기둥(어림 지름 16cm) + 차량 신호등·표지판까지 뻗은 팔 */
+export function poleBoxes(p: { x: number; y: number; top: number; arms: { to: XY; h: number }[] }): Box[] {
+  const out: Box[] = [{ c: [p.x, p.y], ux: [1, 0], hx: 0.08, hy: 0.08, z0: 0, z1: p.top, part: 'pole' }]
+  for (const a of p.arms) {
+    const dx = a.to[0] - p.x
+    const dy = a.to[1] - p.y
+    const L = Math.hypot(dx, dy)
+    if (L < 0.5) continue
+    out.push({ c: [p.x + dx / 2, p.y + dy / 2], ux: [dx / L, dy / L], hx: L / 2, hy: 0.06, z0: a.h - 0.07, z1: a.h + 0.07, part: 'pole' })
+  }
+  return out
+}
+
+/** 신호등 상자: 차량등 1.3 × 0.32 × 0.44m(가로로 길게), 보행등 0.35 × 0.3 × 0.85m (어림) */
+export function signalBoxes(s: { x: number; y: number; h: number; vehicle: boolean; axis: XY }): Box[] {
+  return s.vehicle
+    ? [{ c: [s.x, s.y], ux: s.axis, hx: 0.65, hy: 0.16, z0: s.h - 0.22, z1: s.h + 0.22, part: 'head' }]
+    : [{ c: [s.x, s.y], ux: s.axis, hx: 0.17, hy: 0.15, z0: s.h - 0.45, z1: s.h + 0.4, part: 'head' }]
+}
+
+export type SignColor = 'red' | 'yellow' | 'white' | 'blue'
+
+/**
+ * 교통안전표지 판 (세운 면, 앞뒤 모두): 주의 = 노란 삼각형 + 빨간 테두리, 규제 = 흰 원 + 빨간 테두리, 지시 = 파란 원, 보조 = 흰 사각형.
+ * 꼭짓점은 [x, y, 땅 위 높이]. 앞뒤를 모르므로 색 면을 양쪽에 조금 띄워 둠.
+ */
+export function signPanels(s: { x: number; y: number; h: number; ph: number; pw: number; cat: number; axis: XY }): { color: SignColor; ring: number[][] }[] {
+  const n: XY = [-s.axis[1], s.axis[0]]
+  const w = s.cat === 4 || s.cat === 0 ? s.pw : Math.min(s.pw, s.ph * 1.15)
+  const shape = (scale: number): XY[] => {
+    if (s.cat === 1) {
+      // 위를 향한 삼각형 (가운데 = 무게중심 높이)
+      const a = w * scale
+      const t = s.ph * scale
+      const cy = s.ph / 3
+      return [
+        [-a / 2, cy - t / 3],
+        [a / 2, cy - t / 3],
+        [0, cy + (2 * t) / 3],
+      ]
+    }
+    if (s.cat === 2 || s.cat === 3) {
+      const r = (Math.min(w, s.ph) / 2) * scale
+      return Array.from({ length: 20 }, (_, i) => [Math.cos((i / 20) * 2 * Math.PI) * r, s.ph / 2 + Math.sin((i / 20) * 2 * Math.PI) * r] as XY)
+    }
+    const a = (w / 2) * scale
+    const b = (s.ph / 2) * scale
+    return [
+      [-a, s.ph / 2 - b],
+      [a, s.ph / 2 - b],
+      [a, s.ph / 2 + b],
+      [-a, s.ph / 2 + b],
+    ]
+  }
+  const ring = (pts: XY[], off: number) => pts.map(([u, v]) => [s.x + s.axis[0] * u + n[0] * off, s.y + s.axis[1] * u + n[1] * off, s.h + v])
+  if (s.cat === 1)
+    return [
+      { color: 'red', ring: ring(shape(1), 0) },
+      { color: 'yellow', ring: ring(shape(0.72), 0.015) },
+      { color: 'yellow', ring: ring(shape(0.72), -0.015) },
+    ]
+  if (s.cat === 2)
+    return [
+      { color: 'red', ring: ring(shape(1), 0) },
+      { color: 'white', ring: ring(shape(0.8), 0.015) },
+      { color: 'white', ring: ring(shape(0.8), -0.015) },
+    ]
+  if (s.cat === 3) return [{ color: 'blue', ring: ring(shape(1), 0) }]
+  return [{ color: 'white', ring: ring(shape(1), 0) }]
+}
+
+/** 방호시설 기둥 (2m마다, 높이 0.8m 어림) — 가로대는 쓰는 쪽에서 선을 따라 세운 띠로 */
+export function barrierPosts(pts: XY[]): Box[] {
+  const d = densifyLine(pts, 2)
+  return d.map((p, i) => {
+    const q = d[Math.min(d.length - 1, i + 1)]
+    const r = d[Math.max(0, i - 1)]
+    const ux = unit([q[0] - r[0], q[1] - r[1]])
+    return { c: p, ux, hx: 0.05, hy: 0.05, z0: 0, z1: 0.8, part: 'frame' as const }
+  })
+}
+
+export const BARRIER_RAIL: [number, number] = [0.5, 0.8]
+export const BUMP_H = 0.08
+
+// ───────────────────────── 노면표시 모양 (2026-11-13) ─────────────────────────
+// 정밀도로지도 노면표시는 화살표 크기의 사각형뿐 → 종류 코드와 진행 방향(주행경로링크)으로 실제 모양을 그린다.
+// 크기는 그 사각형에 맞춤 (길이 L·폭 W), 화살표 머리 길이 약 0.3L. 모양은 규격 그림의 어림.
+
+/** 사각형 안 로컬 좌표 (a = 앞으로, b = 왼쪽) */
+type AB = [number, number]
+
+const rectAB = (a0: number, a1: number, b0: number, b1: number): AB[] => [
+  [a0, b0],
+  [a1, b0],
+  [a1, b1],
+  [a0, b1],
+]
+/** 화살표 머리 (끝 tip, 방향 dir(단위), 길이 len, 폭 wid) */
+const headAB = (tip: AB, dir: AB, len: number, wid: number): AB[] => {
+  const base: AB = [tip[0] - dir[0] * len, tip[1] - dir[1] * len]
+  const n: AB = [-dir[1], dir[0]]
+  return [tip, [base[0] + (n[0] * wid) / 2, base[1] + (n[1] * wid) / 2], [base[0] - (n[0] * wid) / 2, base[1] - (n[1] * wid) / 2]]
+}
+/** 두 점을 잇는 굵기 w 띠 */
+const barAB = (p: AB, q: AB, w: number): AB[] => {
+  const L = Math.hypot(q[0] - p[0], q[1] - p[1]) || 1
+  const n: AB = [(-(q[1] - p[1]) / L) * (w / 2), ((q[0] - p[0]) / L) * (w / 2)]
+  return [
+    [p[0] + n[0], p[1] + n[1]],
+    [q[0] + n[0], q[1] + n[1]],
+    [q[0] - n[0], q[1] - n[1]],
+    [p[0] - n[0], p[1] - n[1]],
+  ]
+}
+
+/** 종류별 모양 (로컬, a ∈ [-L/2, L/2], b ∈ [-W/2, W/2]) — 흰색 / 노란색 */
+function glyphAB(kind: string, L: number, W: number): { white: AB[][]; yellow: AB[][] } | null {
+  const sw = Math.max(0.15, Math.min(0.3, W * 0.18)) // 몸통 굵기
+  const hl = Math.min(1.6, L * 0.3) // 머리 길이
+  const top = L / 2
+  const bot = -L / 2
+  const straight = (b: number, hw = Math.min(W, 1.2)): AB[][] => [rectAB(bot, top - hl + 0.05, b - sw / 2, b + sw / 2), headAB([top, b], [1, 0], hl, hw)]
+  /** 옆으로 꺾는 화살표 (side 1 = 왼쪽, -1 = 오른쪽): 몸통은 반대쪽 가장자리, 꺾는 높이 at */
+  const turn = (side: 1 | -1, at: number, from: number): AB[][] => {
+    const hw = Math.min(1.1, L * 0.28)
+    const hlen = Math.min(W * 0.55, 1.2)
+    const tipB = (side * W) / 2
+    return [
+      rectAB(from, at + sw / 2, -side * (W / 2 - sw), -side * (W / 2 - sw) + side * sw),
+      rectAB(at - sw / 2, at + sw / 2, Math.min(-side * (W / 2 - sw), tipB - side * hlen), Math.max(-side * (W / 2 - sw), tipB - side * hlen)),
+      headAB([at, tipB], [0, side], hlen, hw),
+    ]
+  }
+  const uturn = (): AB[][] => {
+    const right = -W / 2 + sw
+    const left = W / 2 - sw
+    const at = top - sw
+    return [
+      rectAB(bot + hl * 0.2, at + sw / 2, right - sw / 2, right + sw / 2),
+      rectAB(at - sw / 2, at + sw / 2, right - sw / 2, left + sw / 2),
+      rectAB(bot + hl - 0.05, at + sw / 2, left - sw / 2, left + sw / 2),
+      headAB([bot, left], [-1, 0], hl, Math.min(W * 0.75, 1.0)),
+    ]
+  }
+  const chevron = (a: number, h: number): AB[][] => [barAB([a - h, -W / 2], [a, 0], sw), barAB([a, 0], [a - h, W / 2], sw)]
+  switch (kind) {
+    case '5371':
+      return { white: straight(0), yellow: [] }
+    case '5372':
+      return { white: turn(1, top - Math.min(1.1, L * 0.28) / 2, bot), yellow: [] }
+    case '5373':
+      return { white: turn(-1, top - Math.min(1.1, L * 0.28) / 2, bot), yellow: [] }
+    case '5374':
+    case '5391':
+      return { white: uturn(), yellow: [] }
+    case '5392':
+      return { white: [...uturn(), ...turn(1, L * 0.05, -L * 0.05).slice(1)], yellow: [] }
+    case '5381':
+    case '5382': {
+      const side: 1 | -1 = kind === '5381' ? 1 : -1
+      const b = -side * Math.min(W / 4, 0.4)
+      const at = L * 0.02
+      const hw = Math.min(1.0, L * 0.25)
+      const hlen = Math.min(W / 2, 1.0)
+      return {
+        white: [...straight(b, Math.min(W * 0.55, 1.0)), rectAB(at - sw / 2, at + sw / 2, Math.min(b, side * (W / 2 - hlen)), Math.max(b, side * (W / 2 - hlen))), headAB([at, (side * W) / 2], [0, side], hlen, hw)],
+        yellow: [],
+      }
+    }
+    case '5431':
+    case '5432': {
+      // 차로변경: 비스듬한 화살표 (5431 = 오른쪽 차로에서 왼쪽으로, 5432 = 반대)
+      const side = kind === '5431' ? 1 : -1
+      const tip: AB = [top, (side * W) / 2 - side * 0.1]
+      const tail: AB = [bot, (-side * W) / 2 + side * 0.1]
+      const d = Math.hypot(tip[0] - tail[0], tip[1] - tail[1])
+      const dir: AB = [(tip[0] - tail[0]) / d, (tip[1] - tail[1]) / d]
+      const neck: AB = [tip[0] - dir[0] * (hl - 0.05), tip[1] - dir[1] * (hl - 0.05)]
+      return { white: [barAB(tail, neck, sw), headAB(tip, dir, hl, Math.min(W * 0.9, 1.0))], yellow: [] }
+    }
+    case '544': {
+      // 오르막경사면: 앞을 향한 ㅅ자 세 개
+      const h = Math.min(W * 0.6, L / 4)
+      return { white: [0, 1, 2].flatMap((i) => chevron(top - i * (L / 3) - 0.1, h)), yellow: [] }
+    }
+    case '529': {
+      // 횡단보도예고: 마름모 테두리
+      const ps: AB[] = [
+        [top, 0],
+        [0, W / 2],
+        [bot, 0],
+        [0, -W / 2],
+      ]
+      return { white: ps.map((p, i) => barAB(p, ps[(i + 1) % 4], 0.2)), yellow: [] }
+    }
+    default:
+      return null
+  }
+}
+
+/**
+ * 노면표시 사각형 + 종류 + 진행 방향 → 실제 모양 다각형 (흰색·노란색). 모르는 종류는 null (면 그대로 그림).
+ * 정차금지지대(524)는 실제 테두리가 있어 그대로 노란 테두리 + 빗금.
+ */
+export function markGlyph(p: Poly, kind: string, az: number | null): { white: Poly[]; yellow: Poly[] } | null {
+  const o = p.outer
+  if (o.length < 3) return null
+  if (kind === '524') {
+    const ring = densifyLine(o, 0.5, true)
+    const { left, right } = ribbon(ring, 0.3)
+    const edge: Poly[] = []
+    for (let i = 0; i + 1 < ring.length; i++) edge.push({ outer: [left[i], right[i], right[i + 1], left[i + 1]], holes: [] })
+    return { white: [], yellow: [...edge, ...hatchStripes(p)] }
+  }
+  const { u, v, lenU, lenV } = mainAxes(o)
+  const [a0, a1] = span(o, u)
+  const [b0, b1] = span(o, v)
+  const c: XY = [u[0] * (a0 + a1) / 2 + v[0] * (b0 + b1) / 2, u[1] * (a0 + a1) / 2 + v[1] * (b0 + b1) / 2]
+  // 앞 = 진행 방향과 같은 쪽의 긴 축
+  const go: XY = az !== null ? [Math.sin((az * Math.PI) / 180), Math.cos((az * Math.PI) / 180)] : u
+  const f: XY = dot(go, u) >= 0 ? u : [-u[0], -u[1]]
+  const left: XY = [-f[1], f[0]]
+  const g = glyphAB(kind, lenU, lenV)
+  if (!g) return null
+  const toXY = (r: AB[]): Poly => {
+    const pts = r.map(([a, b]) => [c[0] + f[0] * a + left[0] * b, c[1] + f[1] * a + left[1] * b] as XY)
+    return { outer: ringArea(pts) > 0 ? pts : [...pts].reverse(), holes: [] }
+  }
+  return { white: g.white.map(toXY), yellow: g.yellow.map(toXY) }
+}

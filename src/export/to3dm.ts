@@ -5,7 +5,7 @@
 import type { RhinoModule } from 'rhino3dm'
 import wasmUrl from 'rhino3dm/rhino3dm.wasm?url'
 import { dashesOf, densify, modelNotes, offsetLine, triangulate, type Poly, type SiteModel, type XY } from './siteModel'
-import { boxMesh, densifyLine, lampBoxes, ribbon, shelterBoxes, STREET } from './streetDetail'
+import { BARRIER_RAIL, barrierPosts, boxMesh, BUMP_H, densifyLine, hatchStripes, lampBoxes, poleBoxes, ribbon, shelterBoxes, signalBoxes, signPanels, STREET, type SignColor } from './streetDetail'
 
 type Rgb = [number, number, number]
 
@@ -54,7 +54,12 @@ const LAYERS: LayerDef[] = [
   { key: 'laneWhite', name: '차선 (흰색, 폭 15cm 면)', color: [250, 250, 250], parent: 'detail' },
   { key: 'laneYellow', name: '차선 (황색·중앙선, 폭 15cm 면)', color: [240, 190, 40], parent: 'detail' },
   { key: 'laneBlue', name: '차선 (청색·버스, 폭 15cm 면)', color: [60, 110, 220], parent: 'detail' },
-  { key: 'mark', name: '노면표시 (화살표·글자 등)', color: [240, 240, 240], parent: 'detail' },
+  { key: 'mark', name: '노면표시 (화살표 등 실제 모양, 진행 방향은 주행경로링크)', color: [240, 240, 240], parent: 'detail' },
+  { key: 'signal', name: '신호등 (정밀도로지도 높이, 차량등 1.3m·보행등 0.35m 상자 어림)', color: [35, 35, 35], parent: 'detail' },
+  { key: 'pole', name: '지주 (신호등·표지판 기둥과 팔)', color: [140, 142, 145], parent: 'detail' },
+  { key: 'sign', name: '교통안전표지 (주의·규제·지시·보조, 정밀도로지도 판 크기·높이)', color: [242, 194, 48], parent: 'detail' },
+  { key: 'barrier', name: '방호시설 (가드레일·중앙분리대 등, 높이 0.8m 어림)', color: [200, 204, 208], parent: 'detail' },
+  { key: 'bump', name: '과속방지턱 (높이 8cm 어림)', color: [232, 185, 35], parent: 'detail' },
   { key: 'hdPath', name: '보도 면 (정밀도로지도)', color: [205, 195, 175], parent: 'detail' },
   { key: 'curb', name: '연석 (정밀도로지도, 폭 20cm·높이 15cm 어림)', color: [175, 172, 165], parent: 'detail' },
 ]
@@ -168,7 +173,12 @@ export async function siteModelTo3dm(m: SiteModel, meta: ExportMeta, onStep?: (s
         laneWhite: m.lanes.some((l) => l.color === 'white'),
         laneYellow: m.lanes.some((l) => l.color === 'yellow'),
         laneBlue: m.lanes.some((l) => l.color === 'blue'),
-        mark: m.marks.length > 0,
+        mark: m.marks.length + m.arrows.length > 0,
+        signal: m.signals.length > 0,
+        pole: m.poles.length > 0,
+        sign: m.signs.length > 0,
+        barrier: m.barriers.length > 0,
+        bump: m.bumps.length > 0,
         hdPath: m.hdPaths.length > 0,
         curb: m.curbs.length > 0,
       }
@@ -203,11 +213,16 @@ export async function siteModelTo3dm(m: SiteModel, meta: ExportMeta, onStep?: (s
       layerIndex.set(def.key, idx)
       layerId.set(def.key, doc.layers().get(idx).id)
     }
-    const attrs = (key: string, name = '', user: Record<string, string> = {}) => {
+    const attrs = (key: string, name = '', user: Record<string, string> = {}, color?: Rgb) => {
       const at = new rhino.ObjectAttributes()
       at.layerIndex = layerIndex.get(key) ?? 0
       if (name) at.name = name
       for (const [k, v] of Object.entries(user)) at.setUserString(k, v)
+      if (color) {
+        // 한 레이어 안에서 색을 나눌 때 (표지판 빨강·노랑·파랑·흰색, 과속방지턱 흰 줄)
+        at.colorSource = rhino.ObjectColorSource.ColorFromObject
+        at.objectColor = { r: color[0], g: color[1], b: color[2], a: 255 }
+      }
       return at
     }
     const objs = doc.objects()
@@ -254,14 +269,14 @@ export async function siteModelTo3dm(m: SiteModel, meta: ExportMeta, onStep?: (s
       const mesh = new rhino.Mesh()
       return { mesh, vs: mesh.vertices(), fs: mesh.faces() }
     }
-    const addMeshObj = (mb: MB, key: string, name: string, user: Record<string, string> = {}) => {
+    const addMeshObj = (mb: MB, key: string, name: string, user: Record<string, string> = {}, color?: Rgb) => {
       if (!mb.fs.count) {
         free(mb.mesh)
         return
       }
       mb.mesh.normals().computeNormals()
       mb.mesh.compact()
-      const at = attrs(key, name, user)
+      const at = attrs(key, name, user, color)
       objs.addMesh(mb.mesh, at)
       free(mb.mesh)
       free(at)
@@ -466,6 +481,7 @@ export async function siteModelTo3dm(m: SiteModel, meta: ExportMeta, onStep?: (s
     // 횡단보도: 줄무늬 (줄무늬를 못 만든 것은 면 그대로)
     drapedMesh(m.zebra.length ? m.zebra : m.crosswalks, 'crosswalk', '횡단보도 줄무늬', R + 0.03, Math.min(DRAPE_EDGE, 3))
     drapedMesh(m.marks, 'mark', '노면표시', R + 0.04, Math.min(DRAPE_EDGE, 3))
+    drapedMesh(m.arrows, 'mark', '노면표시 화살표·마름모', R + 0.04, 3)
     // 교통섬·안전지대·어린이보호구역
     addRaised(
       m.safety.filter((s) => s.kind === 'island').map((s) => s.poly),
@@ -478,6 +494,11 @@ export async function siteModelTo3dm(m: SiteModel, meta: ExportMeta, onStep?: (s
       addDraped(mb, m.hatch, R + 0.03, 3)
       for (const s of m.safety) if (s.kind === 'painted') addRibbon(mb, s.poly.outer, STREET.hatchEdge, R + 0.03, true)
       addMeshObj(mb, 'safetyPaint', '안전지대 표시 (노란 빗금)')
+    }
+    if (m.yellowMarks.length) {
+      const mb = newMesh()
+      addDraped(mb, m.yellowMarks, R + 0.03, 3)
+      addMeshObj(mb, 'safetyPaint', '정차금지지대 (노란 테두리·빗금)')
     }
     drapedMesh(
       m.safety.filter((s) => s.kind === 'school').map((s) => s.poly),
@@ -610,6 +631,54 @@ export async function siteModelTo3dm(m: SiteModel, meta: ExportMeta, onStep?: (s
       const mb = newMesh()
       for (const l of m.lamps) addBoxes(mb, lampBoxes(l.x, l.y, l.toRoad), m.zAt(l.x, l.y) + R + H)
       addMeshObj(mb, 'lamp', `가로등 ${m.lamps.length}개`)
+    }
+
+    // ── 정밀도로지도 신호등·지주·표지판·방호시설·과속방지턱 (2026-11-13). 높이는 땅(지형 + 도로 면) 위
+    if (m.poles.length) {
+      const mb = newMesh()
+      for (const p of m.poles) addBoxes(mb, poleBoxes(p), m.zAt(p.x, p.y) + R)
+      addMeshObj(mb, 'pole', `지주 ${m.poles.length}개`)
+    }
+    if (m.signals.length) {
+      const mb = newMesh()
+      for (const s of m.signals) addBoxes(mb, signalBoxes(s), m.zAt(s.x, s.y) + R)
+      addMeshObj(mb, 'signal', `신호등 ${m.signals.length}개 (차량 ${m.signals.filter((s) => s.vehicle).length} · 보행 ${m.signals.filter((s) => !s.vehicle).length})`)
+    }
+    if (m.signs.length) {
+      const SIGN_RGB: Record<SignColor, Rgb> = { red: [200, 50, 42], yellow: [242, 194, 48], white: [244, 244, 242], blue: [42, 91, 176] }
+      const by: Record<SignColor, MB> = { red: newMesh(), yellow: newMesh(), white: newMesh(), blue: newMesh() }
+      for (const s of m.signs) {
+        const g = m.zAt(s.x, s.y) + R
+        for (const pan of signPanels(s)) {
+          const mb = by[pan.color]
+          const base = mb.vs.count
+          for (const [x, y, z] of pan.ring) mb.vs.add(x, y, g + z)
+          // 앞뒤 모두 (부채꼴)
+          for (let i = 1; i + 1 < pan.ring.length; i++) {
+            mb.fs.addTriFace(base, base + i, base + i + 1)
+            mb.fs.addTriFace(base, base + i + 1, base + i)
+          }
+        }
+      }
+      const label: Record<SignColor, string> = { red: '표지판 빨강 (주의·규제 테두리)', yellow: '표지판 노랑 (주의)', white: '표지판 흰색 (규제·보조)', blue: '표지판 파랑 (지시)' }
+      for (const c of ['red', 'yellow', 'white', 'blue'] as SignColor[]) addMeshObj(by[c], 'sign', label[c], {}, SIGN_RGB[c])
+    }
+    if (m.barriers.length) {
+      const mb = newMesh()
+      for (const b of m.barriers) {
+        for (const pb of barrierPosts(b.pts)) addBoxes(mb, [pb], m.zAt(pb.c[0], pb.c[1]) + R)
+        addSides(mb, b.pts, R + BARRIER_RAIL[0], R + BARRIER_RAIL[1], false)
+      }
+      addMeshObj(mb, 'barrier', `방호시설 ${m.barriers.length}줄 (중앙 ${m.barriers.filter((b) => b.central).length})`)
+    }
+    if (m.bumps.length) {
+      const mb = newMesh()
+      addDraped(mb, m.bumps, R + BUMP_H, 1.5)
+      for (const p of m.bumps) for (const r of [p.outer, ...p.holes]) addSides(mb, r, R, R + BUMP_H)
+      addMeshObj(mb, 'bump', `과속방지턱 ${m.bumps.length}개`)
+      const st = newMesh()
+      addDraped(st, m.bumps.flatMap((p) => hatchStripes(p)), R + BUMP_H + 0.005, 1.5)
+      addMeshObj(st, 'bump', '과속방지턱 흰 줄', {}, [245, 245, 245])
     }
 
     onStep?.('파일 쓰는 중')

@@ -111,6 +111,8 @@ export interface ShpRec {
   type: number
   parts: number[][][]
   bbox: [number, number, number, number]
+  /** Z가 있는 형식(PointZ·PolyLineZ·PolygonZ)이면 꼭짓점마다 높이 (parts와 같은 모양) */
+  z?: number[][]
 }
 
 export function readShp(buf: Uint8Array): (ShpRec | null)[] {
@@ -124,7 +126,9 @@ export function readShp(buf: Uint8Array): (ShpRec | null)[] {
     if (t === 1 || t === 11 || t === 21) {
       const x = dv.getFloat64(c + 4, true)
       const y = dv.getFloat64(c + 12, true)
-      out.push({ type: 1, parts: [[[x, y]]], bbox: [x, y, x, y] })
+      const rec: ShpRec = { type: 1, parts: [[[x, y]]], bbox: [x, y, x, y] }
+      if (t === 11 && len >= 28) rec.z = [[dv.getFloat64(c + 20, true)]]
+      out.push(rec)
     } else if (t === 3 || t === 5 || t === 13 || t === 15 || t === 23 || t === 25) {
       const bbox: [number, number, number, number] = [dv.getFloat64(c + 4, true), dv.getFloat64(c + 12, true), dv.getFloat64(c + 20, true), dv.getFloat64(c + 28, true)]
       const np = dv.getInt32(c + 36, true)
@@ -139,7 +143,17 @@ export function readShp(buf: Uint8Array): (ShpRec | null)[] {
         for (let j = starts[i]; j < e; j++) pts.push([dv.getFloat64(p0 + 16 * j, true), dv.getFloat64(p0 + 16 * j + 8, true)])
         parts.push(pts)
       }
-      out.push({ type: t % 10 === 5 ? 5 : 3, parts, bbox })
+      const rec: ShpRec = { type: t % 10 === 5 ? 5 : 3, parts, bbox }
+      // Z: 점 다음에 범위(16바이트) + 꼭짓점마다 8바이트
+      const z0 = p0 + 16 * n + 16
+      if ((t === 13 || t === 15) && z0 + 8 * n <= c + len)
+        rec.z = parts.map((_, i) => {
+          const e = i + 1 < np ? starts[i + 1] : n
+          const zs: number[] = []
+          for (let j = starts[i]; j < e; j++) zs.push(dv.getFloat64(z0 + 8 * j, true))
+          return zs
+        })
+      out.push(rec)
     } else out.push(null)
     off = c + len
   }

@@ -34,6 +34,11 @@ export const DXF_LAYERS: { name: string; color: number; label: string }[] = [
   { name: 'ISLAND', color: 8, label: '교통섬 (1:1,000 안전지대 중 교통섬)' },
   { name: 'SAFETY-ZONE', color: 2, label: '안전지대 표시 (노란 테두리·빗금)' },
   { name: 'SCHOOL-ZONE', color: 1, label: '어린이보호구역 (적색 포장)' },
+  { name: 'SIGNAL', color: 3, label: '신호등 (정밀도로지도, 등 상자 긴 방향 선)' },
+  { name: 'SIGN', color: 4, label: '교통안전표지 (정밀도로지도, 판 폭 선)' },
+  { name: 'POLE', color: 8, label: '지주 (신호등·표지판 기둥, 팔은 선)' },
+  { name: 'BARRIER', color: 9, label: '방호시설 (가드레일·중앙분리대 등)' },
+  { name: 'SPEED-BUMP', color: 2, label: '과속방지턱' },
   { name: 'FENCE', color: 9, label: '담장·가드레일' },
   { name: 'LANE', color: 7, label: '차선 (흰색, 점선은 칠한 부분만)' },
   { name: 'LANE-YELLOW', color: 2, label: '차선 (황색·중앙선)' },
@@ -242,7 +247,24 @@ export function siteModelToDxf(m: SiteModel, meta: { title: string; address: str
   )
   for (const w of m.fences) polyline('FENCE', w.pts, false)
   for (const l of m.lanes) polyline(l.color === 'yellow' ? 'LANE-YELLOW' : l.color === 'blue' ? 'LANE-BLUE' : 'LANE', l.pts, false)
-  polys('ROAD-MARK', m.marks)
+  polys('ROAD-MARK', [...m.marks, ...m.arrows])
+  polys('SAFETY-ZONE', m.yellowMarks)
+  for (const s of m.signals) {
+    const w = s.vehicle ? 0.65 : 0.17
+    polyline('SIGNAL', [[s.x - s.axis[0] * w, s.y - s.axis[1] * w], [s.x + s.axis[0] * w, s.y + s.axis[1] * w]], false)
+  }
+  for (const s of m.signs) polyline('SIGN', [[s.x - (s.axis[0] * s.pw) / 2, s.y - (s.axis[1] * s.pw) / 2], [s.x + (s.axis[0] * s.pw) / 2, s.y + (s.axis[1] * s.pw) / 2]], false)
+  for (const p of m.poles) {
+    g(0, 'CIRCLE')
+    g(8, 'POLE')
+    g(10, p.x)
+    g(20, p.y)
+    g(30, 0)
+    g(40, 0.1)
+    for (const a of p.arms) polyline('POLE', [[p.x, p.y], a.to], false)
+  }
+  for (const b of m.barriers) polyline('BARRIER', b.pts, false)
+  polys('SPEED-BUMP', m.bumps)
   for (const c of m.curbs) polyline('CURB', c, false)
   polys('SITE', m.site)
 

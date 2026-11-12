@@ -145,17 +145,31 @@ export interface NgiiData {
 export interface HdData {
   lanes: { geom: Lines; color: 'yellow' | 'white' | 'blue'; dashed: boolean; double: boolean; kind: string }[]
   marks: Areal[]
-  /** 노면표시 중 횡단보도 (C-ITS 종류 532x, 2026 형식 유형 200 — 크기로 확인) → 3D에서 줄무늬로 */
+  /** 노면표시 중 횡단보도 (C-ITS 종류 532x·533, 2026 형식 유형 200 — 크기로 확인) → 3D에서 줄무늬로 */
   crosswalks: Areal[]
+  /** 모양을 그려 넣는 노면표시 (화살표·횡단보도예고·오르막경사면·정차금지지대): kind, az = 진행 방향(도, 모르면 null) */
+  glyphs: { geom: Areal; kind: string; az: number | null }[]
   borders: Lines[]
   paths: Areal[]
+  /** 아래는 2026-11-13 더함: 높이 h = 지주 밑(없으면 노면)에서 잰 m, 모르면 null */
+  lights: { lon: number; lat: number; h: number | null; vehicle: boolean; postid: string; px: number | null; py: number | null }[]
+  /** 표지판: cat 1 주의 · 2 규제 · 3 지시 · 4 보조, ph·pw = 판 높이·폭, az = 판이 놓인 방향(북에서 시계, 도) */
+  signs: { lon: number; lat: number; h: number | null; ph: number | null; pw: number | null; az: number | null; cat: number; postid: string; px: number | null; py: number | null }[]
+  posts: { lon: number; lat: number; pid: string }[]
+  barriers: { geom: Lines; central: boolean }[]
+  bumps: Areal[]
 }
 
 /** 정밀도로지도 노면표시가 횡단보도인지: C-ITS 형식 종류 532x(5321 등), 2026 형식 유형 200 (2026-11-13, 도형 크기 약 9×4m로 확인) */
 function hdCrosswalk(p: Record<string, unknown>): boolean {
   const kind = String(p.kind ?? '')
   const type = String(p.type ?? '')
-  return /^532/.test(kind) || (!kind && type === '200')
+  return /^53[23]/.test(kind) || (!kind && type === '200')
+}
+
+/** 모양을 아는 노면표시 (종류 코드) */
+function hdGlyph(p: Record<string, unknown>): boolean {
+  return /^(537[1-4]|538[12]|539[12]|543[12]|544|529|524)$/.test(String(p.kind ?? ''))
 }
 
 /** 올린 수치지도 도엽 안의 점인지 */
@@ -485,19 +499,50 @@ export function buildDiagramData(project: Project): DiagramData | null {
 
   // ── 정밀도로지도 (15-F)
   let hd: HdData | null = null
+  const hdPts = (id: string) =>
+    feats(id)
+      .filter((f) => f.geometry?.type === 'Point')
+      .map((f) => ({ c: (f.geometry as { coordinates: number[] }).coordinates, p: f.properties }))
   if (feats('hd:files').length) {
     hd = {
       lanes: feats('hd:lane')
         .filter((f) => isLinear(f.geometry))
         .map((f) => ({ geom: f.geometry as Lines, ...laneStyle(str(f.properties.type)), kind: str(f.properties.kind) })),
       marks: feats('hd:mark')
-        .filter((f) => isAreal(f.geometry) && !hdCrosswalk(f.properties))
+        .filter((f) => isAreal(f.geometry) && !hdCrosswalk(f.properties) && !hdGlyph(f.properties))
         .map((f) => f.geometry as Areal),
+      glyphs: feats('hd:mark')
+        .filter((f) => isAreal(f.geometry) && !hdCrosswalk(f.properties) && hdGlyph(f.properties))
+        .map((f) => ({ geom: f.geometry as Areal, kind: str(f.properties.kind), az: num(f.properties.az) })),
       crosswalks: feats('hd:mark')
         .filter((f) => isAreal(f.geometry) && hdCrosswalk(f.properties))
         .map((f) => f.geometry as Areal),
       borders: feats('hd:border').filter((f) => isLinear(f.geometry)).map((f) => f.geometry as Lines),
       paths: feats('hd:path').filter((f) => isAreal(f.geometry)).map((f) => f.geometry as Areal),
+      lights: hdPts('hd:light').map(({ c, p }) => {
+        const h = num(p.h)
+        const type = str(p.type)
+        // 높이로 차량등(약 5.8m, 팔 끝)·보행등(약 3m) 가름, 높이를 모르면 유형 코드로
+        const vehicle = h !== null ? h >= 4.5 : !['11', '14', '6', '110', '112', '300'].includes(type)
+        return { lon: c[0], lat: c[1], h, vehicle, postid: str(p.postid), px: num(p.px), py: num(p.py) }
+      }),
+      signs: hdPts('hd:sign').map(({ c, p }) => ({
+        lon: c[0],
+        lat: c[1],
+        h: num(p.h),
+        ph: num(p.ph),
+        pw: num(p.pw),
+        az: num(p.az),
+        cat: Number(p.cat) || 0,
+        postid: str(p.postid),
+        px: num(p.px),
+        py: num(p.py),
+      })),
+      posts: hdPts('hd:post').map(({ c, p }) => ({ lon: c[0], lat: c[1], pid: str(p.pid ?? p.id) })),
+      barriers: feats('hd:barrier')
+        .filter((f) => isLinear(f.geometry))
+        .map((f) => ({ geom: f.geometry as Lines, central: !!f.properties.central })),
+      bumps: feats('hd:bump').filter((f) => isAreal(f.geometry)).map((f) => f.geometry as Areal),
     }
   }
 

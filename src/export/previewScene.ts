@@ -4,7 +4,7 @@
 
 import * as THREE from 'three'
 import { dashesOf, densify, offsetLine, triangulate, type Poly, type SiteModel, type XY } from './siteModel'
-import { boxMesh, densifyLine, lampBoxes, ribbon, shelterBoxes, STREET, type Box } from './streetDetail'
+import { BARRIER_RAIL, barrierPosts, boxMesh, BUMP_H, densifyLine, hatchStripes, lampBoxes, poleBoxes, ribbon, shelterBoxes, signalBoxes, signPanels, STREET, type Box, type SignColor } from './streetDetail'
 
 export interface PreviewParts {
   group: THREE.Group
@@ -41,7 +41,12 @@ const COLORS = {
   island: '#cfcac0',
   hatch: '#e8b923',
   school: '#b9483c',
+  pole: '#8d8f91',
+  signal: '#262626',
+  barrier: '#c9ccd0',
+  bump: '#e8b923',
 }
+const SIGN_HEX: Record<SignColor, string> = { red: '#c8322a', yellow: '#f2c230', white: '#f4f4f2', blue: '#2a5bb0' }
 
 export function buildPreview(m: SiteModel): PreviewParts {
   const group = new THREE.Group()
@@ -168,6 +173,7 @@ export function buildPreview(m: SiteModel): PreviewParts {
   )
   layer(m.zebra.length ? m.zebra : m.crosswalks, COLORS.crosswalk, R + 0.03, '횡단보도 줄무늬', 3)
   layer(m.marks, COLORS.mark, R + 0.04, '노면표시', Math.min(edge, 3))
+  layer(m.arrows, COLORS.mark, R + 0.04, '노면표시 화살표', 3)
   layer(
     m.safety.filter((s) => s.kind === 'school').map((s) => s.poly),
     COLORS.school,
@@ -179,6 +185,7 @@ export function buildPreview(m: SiteModel): PreviewParts {
     const out: number[] = []
     drapedPolys(m.hatch, R + 0.03, 3, out)
     for (const sz of m.safety) if (sz.kind === 'painted') ribbonTris(sz.poly.outer, STREET.hatchEdge, R + 0.03, out, true)
+    drapedPolys(m.yellowMarks, R + 0.03, 3, out)
     addMesh(out, COLORS.hatch, { polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }, '안전지대 표시')
   }
   {
@@ -297,6 +304,43 @@ export function buildPreview(m: SiteModel): PreviewParts {
     }
     addMesh(frame, COLORS.stop, {}, '정류장 쉘터')
     addMesh(glass, COLORS.glass, { transparent: true, opacity: 0.45, depthWrite: false }, '정류장 유리')
+  }
+
+  // ── 정밀도로지도 지주·신호등·표지판·방호시설·과속방지턱 (2026-11-13)
+  {
+    const pole: number[] = []
+    for (const p of m.poles) boxTris(poleBoxes(p), z(p.x, p.y) + R, pole)
+    addMesh(pole, COLORS.pole, {}, '지주')
+    const sig: number[] = []
+    for (const s of m.signals) boxTris(signalBoxes(s), z(s.x, s.y) + R, sig)
+    addMesh(sig, COLORS.signal, {}, '신호등')
+    const sc: Record<SignColor, number[]> = { red: [], yellow: [], white: [], blue: [] }
+    for (const s of m.signs) {
+      const g = z(s.x, s.y) + R
+      for (const pan of signPanels(s)) {
+        const r = pan.ring
+        for (let i = 1; i + 1 < r.length; i++) sc[pan.color].push(r[0][0], r[0][1], g + r[0][2], r[i][0], r[i][1], g + r[i][2], r[i + 1][0], r[i + 1][1], g + r[i + 1][2])
+      }
+    }
+    for (const c of ['red', 'yellow', 'white', 'blue'] as SignColor[]) addMesh(sc[c], SIGN_HEX[c], { side: THREE.DoubleSide }, '교통안전표지')
+    const bar: number[] = []
+    for (const b of m.barriers) {
+      for (const pb of barrierPosts(b.pts)) boxTris([pb], z(pb.c[0], pb.c[1]) + R, bar)
+      sideTris(b.pts, R + BARRIER_RAIL[0], R + BARRIER_RAIL[1], bar, false)
+    }
+    addMesh(bar, COLORS.barrier, { side: THREE.DoubleSide }, '방호시설')
+    const bump: number[] = []
+    drapedPolys(m.bumps, R + BUMP_H, 1.5, bump)
+    for (const p of m.bumps) for (const r of [p.outer, ...p.holes]) sideTris(r, R, R + BUMP_H, bump)
+    addMesh(bump, COLORS.bump, { side: THREE.DoubleSide }, '과속방지턱')
+    const bs: number[] = []
+    drapedPolys(
+      m.bumps.flatMap((p) => hatchStripes(p)),
+      R + BUMP_H + 0.005,
+      1.5,
+      bs,
+    )
+    addMesh(bs, COLORS.crosswalk, { polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }, '과속방지턱 줄')
   }
 
   // ── 나무 (수관 + 줄기), 정류장 쉘터 — 같은 모양을 여러 번 (InstancedMesh)

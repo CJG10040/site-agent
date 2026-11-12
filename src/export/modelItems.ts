@@ -23,6 +23,10 @@ export type ModelItem =
   | 'lamps'
   | 'crosswalks'
   | 'safety'
+  | 'signals'
+  | 'signs'
+  | 'barriers'
+  | 'bumps'
   | 'fences'
   | 'lanes'
   | 'marks'
@@ -55,9 +59,13 @@ export const MODEL_ITEMS: { id: ModelItem; label: string; level: RenderLevel; un
   { id: 'lamps', label: '가로등', level: 'detail', unit: '개' },
   { id: 'crosswalks', label: '횡단보도 (줄무늬)', level: 'detail', unit: '곳' },
   { id: 'safety', label: '교통섬·안전지대', level: 'detail', unit: '곳' },
+  { id: 'signals', label: '신호등·지주 (정밀도로지도)', level: 'detail', unit: '개' },
+  { id: 'signs', label: '교통안전표지 (정밀도로지도)', level: 'detail', unit: '개' },
+  { id: 'barriers', label: '방호시설 (정밀도로지도)', level: 'detail', unit: '줄' },
+  { id: 'bumps', label: '과속방지턱', level: 'detail', unit: '개' },
   { id: 'fences', label: '담장·가드레일', level: 'detail', unit: '줄' },
   { id: 'lanes', label: '차선', level: 'detail', unit: '줄' },
-  { id: 'marks', label: '노면표시', level: 'detail', unit: '개' },
+  { id: 'marks', label: '노면표시 (화살표 모양)', level: 'detail', unit: '개' },
   { id: 'hdPaths', label: '보도 면 (정밀도로지도)', level: 'detail', unit: '' },
   { id: 'curbs', label: '연석', level: 'detail', unit: '줄' },
 ]
@@ -90,9 +98,13 @@ export function itemCounts(m: SiteModel): Record<ModelItem, number> {
     lamps: m.lamps.length,
     crosswalks: m.crosswalks.length,
     safety: m.safety.length,
+    signals: m.signals.length,
+    signs: m.signs.length,
+    barriers: m.barriers.length,
+    bumps: m.bumps.length,
     fences: m.fences.length,
     lanes: m.lanes.length,
-    marks: m.marks.length,
+    marks: m.marks.length + m.arrows.length,
     hdPaths: m.hdPaths.length,
     curbs: m.curbs.length,
   }
@@ -126,9 +138,19 @@ export function filterModel(m: SiteModel, items: Iterable<string>): SiteModel {
     zebra: keep('crosswalks', m.zebra),
     safety: keep('safety', m.safety),
     hatch: keep('safety', m.hatch),
+    signals: keep('signals', m.signals),
+    signs: keep('signs', m.signs),
+    // 지주: 달린 것이 켜져 있을 때만 (아무것도 안 달린 지주는 신호등·표지판 중 하나라도 켜면)
+    poles: m.poles.filter((p) =>
+      p.kinds.length ? (p.kinds.includes('signal') && on.has('signals')) || (p.kinds.includes('sign') && on.has('signs')) : on.has('signals') || on.has('signs'),
+    ),
+    barriers: keep('barriers', m.barriers),
+    bumps: keep('bumps', m.bumps),
     fences: keep('fences', m.fences),
     lanes: keep('lanes', m.lanes),
     marks: keep('marks', m.marks),
+    arrows: keep('marks', m.arrows),
+    yellowMarks: keep('marks', m.yellowMarks),
     hdPaths: keep('hdPaths', m.hdPaths),
     curbs: keep('curbs', m.curbs),
   }

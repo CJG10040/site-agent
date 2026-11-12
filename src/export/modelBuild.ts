@@ -64,7 +64,7 @@ export function modelStats(m: SiteModel): ModelStats {
   const cell = m.terrain?.cell ?? 10
   const terrainCells = m.terrain ? m.terrain.cols * m.terrain.rows : 0
   const drapeEdge = Math.min(6, Math.max(3, cell * 1.5))
-  const draped = [m.roads, m.walks, m.crosswalks, m.marks, m.hdPaths, ...m.parks.map((a) => a.polys), ...m.rivers.map((a) => a.polys)]
+  const draped = [m.roads, m.walks, m.crosswalks, m.marks, m.arrows, m.hdPaths, ...m.parks.map((a) => a.polys), ...m.rivers.map((a) => a.polys)]
   const drapedArea = draped.reduce((s, ps) => s + areaOf(ps), 0)
   const dashLen = m.lanes.filter((l) => l.dashed).reduce((s, l) => s + lenOf(l.pts) * (l.double ? 2 : 1), 0)
   const lanePieces = m.lanes.filter((l) => !l.dashed).reduce((s, l) => s + (l.double ? 2 : 1), 0) + Math.ceil(dashLen / 8)
@@ -74,12 +74,13 @@ export function modelStats(m: SiteModel): ModelStats {
     draped.filter((ps) => ps.length).length + m.roadCenters.length + m.parcels.reduce((s, p) => s + p.polys.length, 0) +
     m.parks.reduce((s, a) => s + a.polys.length, 0) + m.rivers.reduce((s, a) => s + a.polys.length, 0) + m.site.length +
     (m.curbs.length ? 1 : 0) + new Set(m.lanes.map((l) => l.color)).size + m.fences.length + (m.trees.length ? 2 : 0) + m.stops.length * 3 + (m.lamps.length ? 1 : 0) +
-    new Set(m.safety.map((s) => s.kind)).size
+    new Set(m.safety.map((s) => s.kind)).size + (m.poles.length ? 1 : 0) + (m.signals.length ? 1 : 0) + (m.signs.length ? 4 : 0) + (m.barriers.length ? 1 : 0) + (m.bumps.length ? 2 : 0) + (m.yellowMarks.length ? 1 : 0)
   // 크기: 지형 칸당 약 92B, 얹은 면 1㎡당 약 (2/드레이프 변²)개 삼각형 × 65B, 물체마다 약 420B (300·600·800m 실측에 맞춰 조금 넉넉히), 건물 꼭짓점·선 점은 물체 몫에 포함
   // 차선·연석 띠(2m마다 꼭짓점 2~4개), 쉘터·가로등 상자(꼭짓점 8·면 6)
   const ribbonLen = m.lanes.reduce((s, l) => s + lenOf(l.pts) * (l.double ? 2 : 1), 0) + m.curbs.reduce((s, c) => s + lenOf(c) * 3, 0)
   const bytes =
-    terrainCells * 92 + drapedArea * (2 / (drapeEdge * drapeEdge)) * 65 + objects * 420 + m.trees.length * 32 * 30 + ribbonLen * 45 + m.lamps.length * 900 + m.stops.length * 3000
+    terrainCells * 92 + drapedArea * (2 / (drapeEdge * drapeEdge)) * 65 + objects * 420 + m.trees.length * 32 * 30 + ribbonLen * 45 + m.lamps.length * 900 + m.stops.length * 3000 +
+    m.poles.length * 400 + m.signals.length * 300 + m.signs.length * 1800 + m.barriers.reduce((s, b) => s + lenOf(b.pts), 0) * 180 + m.bumps.length * 9000 + m.arrows.length * 280
   const mb = bytes / 1e6
   const rows = [
     { label: '지형 면', n: terrainCells, unit: `칸 (${cell}m)` },
@@ -92,9 +93,14 @@ export function modelStats(m: SiteModel): ModelStats {
     { label: '가로등', n: m.lamps.length, unit: '개' },
     { label: '횡단보도', n: m.crosswalks.length, unit: '곳 (줄무늬)' },
     { label: '교통섬·안전지대', n: m.safety.length, unit: '곳' },
+    { label: '신호등', n: m.signals.length, unit: '개' },
+    { label: '교통안전표지', n: m.signs.length, unit: '개' },
+    { label: '지주', n: m.poles.length, unit: '개' },
+    { label: '방호시설', n: m.barriers.length, unit: '줄' },
+    { label: '과속방지턱', n: m.bumps.length, unit: '개' },
     { label: '담장·가드레일', n: m.fences.length, unit: '줄' },
     { label: '차선', n: m.lanes.length, unit: `줄 (점선 조각 포함 ${lanePieces})` },
-    { label: '노면표시', n: m.marks.length, unit: '개' },
+    { label: '노면표시', n: m.marks.length + m.arrows.length, unit: '개 (화살표는 조각 수)' },
   ].filter((r) => r.n > 0)
   const warn = mb > 60 ? `파일이 약 ${Math.round(mb)}MB로 커서 라이노가 느릴 수 있습니다 — 범위를 줄이세요` : objects > 40000 ? `물체가 ${objects.toLocaleString('ko-KR')}개로 많습니다 — 범위를 줄이세요` : null
   return { objects, mb, rows, warn }

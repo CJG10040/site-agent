@@ -12,7 +12,7 @@ import { bldHeight, inNgii, type DiagramData } from '../diagrams/data'
 import type { Areal } from '../lib/geo'
 import { wgs84To5186, wgs84ToUtmk } from '../lib/proj'
 import { terrainAround, type TerrainGrid } from '../lib/terrain'
-import { hatchStripes, roadDirs, zebraStripes } from './streetDetail'
+import { hatchStripes, markGlyph, roadDirs, zebraStripes } from './streetDetail'
 
 export type XY = [number, number]
 
@@ -105,10 +105,23 @@ export interface SiteModel {
   safety: { poly: Poly; kind: 'island' | 'painted' | 'school' }[]
   /** 칠한 안전지대 빗금 */
   hatch: Poly[]
+  /** 정밀도로지도 신호등 (2026-11-13): h = 땅 위 높이, axis = 등 상자의 긴 방향(차량등은 팔 방향) */
+  signals: { x: number; y: number; h: number; vehicle: boolean; axis: XY }[]
+  /** 교통안전표지 판: cat 1 주의 · 2 규제 · 3 지시 · 4 보조, h = 판 아래 끝 높이, axis = 판의 가로 방향 */
+  signs: { x: number; y: number; h: number; ph: number; pw: number; cat: number; axis: XY }[]
+  /** 지주 (신호등·표지판이 달린 기둥): top = 기둥 높이, arms = 차량 신호등까지 뻗은 팔, kinds = 무엇이 달렸나 */
+  poles: { x: number; y: number; top: number; arms: { to: XY; h: number }[]; kinds: ('signal' | 'sign')[] }[]
+  /** 방호시설 (가드레일·중앙분리대 등): central = 중앙분리대 */
+  barriers: { pts: XY[]; central: boolean }[]
+  /** 과속방지턱 */
+  bumps: Poly[]
   fences: { pts: XY[]; kind: string }[]
   /** 정밀도로지도를 올렸을 때 (15-F) */
   lanes: { pts: XY[]; color: 'yellow' | 'white' | 'blue'; dashed: boolean; double: boolean }[]
   marks: Poly[]
+  /** 노면표시 실제 모양 (2026-11-13): 화살표·횡단보도예고·오르막경사면 (흰색), 정차금지지대 (노란 테두리·빗금) */
+  arrows: Poly[]
+  yellowMarks: Poly[]
   hdPaths: Poly[]
   curbs: XY[][]
   /** 지형 면 위의 높이 (메시와 같은 삼각형으로 보간, 자료 없으면 0) */
@@ -690,6 +703,68 @@ export async function buildSiteModel(d: DiagramData, half: number, opts: { grid?
       })
     : []
   const hatch = safety.filter((s) => s.kind === 'painted').flatMap((s) => hatchStripes(s.poly))
+
+  // ── 정밀도로지도 신호등·표지판·지주·방호시설·과속방지턱 (2026-11-13)
+  const hdd = d.hd
+  const across = (x: number, y: number): XY => {
+    const r = dirs.near(x, y, 40)
+    return r ? [-r.dir[1], r.dir[0]] : [1, 0]
+  }
+  const unitXY = (v: XY): XY => {
+    const L = Math.hypot(v[0], v[1]) || 1
+    return [v[0] / L, v[1] / L]
+  }
+  const postXY = new Map<string, XY>()
+  if (hdd) for (const p of hdd.posts) postXY.set(p.pid, f([p.lon, p.lat]))
+  /** 달린 지주 위치: 지주 자료 → 없으면 저장해 둔 떨어진 거리 */
+  const postOf = (postid: string, xy: XY, px: number | null, py: number | null): XY | null =>
+    (postid && postXY.get(postid)) || (px !== null && py !== null ? [xy[0] + px, xy[1] + py] : null)
+  const poleMap = new Map<string, { x: number; y: number; top: number; arms: { to: XY; h: number }[]; kinds: Set<'signal' | 'sign'> }>()
+  const pole = (key: string, at: XY) => {
+    let p = poleMap.get(key)
+    if (!p) {
+      p = { x: at[0], y: at[1], top: 3.5, arms: [], kinds: new Set() }
+      poleMap.set(key, p)
+    }
+    return p
+  }
+  const signals: SiteModel['signals'] = []
+  const signs: SiteModel['signs'] = []
+  if (hdd) {
+    for (const l of hdd.lights) {
+      const xy = f([l.lon, l.lat])
+      if (!inSquare(xy)) continue
+      const hh = l.h !== null && l.h > 1 && l.h < 15 ? l.h : l.vehicle ? 5.8 : 3
+      const ps = postOf(l.postid, xy, l.px, l.py)
+      const arm = ps ? Math.hypot(xy[0] - ps[0], xy[1] - ps[1]) : 0
+      const axis = ps && arm > 1 ? unitXY([xy[0] - ps[0], xy[1] - ps[1]]) : across(xy[0], xy[1])
+      signals.push({ x: xy[0], y: xy[1], h: hh, vehicle: l.vehicle, axis })
+      const pl = pole(l.postid || `light@${xy[0].toFixed(1)},${xy[1].toFixed(1)}`, ps ?? xy)
+      pl.kinds.add('signal')
+      pl.top = Math.max(pl.top, hh + (l.vehicle ? 0.5 : 0.5))
+      if (ps && arm > 1) pl.arms.push({ to: xy, h: hh + 0.25 })
+    }
+    for (const s of hdd.signs) {
+      const xy = f([s.lon, s.lat])
+      if (!inSquare(xy)) continue
+      const ph = s.ph !== null && s.ph > 0.2 && s.ph < 3 ? s.ph : s.cat === 4 ? 0.5 : 0.9
+      const pw = s.pw !== null && s.pw > 0.2 && s.pw < 6 ? s.pw : 0.9
+      const hh = s.h !== null && s.h > 0.5 && s.h < 15 ? s.h : 2.8
+      const axis: XY = s.az !== null ? [Math.sin((s.az * Math.PI) / 180), Math.cos((s.az * Math.PI) / 180)] : across(xy[0], xy[1])
+      signs.push({ x: xy[0], y: xy[1], h: hh, ph, pw, cat: s.cat, axis })
+      const ps = postOf(s.postid, xy, s.px, s.py)
+      const pl = pole(s.postid || `sign@${xy[0].toFixed(1)},${xy[1].toFixed(1)}`, ps ?? xy)
+      pl.kinds.add('sign')
+      pl.top = Math.max(pl.top, hh + ph)
+      const arm = ps ? Math.hypot(xy[0] - ps[0], xy[1] - ps[1]) : 0
+      if (ps && arm > 1) pl.arms.push({ to: xy, h: hh + ph - 0.1 })
+    }
+    // 아무것도 안 달린 지주도 (어림 3.5m)
+    for (const [pid, xy] of postXY) if (!poleMap.has(pid) && inSquare(xy)) pole(pid, xy)
+  }
+  const poles = [...poleMap.values()].filter((p) => inSquare([p.x, p.y])).map((p) => ({ ...p, kinds: [...p.kinds] }))
+  const barriers = hdd ? hdd.barriers.flatMap((b) => linesOfGeom(b.geom).flatMap((q) => clipLine(q, half)).map((pts) => ({ pts, central: b.central }))) : []
+  const bumps = hdd ? clipPolys(hdd.bumps.flatMap((g) => polysOf(g, f)), half) : []
   const fences = n ? n.fences.flatMap((w) => linesOfGeom(w.geom).flatMap((l) => clipLine(l, half)).map((pts) => ({ pts, kind: w.kind }))) : []
   if (n) for (const w of n.water) {
     const polys = clipPolys(polysOf(w, f), half)
@@ -697,7 +772,20 @@ export async function buildSiteModel(d: DiagramData, half: number, opts: { grid?
   }
   const h = d.hd
   const lanes = h ? h.lanes.flatMap((l) => linesOfGeom(l.geom).flatMap((q) => clipLine(q, half)).map((pts) => ({ pts, color: l.color, dashed: l.dashed, double: l.double }))) : []
-  const marks = h ? clipPolys(h.marks.flatMap((g) => polysOf(g, f)), half) : []
+  const arrows: Poly[] = []
+  const yellowMarks: Poly[] = []
+  const plainMarks: Poly[] = []
+  if (h)
+    for (const g of h.glyphs)
+      for (const p of clipPolys(polysOf(g.geom, f), half)) {
+        const gl = markGlyph(p, g.kind, g.az)
+        if (!gl) plainMarks.push(p)
+        else {
+          arrows.push(...gl.white)
+          yellowMarks.push(...gl.yellow)
+        }
+      }
+  const marks = h ? [...clipPolys(h.marks.flatMap((g) => polysOf(g, f)), half), ...plainMarks] : []
   const hdPaths = h ? clipPolys(h.paths.flatMap((g) => polysOf(g, f)), half) : []
   const curbs = h ? h.borders.flatMap((g) => linesOfGeom(g).flatMap((q) => clipLine(q, half))) : []
 
@@ -741,9 +829,16 @@ export async function buildSiteModel(d: DiagramData, half: number, opts: { grid?
     zebra,
     safety,
     hatch,
+    signals,
+    signs,
+    poles,
+    barriers,
+    bumps,
     fences,
     lanes,
     marks,
+    arrows,
+    yellowMarks,
     hdPaths,
     curbs,
     zAt,
