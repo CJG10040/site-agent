@@ -39,7 +39,8 @@ export function applyNgiiSheets(project: Project, sheets: NgiiSheet[], radiusM: 
     features: [
       ...prevSheets,
       ...sheets.map((s) => {
-        const b = sheetBounds(s.code)
+        // 1:1,000은 파일 머리의 범위, 1:5,000은 도엽 번호로
+        const b = s.boundsLL ?? sheetBounds(s.code)
         return {
           type: 'Feature' as const,
           geometry: b
@@ -56,7 +57,7 @@ export function applyNgiiSheets(project: Project, sheets: NgiiSheet[], radiusM: 
                 ],
               }
             : null,
-          properties: { code: s.code, year: s.year, file: s.file, epsg: s.epsg, counts: s.counts, radiusM, uploadedAt: t, bounds: b, siteKey: siteKey(project.site) },
+          properties: { code: s.code, year: s.year, file: s.file, epsg: s.epsg, scale: s.scale ?? 5000, counts: s.counts, radiusM, uploadedAt: t, bounds: b, siteKey: siteKey(project.site) },
         }
       }),
     ],
@@ -79,15 +80,17 @@ export function refreshNgiiFacts(project: Project): void {
   const sheets = project.collected[ngiiLayer('sheets')].features.map((f) => f.properties)
   const codes = sheets.map((p) => String(p.code)).sort()
   const years = [...new Set(sheets.map((p) => String(p.year ?? '')).filter(Boolean))].sort()
+  const scales = [...new Set(sheets.map((p) => Number(p.scale) || 5000))].sort((a, b) => b - a)
+  const scaleText = scales.map((s) => `1:${s.toLocaleString('ko-KR')}`).join('·')
   const R = project.collectedRadiusM ?? project.site.radiusM
   const src = apiSource({
     source_name: '국토지리정보원 (국토정보플랫폼, 사용자가 올린 파일)',
-    dataset_name: `1:5,000 수치지도 2.0 — 도엽 ${codes.join(', ')}${years.length ? ` (${years.join('·')}년)` : ''}`,
+    dataset_name: `${scaleText} 수치지도 2.0 — 도엽 ${codes.join(', ')}${years.length ? ` (${years.join('·')}년)` : ''}`,
     dataset_id: NGII_SOURCE_ID,
     retrieved_at: String(sheets[sheets.length - 1].uploadedAt ?? nowIso()),
     geometry: `대지 중심 반경 ${R}m (지형 자료는 +300m)`,
     coordinate_system: 'EPSG:5186(중부원점) → EPSG:4326',
-    spatial_scale: '1:5,000',
+    spatial_scale: scaleText,
     license: '국토지리정보원 공간정보 (출처 표기)',
     limitations:
       '사진측량 수치지도로 도엽 제작 시점의 현황이며 이후 바뀐 것은 반영되지 않는다. 무벽건물(지붕만)·가건물은 건물 통계·계산에서 뺐다. 사용승인연도·세부 용도는 겹치는 브이월드 건물에서 가져왔다. 옹벽·석축의 낮은 쪽은 선을 그린 방향(오른쪽이 낮음)으로 판단했다.',

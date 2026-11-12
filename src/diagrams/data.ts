@@ -9,6 +9,7 @@ import type { HideEdit, HideLayer, Project } from '../model/types'
 import type { EnvResult } from '../sources/env'
 import type { SpeedSnapshot } from '../sources/its'
 import type { NetworkResult } from '../sources/network'
+import { laneStyle } from '../sources/hdMap'
 import { isPlaceholderStop } from '../sources/transit'
 import type { WindResult } from '../sources/wind'
 import { centroidOf } from './frame'
@@ -114,7 +115,7 @@ type Lines = LineString | MultiLineString
 
 /** 국토지리정보원 1:5,000 수치지도 2.0 (④에서 올린 도엽) */
 export interface NgiiData {
-  sheets: { code: string; year: string | null; bounds: [number, number, number, number] }[]
+  sheets: { code: string; year: string | null; bounds: [number, number, number, number]; scale: number }[]
   year: string | null
   /** 건물을 수치지도로 바꾼 수 (지붕 구조물·가건물 제외) */
   buildings: number
@@ -128,6 +129,22 @@ export interface NgiiData {
   /** 옹벽·석축·제방: '상단' 선은 그린 방향의 오른쪽이 낮은 쪽 */
   walls: { geom: Lines; kind: string; top: boolean; h: number | null }[]
   cutfill: { geom: Lines; kind: string; top: boolean }[]
+  /** 아래는 1:1,000 수치지도에만 (15-F) */
+  centers: { geom: Lines; width: number | null; lanes: number | null; name: string }[]
+  crosswalks: Areal[]
+  stops: { lon: number; lat: number; name: string; use: string }[]
+  trees: { lon: number; lat: number; kind: string; species: string; h: number | null }[]
+  fences: { geom: Lines; kind: string }[]
+  lamps: { lon: number; lat: number; kind: string }[]
+  water: Areal[]
+}
+
+/** 정밀도로지도 (15-F): 차선·노면표시·도로 경계·보도 */
+export interface HdData {
+  lanes: { geom: Lines; color: 'yellow' | 'white' | 'blue'; dashed: boolean; double: boolean; kind: string }[]
+  marks: Areal[]
+  borders: Lines[]
+  paths: Areal[]
 }
 
 /** 올린 수치지도 도엽 안의 점인지 */
@@ -138,7 +155,7 @@ export function inNgii(n: NgiiData | null, lon: number, lat: number): boolean {
 /** 도판 출처 글: 건물 */
 export function bldSourceText(d: { ngii: NgiiData | null }): string {
   return d.ngii
-    ? `국토지리정보원 1:5,000 수치지도${d.ngii.year ? `(${d.ngii.year}년)` : ''} 건물(올린 도엽 안) + 브이월드 GIS건물통합정보(사용승인연도·용도, 도엽 밖)`
+    ? `국토지리정보원 ${d.ngii.sheets.some((s) => s.scale === 1000) ? (d.ngii.sheets.some((s) => s.scale !== 1000) ? '1:1,000·1:5,000' : '1:1,000') : '1:5,000'} 수치지도${d.ngii.year ? `(${d.ngii.year}년)` : ''} 건물(올린 도엽 안) + 브이월드 GIS건물통합정보(사용승인연도·용도, 도엽 밖)`
     : '국토교통부 GIS건물통합정보(브이월드)'
 }
 
@@ -207,6 +224,8 @@ export interface DiagramData {
   env: EnvResult | null
   /** 올린 수치지도 (없으면 null) */
   ngii: NgiiData | null
+  /** 올린 정밀도로지도 (없으면 null) */
+  hd: HdData | null
   /** 대지 필지의 토지이용계획 (지역·지구 이름, 포함/저촉/접합) — 법규 개요 도판 (14-C) */
   landUse: { name: string; kind: string }[]
   /** 토지대장 면적 합계(㎡) — 대지 필지 전체, 직접 그린 경계면 경계 안 면적과 다름 */
@@ -364,20 +383,34 @@ export function buildDiagramData(project: Project): DiagramData | null {
   let ngii: NgiiData | null = null
   const sheetFeats = feats('ngii:sheets')
   if (sheetFeats.length) {
-    const lines = (id: string) => feats(id).filter((f) => isLinear(f.geometry))
+    // 1:1,000 도엽이 덮는 곳은 1:5,000 자료를 빼고 1:1,000으로 (15-F)
+    const scaleOf = new Map(sheetFeats.map((f) => [str(f.properties.code), Number(f.properties.scale) || 5000]))
+    const cover1000 = sheetFeats.filter((f) => Number(f.properties.scale) === 1000).map((f) => f.properties.bounds as [number, number, number, number])
+    const keep = (f: { geometry: Geometry | null; properties: Record<string, unknown> }) => {
+      if (!cover1000.length || scaleOf.get(str(f.properties.sheet)) === 1000) return true
+      const c = f.geometry?.type === 'Point' ? (f.geometry.coordinates as [number, number]) : centroidOf(f.geometry)
+      return !c || !cover1000.some((b) => c[0] >= b[0] && c[0] <= b[2] && c[1] >= b[1] && c[1] <= b[3])
+    }
+    const nfeats = (id: string) => feats(id).filter(keep)
+    const lines = (id: string) => nfeats(id).filter((f) => isLinear(f.geometry))
+    const pts = (id: string) =>
+      nfeats(id)
+        .filter((f) => f.geometry?.type === 'Point')
+        .map((f) => ({ c: (f.geometry as { coordinates: number[] }).coordinates, p: f.properties }))
     ngii = {
       sheets: sheetFeats.map((f) => ({
         code: str(f.properties.code),
         year: str(f.properties.year) || null,
         bounds: f.properties.bounds as [number, number, number, number],
+        scale: Number(f.properties.scale) || 5000,
       })),
       year: [...new Set(sheetFeats.map((f) => str(f.properties.year)).filter(Boolean))].sort().join('·') || null,
       buildings: 0,
       minor: [],
-      roads: feats('ngii:road').filter((f) => isAreal(f.geometry)).map((f) => f.geometry as Areal),
-      walks: feats('ngii:walk').filter((f) => isAreal(f.geometry)).map((f) => f.geometry as Areal),
+      roads: nfeats('ngii:road').filter((f) => isAreal(f.geometry)).map((f) => f.geometry as Areal),
+      walks: nfeats('ngii:walk').filter((f) => isAreal(f.geometry)).map((f) => f.geometry as Areal),
       contours: lines('ngii:contour').map((f) => ({ geom: f.geometry as Lines, z: Number(f.properties.z), major: !!f.properties.major })),
-      spots: feats('ngii:spot')
+      spots: nfeats('ngii:spot')
         .filter((f) => f.geometry?.type === 'Point')
         .map((f) => {
           const c = (f.geometry as { coordinates: number[] }).coordinates
@@ -385,6 +418,16 @@ export function buildDiagramData(project: Project): DiagramData | null {
         }),
       walls: lines('ngii:wall').map((f) => ({ geom: f.geometry as Lines, kind: str(f.properties.kind), top: f.properties.top !== false, h: num(f.properties.h) })),
       cutfill: lines('ngii:cutfill').map((f) => ({ geom: f.geometry as Lines, kind: str(f.properties.kind), top: f.properties.top !== false })),
+      centers: lines('ngii:center').map((f) => ({ geom: f.geometry as Lines, width: num(f.properties.width), lanes: num(f.properties.lanes), name: str(f.properties.name) })),
+      crosswalks: nfeats('ngii:crosswalk').filter((f) => isAreal(f.geometry)).map((f) => f.geometry as Areal),
+      stops: pts('ngii:stop').map(({ c, p }) => ({ lon: c[0], lat: c[1], name: str(p.name), use: str(p.use) })),
+      trees: pts('ngii:tree').map(({ c, p }) => {
+        const h = num(p.h)
+        return { lon: c[0], lat: c[1], kind: str(p.kind), species: str(p.species), h: h && h > 0 ? h : null }
+      }),
+      fences: lines('ngii:fence').map((f) => ({ geom: f.geometry as Lines, kind: str(f.properties.kind) })),
+      lamps: pts('ngii:lamp').map(({ c, p }) => ({ lon: c[0], lat: c[1], kind: str(p.kind) })),
+      water: nfeats('ngii:water').filter((f) => isAreal(f.geometry)).map((f) => f.geometry as Areal),
     }
     const n = ngii
     const kept = buildings.filter((b) => {
@@ -392,7 +435,7 @@ export function buildDiagramData(project: Project): DiagramData | null {
       return !c || !inNgii(n, c[0], c[1])
     })
     const added: Bld[] = []
-    for (const f of feats('ngii:bldg')) {
+    for (const f of nfeats('ngii:bldg')) {
       if (!isAreal(f.geometry)) continue
       const c = centroidOf(f.geometry)
       if (!c || !inNgii(n, c[0], c[1])) continue
@@ -424,6 +467,19 @@ export function buildDiagramData(project: Project): DiagramData | null {
     n.buildings = added.length
     buildings.length = 0
     buildings.push(...kept, ...added)
+  }
+
+  // ── 정밀도로지도 (15-F)
+  let hd: HdData | null = null
+  if (feats('hd:files').length) {
+    hd = {
+      lanes: feats('hd:lane')
+        .filter((f) => isLinear(f.geometry))
+        .map((f) => ({ geom: f.geometry as Lines, ...laneStyle(str(f.properties.type)), kind: str(f.properties.kind) })),
+      marks: feats('hd:mark').filter((f) => isAreal(f.geometry)).map((f) => f.geometry as Areal),
+      borders: feats('hd:border').filter((f) => isLinear(f.geometry)).map((f) => f.geometry as Lines),
+      paths: feats('hd:path').filter((f) => isAreal(f.geometry)).map((f) => f.geometry as Areal),
+    }
   }
 
   // ── 필지: 연속지적도 + 토지특성
@@ -615,6 +671,7 @@ export function buildDiagramData(project: Project): DiagramData | null {
     wind,
     env,
     ngii,
+    hd,
     landUse,
     officialArea,
     has,

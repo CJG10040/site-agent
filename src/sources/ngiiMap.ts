@@ -8,8 +8,8 @@ import { unzipSync } from 'fflate'
 import type { Geometry, Position } from 'geojson'
 import { beltProjection, utmkToWgs84, wgs84ToUtmk } from '../lib/proj'
 
-export type NgiiKey = 'bldg' | 'road' | 'walk' | 'contour' | 'spot' | 'wall' | 'cutfill'
-export const NGII_KEYS: NgiiKey[] = ['bldg', 'road', 'walk', 'contour', 'spot', 'wall', 'cutfill']
+export type NgiiKey = 'bldg' | 'road' | 'walk' | 'contour' | 'spot' | 'wall' | 'cutfill' | 'center' | 'crosswalk' | 'stop' | 'tree' | 'fence' | 'lamp' | 'water'
+export const NGII_KEYS: NgiiKey[] = ['bldg', 'road', 'walk', 'contour', 'spot', 'wall', 'cutfill', 'center', 'crosswalk', 'stop', 'tree', 'fence', 'lamp', 'water']
 export const NGII_LABEL: Record<NgiiKey, string> = {
   bldg: '건물',
   road: '도로경계 면',
@@ -18,6 +18,14 @@ export const NGII_LABEL: Record<NgiiKey, string> = {
   spot: '표고점·기준점',
   wall: '옹벽·석축·제방',
   cutfill: '절토·성토',
+  // 아래는 1:1,000 수치지도에만 (15-F, 2026-11-12)
+  center: '도로중심선',
+  crosswalk: '횡단보도',
+  stop: '정류장',
+  tree: '가로수·독립수',
+  fence: '담장·가드레일',
+  lamp: '가로등',
+  water: '하천·호수 면',
 }
 export const ngiiLayer = (k: NgiiKey | 'sheets') => `ngii:${k}`
 
@@ -25,8 +33,8 @@ export const ngiiLayer = (k: NgiiKey | 'sheets') => `ngii:${k}`
 const SITE_MARGIN = 60
 const TERRAIN_MARGIN = 300
 
-type Rec = Record<string, string>
-type Feat = { type: 'Feature'; geometry: Geometry | null; properties: Record<string, unknown> }
+export type Rec = Record<string, string>
+export type Feat = { type: 'Feature'; geometry: Geometry | null; properties: Record<string, unknown> }
 
 const num = (s: string | undefined): number | null => {
   const v = Number(String(s ?? '').trim())
@@ -98,13 +106,13 @@ const WANTS: Want[] = [
 
 // ───────────────────────── SHP·DBF 읽기 ─────────────────────────
 
-interface ShpRec {
+export interface ShpRec {
   type: number
   parts: number[][][]
   bbox: [number, number, number, number]
 }
 
-function readShp(buf: Uint8Array): (ShpRec | null)[] {
+export function readShp(buf: Uint8Array): (ShpRec | null)[] {
   const dv = new DataView(buf.buffer, buf.byteOffset, buf.byteLength)
   const out: (ShpRec | null)[] = []
   let off = 100
@@ -137,7 +145,7 @@ function readShp(buf: Uint8Array): (ShpRec | null)[] {
   return out
 }
 
-function readDbf(buf: Uint8Array, dec: TextDecoder): (Rec | null)[] {
+export function readDbf(buf: Uint8Array, dec: TextDecoder): (Rec | null)[] {
   const dv = new DataView(buf.buffer, buf.byteOffset, buf.byteLength)
   const n = dv.getUint32(4, true)
   const headerLen = dv.getUint16(8, true)
@@ -167,7 +175,7 @@ function readDbf(buf: Uint8Array, dec: TextDecoder): (Rec | null)[] {
   return out
 }
 
-function epsgOf(prj: string): number | null {
+export function epsgOf(prj: string): number | null {
   if (/East_Sea_Belt/i.test(prj)) return 5188
   if (/East_Belt/i.test(prj)) return 5187
   if (/Central_Belt/i.test(prj)) return 5186
@@ -192,7 +200,7 @@ function inRing([x, y]: number[], ring: number[][]): boolean {
   return inside
 }
 
-function toGeometry(rec: ShpRec, f: (x: number, y: number) => Position): Geometry | null {
+export function toGeometry(rec: ShpRec, f: (x: number, y: number) => Position): Geometry | null {
   if (rec.type === 1) return { type: 'Point', coordinates: f(rec.parts[0][0][0], rec.parts[0][0][1]) }
   const conv = (pts: number[][]) => pts.map(([x, y]) => f(x, y))
   if (rec.type === 3) {
@@ -222,6 +230,10 @@ export interface NgiiSheet {
   year: string | null
   file: string
   epsg: number
+  /** 축척 (없으면 5000) */
+  scale?: 1000 | 5000
+  /** 도엽 범위 [서, 남, 동, 북] (1:1,000은 파일 머리의 BOUND로) */
+  boundsLL?: [number, number, number, number]
   counts: Partial<Record<NgiiKey, number>>
   features: Partial<Record<NgiiKey, Feat[]>>
 }

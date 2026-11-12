@@ -91,6 +91,18 @@ export interface SiteModel {
   /** 표고점·기준점 (z = 상대 높이, level = 해발) */
   spots: { x: number; y: number; z: number; level: number }[]
   mapYear: string | null
+  /** 1:1,000 수치지도를 올렸을 때 (15-F) */
+  map1000: boolean
+  trees: { x: number; y: number; h: number | null; kind: string }[]
+  stops: { x: number; y: number; name: string; use: string }[]
+  lamps: { x: number; y: number }[]
+  crosswalks: Poly[]
+  fences: { pts: XY[]; kind: string }[]
+  /** 정밀도로지도를 올렸을 때 (15-F) */
+  lanes: { pts: XY[]; color: 'yellow' | 'white' | 'blue'; dashed: boolean; double: boolean }[]
+  marks: Poly[]
+  hdPaths: Poly[]
+  curbs: XY[][]
   /** 지형 면 위의 높이 (메시와 같은 삼각형으로 보간, 자료 없으면 0) */
   zAt: (x: number, y: number) => number
 }
@@ -604,6 +616,41 @@ export async function buildSiteModel(d: DiagramData, half: number, opts: { grid?
   const mapContours = n
     ? n.contours.flatMap((c) => linesOfGeom(c.geom).flatMap((l) => clipLine(l, half)).map((pts) => ({ pts, z: c.z - z0, level: c.z, major: c.major })))
     : []
+  // ── 1:1,000 수치지도·정밀도로지도 디테일 (15-F)
+  const ptIn = (lo: number, la: number) => {
+    const xy = f([lo, la])
+    return inSquare(xy) ? xy : null
+  }
+  const trees = n
+    ? n.trees.flatMap((t) => {
+        const xy = ptIn(t.lon, t.lat)
+        return xy ? [{ x: xy[0], y: xy[1], h: t.h, kind: t.kind }] : []
+      })
+    : []
+  const stops = n
+    ? n.stops.flatMap((t) => {
+        const xy = ptIn(t.lon, t.lat)
+        return xy ? [{ x: xy[0], y: xy[1], name: t.name, use: t.use }] : []
+      })
+    : []
+  const lamps = n
+    ? n.lamps.flatMap((t) => {
+        const xy = ptIn(t.lon, t.lat)
+        return xy ? [{ x: xy[0], y: xy[1] }] : []
+      })
+    : []
+  const crosswalks = n ? clipPolys(n.crosswalks.flatMap((g) => polysOf(g, f)), half) : []
+  const fences = n ? n.fences.flatMap((w) => linesOfGeom(w.geom).flatMap((l) => clipLine(l, half)).map((pts) => ({ pts, kind: w.kind }))) : []
+  if (n) for (const w of n.water) {
+    const polys = clipPolys(polysOf(w, f), half)
+    if (polys.length) rivers.push({ polys, name: '하천·호수 (1:1,000 수치지도)' })
+  }
+  const h = d.hd
+  const lanes = h ? h.lanes.flatMap((l) => linesOfGeom(l.geom).flatMap((q) => clipLine(q, half)).map((pts) => ({ pts, color: l.color, dashed: l.dashed, double: l.double }))) : []
+  const marks = h ? clipPolys(h.marks.flatMap((g) => polysOf(g, f)), half) : []
+  const hdPaths = h ? clipPolys(h.paths.flatMap((g) => polysOf(g, f)), half) : []
+  const curbs = h ? h.borders.flatMap((g) => linesOfGeom(g).flatMap((q) => clipLine(q, half))) : []
+
   const spots = n
     ? n.spots
         .map((s) => {
@@ -636,6 +683,16 @@ export async function buildSiteModel(d: DiagramData, half: number, opts: { grid?
     mapContours,
     spots,
     mapYear: n?.year ?? null,
+    map1000: !!n?.sheets.some((sh) => sh.scale === 1000),
+    trees,
+    stops,
+    lamps,
+    crosswalks,
+    fences,
+    lanes,
+    marks,
+    hdPaths,
+    curbs,
     zAt,
   }
 }
@@ -655,7 +712,7 @@ export function modelNotes(m: SiteModel, meta: { title: string; address: string;
     [
       '지형',
       m.terrainSource === 'map'
-        ? `국토지리정보원 1:5,000 수치지도${m.mapYear ? `(${m.mapYear}년)` : ''} 등고선·표고점 삼각망 2m + 옹벽·석축 높이 단차(대지 주변), 그 밖은 10m 격자. 이 파일의 지형 면은 ${m.terrain?.cell ?? '-'}m 칸. 등고선 사이 1m 안팎은 정확하지 않음`
+        ? `국토지리정보원 ${m.map1000 ? '1:1,000·1:5,000' : '1:5,000'} 수치지도${m.mapYear ? `(${m.mapYear}년)` : ''} 등고선·표고점 삼각망 2m + 옹벽·석축 높이 단차(대지 주변), 그 밖은 10m 격자. 이 파일의 지형 면은 ${m.terrain?.cell ?? '-'}m 칸. 등고선 사이 1m 안팎은 정확하지 않음`
         : m.terrainSource === 'ngii'
           ? `국토지리정보원 연속수치지형도 등고선·표고점 → 10m 격자${m.terrainVersion ? ` (${m.terrainVersion})` : ''}. 1m 안팎 높낮이는 정확하지 않음`
           : m.terrainSource === 'terrarium'
@@ -676,6 +733,14 @@ export function modelNotes(m: SiteModel, meta: { title: string; address: string;
           : '국토지리정보원 도로중심선을 도로 폭(rvwd)만큼 넓혀 합친 면 (폭 없는 길은 4m로 봄)',
     ],
     ['필지·공원·하천', '연속지적도, 도시계획(공원·녹지·광장), 하천망 — 참고용이며 법적 효력 없음'],
+    ...(m.map1000 || m.lanes.length
+      ? ([
+          [
+            '디테일',
+            `${m.map1000 ? `1:1,000 수치지도: 가로수 ${m.trees.length}·정류장 ${m.stops.length}·가로등 ${m.lamps.length}·횡단보도 ${m.crosswalks.length}·담장 등 ${m.fences.length} (나무 높이 모르면 7m, 쉘터·가로등·담장 높이는 어림)` : ''}${m.map1000 && m.lanes.length ? ' / ' : ''}${m.lanes.length ? `정밀도로지도: 차선 ${m.lanes.length}·노면표시 ${m.marks.length}·보도 면 ${m.hdPaths.length}·연석 ${m.curbs.length} (차선 색·겹선·점선은 유형 코드로 해석, 점선은 3m 칠·5m 빔 어림)` : ''}`,
+          ],
+        ] as [string, string][])
+      : []),
     ['범위', `원점 중심 가로·세로 ${Math.round(m.half * 2).toLocaleString('ko-KR')}m`],
     ['수집일', meta.collected],
   ]

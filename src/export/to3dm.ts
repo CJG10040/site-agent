@@ -38,7 +38,109 @@ const LAYERS: LayerDef[] = [
   { key: 'parcel', name: '필지', color: [170, 170, 200] },
   { key: 'park', name: '공원·녹지', color: [90, 160, 90] },
   { key: 'river', name: '하천', color: [70, 140, 200] },
+  // 15-F 1:1,000 수치지도·정밀도로지도 디테일 (자료가 있을 때만)
+  { key: 'detail', name: '디테일 (1:1,000 수치지도·정밀도로지도)', color: [110, 110, 110] },
+  { key: 'tree', name: '가로수·독립수 (수관, 높이 모르면 7m)', color: [96, 150, 80], parent: 'detail' },
+  { key: 'trunk', name: '가로수 줄기', color: [120, 95, 70], parent: 'detail' },
+  { key: 'stop', name: '정류장 (쉘터 어림 3×1.4×2.6m)', color: [60, 110, 170], parent: 'detail' },
+  { key: 'lamp', name: '가로등 (높이 어림 7m)', color: [150, 150, 150], parent: 'detail' },
+  { key: 'crosswalk', name: '횡단보도', color: [245, 245, 245], parent: 'detail' },
+  { key: 'fence', name: '담장·가드레일 (높이 어림 담장 1.5m·가드레일 0.8m)', color: [170, 160, 150], parent: 'detail' },
+  { key: 'laneWhite', name: '차선 (흰색)', color: [250, 250, 250], parent: 'detail' },
+  { key: 'laneYellow', name: '차선 (황색·중앙선)', color: [240, 190, 40], parent: 'detail' },
+  { key: 'laneBlue', name: '차선 (청색·버스)', color: [60, 110, 220], parent: 'detail' },
+  { key: 'mark', name: '노면표시 (화살표·글자 등)', color: [240, 240, 240], parent: 'detail' },
+  { key: 'hdPath', name: '보도 면 (정밀도로지도)', color: [205, 195, 175], parent: 'detail' },
+  { key: 'curb', name: '연석·도로 경계 (정밀도로지도)', color: [130, 130, 130], parent: 'detail' },
 ]
+
+/** 정이십면체 (나무 수관) */
+const ICO: { v: number[][]; f: number[][] } = (() => {
+  const t = (1 + Math.sqrt(5)) / 2
+  const raw = [
+    [-1, t, 0],
+    [1, t, 0],
+    [-1, -t, 0],
+    [1, -t, 0],
+    [0, -1, t],
+    [0, 1, t],
+    [0, -1, -t],
+    [0, 1, -t],
+    [t, 0, -1],
+    [t, 0, 1],
+    [-t, 0, -1],
+    [-t, 0, 1],
+  ]
+  const v = raw.map((p) => {
+    const l = Math.hypot(p[0], p[1], p[2])
+    return p.map((c) => c / l)
+  })
+  const f = [
+    [0, 11, 5],
+    [0, 5, 1],
+    [0, 1, 7],
+    [0, 7, 10],
+    [0, 10, 11],
+    [1, 5, 9],
+    [5, 11, 4],
+    [11, 10, 2],
+    [10, 7, 6],
+    [7, 1, 8],
+    [3, 9, 4],
+    [3, 4, 2],
+    [3, 2, 6],
+    [3, 6, 8],
+    [3, 8, 9],
+    [4, 9, 5],
+    [2, 4, 11],
+    [6, 2, 10],
+    [8, 6, 7],
+    [9, 8, 1],
+  ]
+  return { v, f }
+})()
+
+/** 선을 옆으로 d만큼 (겹선 차선) — 꼭짓점마다 앞뒤 방향의 평균 법선 */
+function offsetLine(pts: XY[], d: number): XY[] {
+  return pts.map((p, i) => {
+    const a = pts[Math.max(0, i - 1)]
+    const b = pts[Math.min(pts.length - 1, i + 1)]
+    const L = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1
+    return [p[0] - ((b[1] - a[1]) / L) * d, p[1] + ((b[0] - a[0]) / L) * d] as XY
+  })
+}
+
+/** 점선 차선: 칠한 길이 on, 빈 길이 off (도로교통 규격 어림 3m·5m) */
+function dashesOf(pts: XY[], on = 3, off = 5): XY[][] {
+  const out: XY[][] = []
+  let cur: XY[] = []
+  let pos = 0
+  const period = on + off
+  for (let i = 0; i + 1 < pts.length; i++) {
+    const [x0, y0] = pts[i]
+    const [x1, y1] = pts[i + 1]
+    const L = Math.hypot(x1 - x0, y1 - y0)
+    let t = 0
+    while (t < L) {
+      const phase = pos % period
+      const drawing = phase < on
+      const step = Math.min(L - t, drawing ? on - phase : period - phase)
+      const a: XY = [x0 + ((x1 - x0) * t) / L, y0 + ((y1 - y0) * t) / L]
+      const b: XY = [x0 + ((x1 - x0) * (t + step)) / L, y0 + ((y1 - y0) * (t + step)) / L]
+      if (drawing) {
+        if (!cur.length) cur.push(a)
+        cur.push(b)
+      } else if (cur.length) {
+        out.push(cur)
+        cur = []
+      }
+      t += step
+      pos += step
+    }
+  }
+  if (cur.length > 1) out.push(cur)
+  return out
+}
 
 /** wasm 쪽 메모리 풀기 (타입 선언에는 없지만 embind 객체마다 있음) */
 function free(o: unknown) {
@@ -88,6 +190,23 @@ export async function siteModelTo3dm(m: SiteModel, meta: ExportMeta, onStep?: (s
     const hasMap = m.mapYear !== null || m.walls.length > 0 || m.walks.length > 0
     for (const def of LAYERS) {
       if (!hasMap && ['bldgMinor', 'mapContour', 'spot', 'wall', 'cutfill', 'walk'].includes(def.key)) continue
+      // 디테일 레이어는 자료가 있을 때만
+      const detailHas: Record<string, boolean> = {
+        tree: m.trees.length > 0,
+        trunk: m.trees.length > 0,
+        stop: m.stops.length > 0,
+        lamp: m.lamps.length > 0,
+        crosswalk: m.crosswalks.length > 0,
+        fence: m.fences.length > 0,
+        laneWhite: m.lanes.some((l) => l.color === 'white'),
+        laneYellow: m.lanes.some((l) => l.color === 'yellow'),
+        laneBlue: m.lanes.some((l) => l.color === 'blue'),
+        mark: m.marks.length > 0,
+        hdPath: m.hdPaths.length > 0,
+        curb: m.curbs.length > 0,
+      }
+      if (def.key === 'detail' && !Object.values(detailHas).some(Boolean)) continue
+      if (def.key in detailHas && !detailHas[def.key]) continue
       const L = new rhino.Layer()
       L.name =
         def.key === 'mesh'
@@ -298,6 +417,123 @@ export async function siteModelTo3dm(m: SiteModel, meta: ExportMeta, onStep?: (s
     for (const p of m.site) {
       addPolyline(draped(p.outer, true, 0.15), 'site', '대지 경계')
       for (const h of p.holes) addPolyline(draped(h, true, 0.15), 'site', '대지 경계 (구멍)')
+    }
+
+    // ── 1:1,000 수치지도·정밀도로지도 디테일 (15-F)
+    if (m.crosswalks.length || m.marks.length || m.hdPaths.length || m.lanes.length || m.trees.length || m.fences.length || m.stops.length || m.lamps.length || m.curbs.length) onStep?.('디테일 (나무·차선·횡단보도 등)')
+    drapedMesh(m.hdPaths, 'hdPath', '보도 면', 0.14)
+    drapedMesh(m.crosswalks, 'crosswalk', '횡단보도', 0.12, Math.min(DRAPE_EDGE, 3))
+    drapedMesh(m.marks, 'mark', '노면표시', 0.13, Math.min(DRAPE_EDGE, 3))
+    for (const c of m.curbs) addPolyline(draped(c, false, 0.16), 'curb', '연석·도로 경계')
+    for (const l of m.lanes) {
+      const key = l.color === 'yellow' ? 'laneYellow' : l.color === 'blue' ? 'laneBlue' : 'laneWhite'
+      const label = `${l.double ? '겹선' : '단선'} ${l.dashed ? '점선' : '실선'}`
+      for (const line of l.double ? [offsetLine(l.pts, 0.15), offsetLine(l.pts, -0.15)] : [l.pts])
+        for (const seg of l.dashed ? dashesOf(line) : [line]) addPolyline(draped(seg, false, 0.12), key, label)
+    }
+    // 담장·가드레일: 선을 따라 세운 얇은 면
+    for (const w of m.fences) {
+      const hgt = /가드|펜스|레일/.test(w.kind) ? 0.8 : 1.5
+      const pts = densify(w.pts, 3, false)
+      if (pts.length < 2) continue
+      const mesh = new rhino.Mesh()
+      const vs = mesh.vertices()
+      const fs = mesh.faces()
+      for (const [x, y] of pts) {
+        const z = m.zAt(x, y)
+        vs.add(x, y, z)
+        vs.add(x, y, z + hgt)
+      }
+      for (let i = 0; i + 1 < pts.length; i++) fs.addQuadFace(2 * i, 2 * i + 2, 2 * i + 3, 2 * i + 1)
+      mesh.normals().computeNormals()
+      const at = attrs('fence', w.kind)
+      objs.addMesh(mesh, at)
+      free(mesh)
+      free(at)
+    }
+    // 가로수: 줄기(가는 사각 기둥) + 수관(정이십면체)을 각각 메시 하나로
+    if (m.trees.length) {
+      const crown = new rhino.Mesh()
+      const trunk = new rhino.Mesh()
+      const cv = crown.vertices()
+      const cf = crown.faces()
+      const tv = trunk.vertices()
+      const tf = trunk.faces()
+      for (const t of m.trees) {
+        const hgt = t.h && t.h > 1 ? t.h : 7
+        const z0 = m.zAt(t.x, t.y)
+        const r = Math.max(1.4, hgt * 0.28)
+        const cz = z0 + hgt - r
+        const base = cv.count
+        for (const [a, b, c] of ICO.v) cv.add(t.x + a * r, t.y + b * r, cz + c * r * 0.9)
+        for (const [a, b, c] of ICO.f) cf.addTriFace(base + a, base + b, base + c)
+        const tb = tv.count
+        const w = 0.15
+        const top = cz - r * 0.5
+        for (const [dx, dy] of [
+          [-w, -w],
+          [w, -w],
+          [w, w],
+          [-w, w],
+        ]) {
+          tv.add(t.x + dx, t.y + dy, z0)
+          tv.add(t.x + dx, t.y + dy, top)
+        }
+        for (let k = 0; k < 4; k++) {
+          const a = tb + 2 * k
+          const b = tb + 2 * ((k + 1) % 4)
+          tf.addQuadFace(a, b, b + 1, a + 1)
+        }
+      }
+      crown.normals().computeNormals()
+      trunk.normals().computeNormals()
+      const a1 = attrs('tree', `가로수·독립수 ${m.trees.length}그루`)
+      objs.addMesh(crown, a1)
+      const a2 = attrs('trunk', '가로수 줄기')
+      objs.addMesh(trunk, a2)
+      free(crown)
+      free(trunk)
+      free(a1)
+      free(a2)
+    }
+    // 정류장: 쉘터 상자(어림) + 이름 점
+    for (const st of m.stops) {
+      const z0 = m.zAt(st.x, st.y)
+      const box = new rhino.Mesh()
+      const vs = box.vertices()
+      const fs = box.faces()
+      const [hx, hy, hz] = [1.5, 0.7, 2.6]
+      for (const zz of [z0, z0 + hz]) for (const [dx, dy] of [
+          [-hx, -hy],
+          [hx, -hy],
+          [hx, hy],
+          [-hx, hy],
+        ])
+          vs.add(st.x + dx, st.y + dy, zz)
+      fs.addQuadFace(4, 5, 6, 7)
+      fs.addQuadFace(0, 1, 5, 4)
+      fs.addQuadFace(1, 2, 6, 5)
+      fs.addQuadFace(2, 3, 7, 6)
+      fs.addQuadFace(3, 0, 4, 7)
+      box.normals().computeNormals()
+      const label = [st.name, st.use].filter(Boolean).join(' · ') || '정류장'
+      const at = attrs('stop', label, { 이름: st.name, 용도: st.use })
+      objs.addMesh(box, at)
+      objs.addTextDot(label, [st.x, st.y, z0 + hz + 0.5], at)
+      free(box)
+      free(at)
+    }
+    // 가로등: 7m 기둥 선
+    for (const l of m.lamps) {
+      const z0 = m.zAt(l.x, l.y)
+      addPolyline(
+        [
+          [l.x, l.y, z0],
+          [l.x, l.y, z0 + 7],
+        ],
+        'lamp',
+        '가로등',
+      )
     }
 
     onStep?.('파일 쓰는 중')

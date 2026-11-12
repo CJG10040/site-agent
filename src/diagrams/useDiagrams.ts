@@ -88,7 +88,7 @@ export function useDiagrams(project: Project, vworldKey: string, only?: string[]
   // 환경 계산은 수집 뒤에 따로 끝나므로 그 시각도 넣는다
   const envSig = project.collected['env:result']?.retrieved_at ?? ''
   // 수치지도는 수집과 따로 올리므로 그 시각도
-  const ngiiSig = project.collected['ngii:sheets']?.retrieved_at ?? ''
+  const ngiiSig = `${project.collected['ngii:sheets']?.retrieved_at ?? ''}${project.collected['hd:files']?.retrieved_at ?? ''}`
   // 학생이 뺀 자료가 바뀌면 자료부터 다시
   const hideSig = (project.edits?.hides ?? []).map((h) => h.id).join(',')
   const dataSig = `${project.collectedAt ?? ''}|${envSig}|${ngiiSig}|${siteKey(project.site)}|${project.collectedRadiusM ?? project.site.radiusM}|${obsSig}|${hashOf(hideSig)}`

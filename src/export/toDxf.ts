@@ -27,6 +27,16 @@ export const DXF_LAYERS: { name: string; color: number; label: string }[] = [
   { name: 'CUTFILL', color: 42, label: '절토·성토 경계' },
   { name: 'WALK', color: 253, label: '인도' },
   { name: 'BLDG-MINOR', color: 254, label: '지붕 구조물(무벽건물)·가건물' },
+  // 15-F 1:1,000 수치지도·정밀도로지도 (자료가 있을 때만 내용이 들어감)
+  { name: 'TREE', color: 3, label: '가로수·독립수 (원 = 수관 어림)' },
+  { name: 'STOP', color: 5, label: '정류장 (점 + 이름)' },
+  { name: 'CROSSWALK', color: 7, label: '횡단보도' },
+  { name: 'FENCE', color: 9, label: '담장·가드레일' },
+  { name: 'LANE', color: 7, label: '차선 (흰색, 점선은 칠한 부분만)' },
+  { name: 'LANE-YELLOW', color: 2, label: '차선 (황색·중앙선)' },
+  { name: 'LANE-BLUE', color: 5, label: '차선 (청색·버스)' },
+  { name: 'ROAD-MARK', color: 7, label: '노면표시' },
+  { name: 'CURB', color: 8, label: '연석·도로 경계 (정밀도로지도)' },
 ]
 
 const n = (v: number) => (Math.round(v * 1000) / 1000).toString()
@@ -199,6 +209,29 @@ export function siteModelToDxf(m: SiteModel, meta: { title: string; address: str
     polys(layer, b.parts)
     if (b.floors && b.parts[0]) text('BLDG-TEXT', centroid(b.parts[0].outer), 1.6, `${b.floors}F`)
   }
+  // 15-F 디테일
+  for (const t of m.trees) {
+    const r = Math.max(1.4, (t.h && t.h > 1 ? t.h : 7) * 0.28)
+    g(0, 'CIRCLE')
+    g(8, 'TREE')
+    g(10, t.x)
+    g(20, t.y)
+    g(30, 0)
+    g(40, r)
+  }
+  for (const s of m.stops) {
+    g(0, 'POINT')
+    g(8, 'STOP')
+    g(10, s.x)
+    g(20, s.y)
+    g(30, 0)
+    text('STOP', [s.x + 1, s.y + 1], 1.2, s.use || 'STOP', false)
+  }
+  polys('CROSSWALK', m.crosswalks)
+  for (const w of m.fences) polyline('FENCE', w.pts, false)
+  for (const l of m.lanes) polyline(l.color === 'yellow' ? 'LANE-YELLOW' : l.color === 'blue' ? 'LANE-BLUE' : 'LANE', l.pts, false)
+  polys('ROAD-MARK', m.marks)
+  for (const c of m.curbs) polyline('CURB', c, false)
   polys('SITE', m.site)
 
   // 정보: 범위 아래에 영문으로
