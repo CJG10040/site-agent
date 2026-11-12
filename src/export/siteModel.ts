@@ -12,6 +12,7 @@ import { bldHeight, inNgii, type DiagramData } from '../diagrams/data'
 import type { Areal } from '../lib/geo'
 import { wgs84To5186, wgs84ToUtmk } from '../lib/proj'
 import { terrainAround, type TerrainGrid } from '../lib/terrain'
+import { hatchStripes, roadDirs, zebraStripes } from './streetDetail'
 
 export type XY = [number, number]
 
@@ -94,9 +95,16 @@ export interface SiteModel {
   /** 1:1,000 수치지도를 올렸을 때 (15-F) */
   map1000: boolean
   trees: { x: number; y: number; h: number | null; kind: string }[]
-  stops: { x: number; y: number; name: string; use: string }[]
-  lamps: { x: number; y: number }[]
+  /** along = 도로 방향, toRoad = 도로 쪽 (가까운 도로중심선으로, 모르면 동쪽·북쪽) */
+  stops: { x: number; y: number; name: string; use: string; along: XY; toRoad: XY }[]
+  lamps: { x: number; y: number; toRoad: XY | null }[]
   crosswalks: Poly[]
+  /** 횡단보도 줄무늬 (45cm 칠·45cm 빔, 도로 방향) */
+  zebra: Poly[]
+  /** 안전지대 (1:1,000 A005): 교통섬 = 올라온 섬, 칠한 안전지대 = 노란 빗금, 어린이보호구역 = 적색 포장 */
+  safety: { poly: Poly; kind: 'island' | 'painted' | 'school' }[]
+  /** 칠한 안전지대 빗금 */
+  hatch: Poly[]
   fences: { pts: XY[]; kind: string }[]
   /** 정밀도로지도를 올렸을 때 (15-F) */
   lanes: { pts: XY[]; color: 'yellow' | 'white' | 'blue'; dashed: boolean; double: boolean }[]
@@ -627,19 +635,61 @@ export async function buildSiteModel(d: DiagramData, half: number, opts: { grid?
         return xy ? [{ x: xy[0], y: xy[1], h: t.h, kind: t.kind }] : []
       })
     : []
+  // 도로 방향: 도로중심선(브이월드 + 1:1,000 수치지도) — 횡단보도 줄 방향, 쉘터·가로등이 보는 쪽
+  const dirLines = [...centers.map((c) => c.pts), ...(n ? n.centers.flatMap((c) => linesOfGeom(c.geom)) : [])].flatMap((l) => clipLine(l, half + 50))
+  const dirs = roadDirs(dirLines)
+  const towards = (x: number, y: number, maxD: number) => {
+    const r = dirs.near(x, y, maxD)
+    if (!r) return null
+    const dx = r.foot[0] - x
+    const dy = r.foot[1] - y
+    const L = Math.hypot(dx, dy)
+    // 중심선 바로 위면 방향의 법선 쪽으로
+    const toRoad: XY = L > 0.3 ? [dx / L, dy / L] : [-r.dir[1], r.dir[0]]
+    return { along: r.dir, toRoad }
+  }
   const stops = n
     ? n.stops.flatMap((t) => {
         const xy = ptIn(t.lon, t.lat)
-        return xy ? [{ x: xy[0], y: xy[1], name: t.name, use: t.use }] : []
+        if (!xy) return []
+        const w = towards(xy[0], xy[1], 40)
+        return [{ x: xy[0], y: xy[1], name: t.name, use: t.use, along: w?.along ?? ([1, 0] as XY), toRoad: w?.toRoad ?? ([0, 1] as XY) }]
       })
     : []
   const lamps = n
     ? n.lamps.flatMap((t) => {
         const xy = ptIn(t.lon, t.lat)
-        return xy ? [{ x: xy[0], y: xy[1] }] : []
+        return xy ? [{ x: xy[0], y: xy[1], toRoad: towards(xy[0], xy[1], 30)?.toRoad ?? null }] : []
       })
     : []
-  const crosswalks = n ? clipPolys(n.crosswalks.flatMap((g) => polysOf(g, f)), half) : []
+  const cw1000 = n ? clipPolys(n.crosswalks.flatMap((g) => polysOf(g, f)), half) : []
+  // 정밀도로지도 횡단보도: 1:1,000 횡단보도와 겹치면 뺌 (같은 것을 두 번 그리지 않게)
+  const inPoly = ([x, y]: XY, r: XY[]) => {
+    let inside = false
+    for (let i = 0, j = r.length - 1; i < r.length; j = i++)
+      if (r[i][1] > y !== r[j][1] > y && x < ((r[j][0] - r[i][0]) * (y - r[i][1])) / (r[j][1] - r[i][1]) + r[i][0]) inside = !inside
+    return inside
+  }
+  const cwHd = d.hd
+    ? clipPolys(d.hd.crosswalks.flatMap((g) => polysOf(g, f)), half).filter((p) => {
+        const o = p.outer
+        const c: XY = [o.reduce((s, q) => s + q[0], 0) / o.length, o.reduce((s, q) => s + q[1], 0) / o.length]
+        return !cw1000.some((q) => inPoly(c, q.outer))
+      })
+    : []
+  const crosswalks = [...cw1000, ...cwHd]
+  const zebra = crosswalks.flatMap((cw) => {
+    const o = cw.outer
+    const c: XY = [o.reduce((s, p) => s + p[0], 0) / o.length, o.reduce((s, p) => s + p[1], 0) / o.length]
+    return zebraStripes(cw, dirs.near(c[0], c[1], 30)?.dir ?? null)
+  })
+  const safety = n
+    ? n.safety.flatMap((s) => {
+        const kind: 'island' | 'painted' | 'school' = /교통섬/.test(s.kind) ? 'island' : /어린이/.test(s.kind) ? 'school' : 'painted'
+        return clipPolys(polysOf(s.geom, f), half).map((poly) => ({ poly, kind }))
+      })
+    : []
+  const hatch = safety.filter((s) => s.kind === 'painted').flatMap((s) => hatchStripes(s.poly))
   const fences = n ? n.fences.flatMap((w) => linesOfGeom(w.geom).flatMap((l) => clipLine(l, half)).map((pts) => ({ pts, kind: w.kind }))) : []
   if (n) for (const w of n.water) {
     const polys = clipPolys(polysOf(w, f), half)
@@ -688,6 +738,9 @@ export async function buildSiteModel(d: DiagramData, half: number, opts: { grid?
     stops,
     lamps,
     crosswalks,
+    zebra,
+    safety,
+    hatch,
     fences,
     lanes,
     marks,
@@ -737,7 +790,7 @@ export function modelNotes(m: SiteModel, meta: { title: string; address: string;
       ? ([
           [
             '디테일',
-            `${m.map1000 ? `1:1,000 수치지도: 가로수 ${m.trees.length}·정류장 ${m.stops.length}·가로등 ${m.lamps.length}·횡단보도 ${m.crosswalks.length}·담장 등 ${m.fences.length} (나무 높이 모르면 7m, 쉘터·가로등·담장 높이는 어림)` : ''}${m.map1000 && m.lanes.length ? ' / ' : ''}${m.lanes.length ? `정밀도로지도: 차선 ${m.lanes.length}·노면표시 ${m.marks.length}·보도 면 ${m.hdPaths.length}·연석 ${m.curbs.length} (차선 색·겹선·점선은 유형 코드로 해석, 점선은 3m 칠·5m 빔 어림)` : ''}`,
+            `${m.map1000 ? `1:1,000 수치지도: 가로수 ${m.trees.length}·정류장 ${m.stops.length}·가로등 ${m.lamps.length}·횡단보도 ${m.crosswalks.length}(줄무늬 45cm 칠·45cm 빔, 도로 방향)·교통섬·안전지대 ${m.safety.length}·담장 등 ${m.fences.length} (나무 높이 모르면 7m, 쉘터 3.6×1.5×2.55m·가로등 8m·담장 높이·인도·교통섬 높이 15cm는 어림)` : ''}${m.map1000 && m.lanes.length ? ' / ' : ''}${m.lanes.length ? `정밀도로지도: 차선 ${m.lanes.length}·노면표시 ${m.marks.length}·보도 면 ${m.hdPaths.length}·연석 ${m.curbs.length} (차선 색·겹선·점선은 유형 코드로 해석, 점선은 3m 칠·5m 빔 어림)` : ''}`,
           ],
         ] as [string, string][])
       : []),

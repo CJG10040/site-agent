@@ -8,8 +8,8 @@ import { unzipSync } from 'fflate'
 import type { Geometry, Position } from 'geojson'
 import { beltProjection, utmkToWgs84, wgs84ToUtmk } from '../lib/proj'
 
-export type NgiiKey = 'bldg' | 'road' | 'walk' | 'contour' | 'spot' | 'wall' | 'cutfill' | 'center' | 'crosswalk' | 'stop' | 'tree' | 'fence' | 'lamp' | 'water'
-export const NGII_KEYS: NgiiKey[] = ['bldg', 'road', 'walk', 'contour', 'spot', 'wall', 'cutfill', 'center', 'crosswalk', 'stop', 'tree', 'fence', 'lamp', 'water']
+export type NgiiKey = 'bldg' | 'road' | 'walk' | 'contour' | 'spot' | 'wall' | 'cutfill' | 'center' | 'crosswalk' | 'safety' | 'stop' | 'tree' | 'fence' | 'lamp' | 'water'
+export const NGII_KEYS: NgiiKey[] = ['bldg', 'road', 'walk', 'contour', 'spot', 'wall', 'cutfill', 'center', 'crosswalk', 'safety', 'stop', 'tree', 'fence', 'lamp', 'water']
 export const NGII_LABEL: Record<NgiiKey, string> = {
   bldg: '건물',
   road: '도로경계 면',
@@ -21,6 +21,7 @@ export const NGII_LABEL: Record<NgiiKey, string> = {
   // 아래는 1:1,000 수치지도에만 (15-F, 2026-11-12)
   center: '도로중심선',
   crosswalk: '횡단보도',
+  safety: '교통섬·안전지대',
   stop: '정류장',
   tree: '가로수·독립수',
   fence: '담장·가드레일',

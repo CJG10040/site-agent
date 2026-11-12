@@ -22,6 +22,7 @@ export type ModelItem =
   | 'stops'
   | 'lamps'
   | 'crosswalks'
+  | 'safety'
   | 'fences'
   | 'lanes'
   | 'marks'
@@ -31,7 +32,7 @@ export type ModelItem =
 export const LEVELS: { id: RenderLevel; label: string; note: string }[] = [
   { id: 'light', label: '가벼움', note: '지형 면 + 건물 매스 + 대지 경계' },
   { id: 'normal', label: '보통', note: '+ 도로·인도·공원·하천·필지·등고선·옹벽' },
-  { id: 'detail', label: '자세히', note: '+ 가로수·정류장·가로등·횡단보도·담장·차선·노면표시·연석' },
+  { id: 'detail', label: '자세히', note: '+ 가로수·정류장 쉘터·가로등·횡단보도 줄무늬·교통섬·담장·차선·노면표시·연석' },
 ]
 
 /** 항목: 그 항목이 처음 들어가는 단계 */
@@ -52,7 +53,8 @@ export const MODEL_ITEMS: { id: ModelItem; label: string; level: RenderLevel; un
   { id: 'trees', label: '가로수·독립수', level: 'detail', unit: '그루' },
   { id: 'stops', label: '버스정류장', level: 'detail', unit: '곳' },
   { id: 'lamps', label: '가로등', level: 'detail', unit: '개' },
-  { id: 'crosswalks', label: '횡단보도', level: 'detail', unit: '곳' },
+  { id: 'crosswalks', label: '횡단보도 (줄무늬)', level: 'detail', unit: '곳' },
+  { id: 'safety', label: '교통섬·안전지대', level: 'detail', unit: '곳' },
   { id: 'fences', label: '담장·가드레일', level: 'detail', unit: '줄' },
   { id: 'lanes', label: '차선', level: 'detail', unit: '줄' },
   { id: 'marks', label: '노면표시', level: 'detail', unit: '개' },
@@ -87,6 +89,7 @@ export function itemCounts(m: SiteModel): Record<ModelItem, number> {
     stops: m.stops.length,
     lamps: m.lamps.length,
     crosswalks: m.crosswalks.length,
+    safety: m.safety.length,
     fences: m.fences.length,
     lanes: m.lanes.length,
     marks: m.marks.length,
@@ -120,6 +123,9 @@ export function filterModel(m: SiteModel, items: Iterable<string>): SiteModel {
     stops: keep('stops', m.stops),
     lamps: keep('lamps', m.lamps),
     crosswalks: keep('crosswalks', m.crosswalks),
+    zebra: keep('crosswalks', m.zebra),
+    safety: keep('safety', m.safety),
+    hatch: keep('safety', m.hatch),
     fences: keep('fences', m.fences),
     lanes: keep('lanes', m.lanes),
     marks: keep('marks', m.marks),

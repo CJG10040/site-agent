@@ -4,6 +4,7 @@
 
 import * as THREE from 'three'
 import { dashesOf, densify, offsetLine, triangulate, type Poly, type SiteModel, type XY } from './siteModel'
+import { boxMesh, densifyLine, lampBoxes, ribbon, shelterBoxes, STREET, type Box } from './streetDetail'
 
 export interface PreviewParts {
   group: THREE.Group
@@ -33,8 +34,13 @@ const COLORS = {
   laneBlue: '#3e6fd8',
   tree: '#6f9d5a',
   trunk: '#7d6248',
-  stop: '#4f7fb0',
-  lamp: '#8a8a8a',
+  stop: '#4b5563',
+  glass: '#a9cbe0',
+  lamp: '#7d7d7d',
+  lampHead: '#ece6cf',
+  island: '#cfcac0',
+  hatch: '#e8b923',
+  school: '#b9483c',
 }
 
 export function buildPreview(m: SiteModel): PreviewParts {
@@ -117,10 +123,89 @@ export function buildPreview(m: SiteModel): PreviewParts {
   layer(m.parks.flatMap((a) => a.polys), COLORS.park, 0.05, '공원·녹지')
   layer(m.rivers.flatMap((a) => a.polys), COLORS.river, 0.05, '하천')
   layer(m.roads, COLORS.road, 0.08, '도로 면')
-  layer(m.walks, COLORS.walk, 0.15, '인도')
-  layer(m.hdPaths, COLORS.hdPath, 0.14, '보도 면')
-  layer(m.crosswalks, COLORS.crosswalk, 0.12, '횡단보도', Math.min(edge, 3))
-  layer(m.marks, COLORS.mark, 0.13, '노면표시', Math.min(edge, 3))
+  // ── 거리 디테일 (2026-11-13): 인도·교통섬 단차, 횡단보도 줄무늬, 안전지대 빗금, 차선·연석 띠
+  const R = STREET.roadLift
+  const H = STREET.curbH
+  /** 선 → 폭 w 띠 삼각형 (지형에 얹음) */
+  const ribbonTris = (pts: XY[], w: number, lift: number, out: number[], closed = false) => {
+    const d = densifyLine(pts, 2, closed)
+    if (d.length < 2) return
+    const { left, right } = ribbon(d, w)
+    const v = (q: XY) => [q[0], q[1], z(q[0], q[1]) + lift]
+    for (let i = 0; i + 1 < d.length; i++) {
+      const a = v(left[i])
+      const b = v(right[i])
+      const c = v(right[i + 1])
+      const e = v(left[i + 1])
+      out.push(...a, ...b, ...c, ...a, ...c, ...e)
+    }
+  }
+  /** 고리를 따라 세운 옆면 (땅 + lo ~ 땅 + hi) */
+  const sideTris = (ring: XY[], lo: number, hi: number, out: number[], closed = true) => {
+    const d = densifyLine(ring, 2, closed)
+    for (let i = 0; i + 1 < d.length; i++) {
+      const [x1, y1] = d[i]
+      const [x2, y2] = d[i + 1]
+      const z1 = z(x1, y1)
+      const z2 = z(x2, y2)
+      out.push(x1, y1, z1 + lo, x2, y2, z2 + lo, x2, y2, z2 + hi, x1, y1, z1 + lo, x2, y2, z2 + hi, x1, y1, z1 + hi)
+    }
+  }
+  /** 올라온 면: 윗면 + 옆면 */
+  const raised = (polys: Poly[], color: string, name: string) => {
+    if (!polys.length) return
+    const out: number[] = []
+    drapedPolys(polys, R + H, Math.min(edge, 3), out)
+    for (const p of polys) for (const r of [p.outer, ...p.holes]) sideTris(r, R, R + H, out)
+    addMesh(out, color, { side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }, name)
+  }
+  raised(m.walks, COLORS.walk, '인도')
+  raised(m.hdPaths, COLORS.hdPath, '보도 면')
+  raised(
+    m.safety.filter((s) => s.kind === 'island').map((s) => s.poly),
+    COLORS.island,
+    '교통섬',
+  )
+  layer(m.zebra.length ? m.zebra : m.crosswalks, COLORS.crosswalk, R + 0.03, '횡단보도 줄무늬', 3)
+  layer(m.marks, COLORS.mark, R + 0.04, '노면표시', Math.min(edge, 3))
+  layer(
+    m.safety.filter((s) => s.kind === 'school').map((s) => s.poly),
+    COLORS.school,
+    R + 0.015,
+    '어린이보호구역',
+    Math.min(edge, 3),
+  )
+  {
+    const out: number[] = []
+    drapedPolys(m.hatch, R + 0.03, 3, out)
+    for (const sz of m.safety) if (sz.kind === 'painted') ribbonTris(sz.poly.outer, STREET.hatchEdge, R + 0.03, out, true)
+    addMesh(out, COLORS.hatch, { polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }, '안전지대 표시')
+  }
+  {
+    const out: number[] = []
+    for (const c of m.curbs) {
+      ribbonTris(c, STREET.curbW, R + H, out)
+      const { left, right } = ribbon(densifyLine(c, 2), STREET.curbW)
+      sideTris(left, R, R + H, out, false)
+      sideTris(right, R, R + H, out, false)
+    }
+    addMesh(out, COLORS.curb, { side: THREE.DoubleSide }, '연석')
+    const lanes: Record<'white' | 'yellow' | 'blue', number[]> = { white: [], yellow: [], blue: [] }
+    for (const l of m.lanes)
+      for (const line of l.double ? [offsetLine(l.pts, 0.15), offsetLine(l.pts, -0.15)] : [l.pts])
+        for (const seg of l.dashed ? dashesOf(line) : [line]) ribbonTris(seg, STREET.laneW, R + 0.03, lanes[l.color])
+    const lo = { polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }
+    addMesh(lanes.white, COLORS.laneWhite, lo, '차선 (흰색)')
+    addMesh(lanes.yellow, COLORS.laneYellow, lo, '차선 (황색)')
+    addMesh(lanes.blue, COLORS.laneBlue, lo, '차선 (청색)')
+  }
+  /** 상자들 → 삼각형 */
+  const boxTris = (boxes: Box[], ground: number, out: number[]) => {
+    for (const b of boxes) {
+      const { v, f } = boxMesh(b, ground)
+      for (const [a, bb, c, d] of f) out.push(...v[a], ...v[bb], ...v[c], ...v[a], ...v[c], ...v[d])
+    }
+  }
 
   // ── 건물 (벽 + 지붕), 층수 모르면 납작한 발자국
   const walls: Record<'bldg' | 'bldgSite' | 'bldgUnknown', number[]> = { bldg: [], bldgSite: [], bldgUnknown: [] }
@@ -169,25 +254,49 @@ export function buildPreview(m: SiteModel): PreviewParts {
     const wl: number[] = []
     for (const w of m.walls) drapedSegs(w.pts, 0.1, wl)
     addLines(wl, COLORS.wall, '옹벽·석축')
-    const cb: number[] = []
-    for (const c of m.curbs) drapedSegs(c, 0.16, cb)
-    addLines(cb, COLORS.curb, '연석')
-    const lanes: Record<'white' | 'yellow' | 'blue', number[]> = { white: [], yellow: [], blue: [] }
-    for (const l of m.lanes)
-      for (const line of l.double ? [offsetLine(l.pts, 0.15), offsetLine(l.pts, -0.15)] : [l.pts])
-        for (const seg of l.dashed ? dashesOf(line) : [line]) drapedSegs(seg, 0.18, lanes[l.color])
-    addLines(lanes.white, COLORS.laneWhite, '차선 (흰색)')
-    addLines(lanes.yellow, COLORS.laneYellow, '차선 (황색)')
-    addLines(lanes.blue, COLORS.laneBlue, '차선 (청색)')
     const site: number[] = []
     for (const p of m.site) drapedSegs(p.outer, 0.3, site, true)
     addLines(site, COLORS.site, '대지 경계')
-    const lamp: number[] = []
+  }
+
+  // ── 가로등 (기둥 + 도로 쪽 팔 + 등 머리), 정류장 쉘터 (지붕·기둥·의자·표지 + 유리)
+  {
+    const pole: number[] = []
+    const head: number[] = []
     for (const l of m.lamps) {
-      const z0 = z(l.x, l.y)
-      lamp.push(l.x, l.y, z0, l.x, l.y, z0 + 7)
+      const bs = lampBoxes(l.x, l.y, l.toRoad)
+      const g = z(l.x, l.y) + R + H
+      boxTris(
+        bs.filter((b) => b.part !== 'head'),
+        g,
+        pole,
+      )
+      boxTris(
+        bs.filter((b) => b.part === 'head'),
+        g,
+        head,
+      )
     }
-    addLines(lamp, COLORS.lamp, '가로등')
+    addMesh(pole, COLORS.lamp, {}, '가로등')
+    addMesh(head, COLORS.lampHead, {}, '가로등 머리')
+    const frame: number[] = []
+    const glass: number[] = []
+    for (const st of m.stops) {
+      const bs = shelterBoxes(st.x, st.y, st.along, st.toRoad)
+      const g = z(st.x, st.y) + R + H
+      boxTris(
+        bs.filter((b) => b.part !== 'glass'),
+        g,
+        frame,
+      )
+      boxTris(
+        bs.filter((b) => b.part === 'glass'),
+        g,
+        glass,
+      )
+    }
+    addMesh(frame, COLORS.stop, {}, '정류장 쉘터')
+    addMesh(glass, COLORS.glass, { transparent: true, opacity: 0.45, depthWrite: false }, '정류장 유리')
   }
 
   // ── 나무 (수관 + 줄기), 정류장 쉘터 — 같은 모양을 여러 번 (InstancedMesh)
@@ -217,20 +326,6 @@ export function buildPreview(m: SiteModel): PreviewParts {
     crowns.name = '가로수'
     group.add(crowns, trunks)
     triangles += m.trees.length * (crownG.index ? crownG.index.count / 3 : crownG.attributes.position.count / 3)
-  }
-  if (m.stops.length) {
-    const boxG = new THREE.BoxGeometry(3, 1.4, 2.6)
-    boxG.translate(0, 0, 1.3)
-    disposables.push(boxG)
-    const boxes = new THREE.InstancedMesh(boxG, mat(COLORS.stop), m.stops.length)
-    m.stops.forEach((s, i) => {
-      dummy.position.set(s.x, s.y, z(s.x, s.y))
-      dummy.scale.set(1, 1, 1)
-      dummy.updateMatrix()
-      boxes.setMatrixAt(i, dummy.matrix)
-    })
-    boxes.name = '정류장'
-    group.add(boxes)
   }
 
   return {

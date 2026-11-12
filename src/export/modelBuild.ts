@@ -73,9 +73,13 @@ export function modelStats(m: SiteModel): ModelStats {
     1 + (m.terrain ? 1 : 0) + m.contours.length + bldParts + m.mapContours.length + m.spots.length + m.walls.length * 2 + m.cutfill.length + m.minor.length +
     draped.filter((ps) => ps.length).length + m.roadCenters.length + m.parcels.reduce((s, p) => s + p.polys.length, 0) +
     m.parks.reduce((s, a) => s + a.polys.length, 0) + m.rivers.reduce((s, a) => s + a.polys.length, 0) + m.site.length +
-    m.curbs.length + lanePieces + m.fences.length + (m.trees.length ? 2 : 0) + m.stops.length * 2 + m.lamps.length
+    (m.curbs.length ? 1 : 0) + new Set(m.lanes.map((l) => l.color)).size + m.fences.length + (m.trees.length ? 2 : 0) + m.stops.length * 3 + (m.lamps.length ? 1 : 0) +
+    new Set(m.safety.map((s) => s.kind)).size
   // 크기: 지형 칸당 약 92B, 얹은 면 1㎡당 약 (2/드레이프 변²)개 삼각형 × 65B, 물체마다 약 420B (300·600·800m 실측에 맞춰 조금 넉넉히), 건물 꼭짓점·선 점은 물체 몫에 포함
-  const bytes = terrainCells * 92 + drapedArea * (2 / (drapeEdge * drapeEdge)) * 65 + objects * 420 + m.trees.length * 32 * 30
+  // 차선·연석 띠(2m마다 꼭짓점 2~4개), 쉘터·가로등 상자(꼭짓점 8·면 6)
+  const ribbonLen = m.lanes.reduce((s, l) => s + lenOf(l.pts) * (l.double ? 2 : 1), 0) + m.curbs.reduce((s, c) => s + lenOf(c) * 3, 0)
+  const bytes =
+    terrainCells * 92 + drapedArea * (2 / (drapeEdge * drapeEdge)) * 65 + objects * 420 + m.trees.length * 32 * 30 + ribbonLen * 45 + m.lamps.length * 900 + m.stops.length * 3000
   const mb = bytes / 1e6
   const rows = [
     { label: '지형 면', n: terrainCells, unit: `칸 (${cell}m)` },
@@ -86,7 +90,8 @@ export function modelStats(m: SiteModel): ModelStats {
     { label: '가로수', n: m.trees.length, unit: '그루' },
     { label: '정류장', n: m.stops.length, unit: '곳' },
     { label: '가로등', n: m.lamps.length, unit: '개' },
-    { label: '횡단보도', n: m.crosswalks.length, unit: '곳' },
+    { label: '횡단보도', n: m.crosswalks.length, unit: '곳 (줄무늬)' },
+    { label: '교통섬·안전지대', n: m.safety.length, unit: '곳' },
     { label: '담장·가드레일', n: m.fences.length, unit: '줄' },
     { label: '차선', n: m.lanes.length, unit: `줄 (점선 조각 포함 ${lanePieces})` },
     { label: '노면표시', n: m.marks.length, unit: '개' },

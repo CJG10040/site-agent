@@ -132,6 +132,8 @@ export interface NgiiData {
   /** 아래는 1:1,000 수치지도에만 (15-F) */
   centers: { geom: Lines; width: number | null; lanes: number | null; name: string }[]
   crosswalks: Areal[]
+  /** 안전지대 (A005): kind = 교통섬 / 평면(도색) / 어린이보호구역 */
+  safety: { geom: Areal; kind: string }[]
   stops: { lon: number; lat: number; name: string; use: string }[]
   trees: { lon: number; lat: number; kind: string; species: string; h: number | null }[]
   fences: { geom: Lines; kind: string }[]
@@ -143,8 +145,17 @@ export interface NgiiData {
 export interface HdData {
   lanes: { geom: Lines; color: 'yellow' | 'white' | 'blue'; dashed: boolean; double: boolean; kind: string }[]
   marks: Areal[]
+  /** 노면표시 중 횡단보도 (C-ITS 종류 532x, 2026 형식 유형 200 — 크기로 확인) → 3D에서 줄무늬로 */
+  crosswalks: Areal[]
   borders: Lines[]
   paths: Areal[]
+}
+
+/** 정밀도로지도 노면표시가 횡단보도인지: C-ITS 형식 종류 532x(5321 등), 2026 형식 유형 200 (2026-11-13, 도형 크기 약 9×4m로 확인) */
+function hdCrosswalk(p: Record<string, unknown>): boolean {
+  const kind = String(p.kind ?? '')
+  const type = String(p.type ?? '')
+  return /^532/.test(kind) || (!kind && type === '200')
 }
 
 /** 올린 수치지도 도엽 안의 점인지 */
@@ -420,6 +431,9 @@ export function buildDiagramData(project: Project): DiagramData | null {
       cutfill: lines('ngii:cutfill').map((f) => ({ geom: f.geometry as Lines, kind: str(f.properties.kind), top: f.properties.top !== false })),
       centers: lines('ngii:center').map((f) => ({ geom: f.geometry as Lines, width: num(f.properties.width), lanes: num(f.properties.lanes), name: str(f.properties.name) })),
       crosswalks: nfeats('ngii:crosswalk').filter((f) => isAreal(f.geometry)).map((f) => f.geometry as Areal),
+      safety: nfeats('ngii:safety')
+        .filter((f) => isAreal(f.geometry))
+        .map((f) => ({ geom: f.geometry as Areal, kind: str(f.properties.kind) })),
       stops: pts('ngii:stop').map(({ c, p }) => ({ lon: c[0], lat: c[1], name: str(p.name), use: str(p.use) })),
       trees: pts('ngii:tree').map(({ c, p }) => {
         const h = num(p.h)
@@ -476,7 +490,12 @@ export function buildDiagramData(project: Project): DiagramData | null {
       lanes: feats('hd:lane')
         .filter((f) => isLinear(f.geometry))
         .map((f) => ({ geom: f.geometry as Lines, ...laneStyle(str(f.properties.type)), kind: str(f.properties.kind) })),
-      marks: feats('hd:mark').filter((f) => isAreal(f.geometry)).map((f) => f.geometry as Areal),
+      marks: feats('hd:mark')
+        .filter((f) => isAreal(f.geometry) && !hdCrosswalk(f.properties))
+        .map((f) => f.geometry as Areal),
+      crosswalks: feats('hd:mark')
+        .filter((f) => isAreal(f.geometry) && hdCrosswalk(f.properties))
+        .map((f) => f.geometry as Areal),
       borders: feats('hd:border').filter((f) => isLinear(f.geometry)).map((f) => f.geometry as Lines),
       paths: feats('hd:path').filter((f) => isAreal(f.geometry)).map((f) => f.geometry as Areal),
     }

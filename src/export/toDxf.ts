@@ -30,7 +30,10 @@ export const DXF_LAYERS: { name: string; color: number; label: string }[] = [
   // 15-F 1:1,000 수치지도·정밀도로지도 (자료가 있을 때만 내용이 들어감)
   { name: 'TREE', color: 3, label: '가로수·독립수 (원 = 수관 어림)' },
   { name: 'STOP', color: 5, label: '정류장 (점 + 이름)' },
-  { name: 'CROSSWALK', color: 7, label: '횡단보도' },
+  { name: 'CROSSWALK', color: 7, label: '횡단보도 (줄무늬 45cm 칠·45cm 빔, 줄마다 닫힌 선)' },
+  { name: 'ISLAND', color: 8, label: '교통섬 (1:1,000 안전지대 중 교통섬)' },
+  { name: 'SAFETY-ZONE', color: 2, label: '안전지대 표시 (노란 테두리·빗금)' },
+  { name: 'SCHOOL-ZONE', color: 1, label: '어린이보호구역 (적색 포장)' },
   { name: 'FENCE', color: 9, label: '담장·가드레일' },
   { name: 'LANE', color: 7, label: '차선 (흰색, 점선은 칠한 부분만)' },
   { name: 'LANE-YELLOW', color: 2, label: '차선 (황색·중앙선)' },
@@ -227,7 +230,16 @@ export function siteModelToDxf(m: SiteModel, meta: { title: string; address: str
     g(30, 0)
     text('STOP', [s.x + 1, s.y + 1], 1.2, s.use || 'STOP', false)
   }
-  polys('CROSSWALK', m.crosswalks)
+  polys('CROSSWALK', m.zebra.length ? m.zebra : m.crosswalks)
+  polys(
+    'ISLAND',
+    m.safety.filter((s) => s.kind === 'island').map((s) => s.poly),
+  )
+  polys('SAFETY-ZONE', [...m.safety.filter((s) => s.kind === 'painted').map((s) => s.poly), ...m.hatch])
+  polys(
+    'SCHOOL-ZONE',
+    m.safety.filter((s) => s.kind === 'school').map((s) => s.poly),
+  )
   for (const w of m.fences) polyline('FENCE', w.pts, false)
   for (const l of m.lanes) polyline(l.color === 'yellow' ? 'LANE-YELLOW' : l.color === 'blue' ? 'LANE-BLUE' : 'LANE', l.pts, false)
   polys('ROAD-MARK', m.marks)

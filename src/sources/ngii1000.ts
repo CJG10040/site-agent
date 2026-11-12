@@ -72,6 +72,8 @@ const WANTS: Want[] = [
     props: (r) => ({ width: num(r['도로폭']), lanes: num(r['차로수']), name: r['도로명'] || r['명칭'] || '', kind: r['도로구분'] ?? '', oneway: r['일방통행'] === '일방통행' }),
   },
   { match: /^A004/, key: 'crosswalk', kinds: ['polygon'], props: () => ({}) },
+  // 안전지대: 구조 = 교통섬(올라온 섬) / 평면(도색)(노란 빗금) / 어린이보호구역(적색 포장)
+  { match: /^A005/, key: 'safety', kinds: ['polygon'], props: (r) => ({ kind: r['구조'] ?? '', name: r['명칭'] ?? '' }) },
   { match: /^A014/, key: 'stop', kinds: ['point'], props: (r) => ({ name: r['명칭'] ?? '', use: r['용도'] ?? '' }) },
   { match: /^D003/, key: 'tree', kinds: ['point'], props: (r) => ({ kind: r['구분'] ?? '', species: r['수종'] ?? '', h: num(r['높이']), d: num(r['직경']) }) },
   { match: /^B002/, key: 'fence', kinds: ['line'], props: (r) => ({ kind: r['구분'] || '담장', material: r['재질'] ?? '' }) },
