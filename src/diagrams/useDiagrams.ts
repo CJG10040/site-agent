@@ -45,8 +45,8 @@ function cachePut(p: CachedPanel) {
   }
 }
 
-/** 도판마다 영향을 주는 설정만 골라 열쇠로 (3D면 보는 방향도) */
-function settingsKey(id: string, s: DiagramSettings): string {
+/** 도판마다 영향을 주는 설정만 골라 열쇠로 (3D면 보는 방향도). 도판 화면이 '바뀐 도판'을 셀 때도 씀 */
+export function settingsKey(id: string, s: DiagramSettings): string {
   const c = s.view3d?.includes(id) ? s.cam3d ?? {} : null
   return flatKey(id, s) + (c ? `|3d:${c.az ?? ''},${c.tilt ?? ''},${c.vex ?? ''}` : '')
 }
@@ -106,11 +106,14 @@ export function useDiagrams(project: Project, vworldKey: string, only?: string[]
   const synth = useMemo(() => synthCtxOf(project), [synthSig])
   const [panels, setPanels] = useState<Record<string, CachedPanel>>({})
   const [busy, setBusy] = useState(false)
+  /** 그리는 중: 새로 그릴 도판 수 중 몇 장째, 지금 그리는 도판 이름 (저장해 둔 도판은 세지 않음) */
+  const [progress, setProgress] = useState<{ done: number; total: number; label: string } | null>(null)
   const [terrain, setTerrain] = useState<TerrainAnalysis | null>(null)
 
   useEffect(() => {
     if (!data) {
       setPanels({})
+      setProgress(null)
       return
     }
     let alive = true
@@ -124,11 +127,12 @@ export function useDiagrams(project: Project, vworldKey: string, only?: string[]
         return o ? [o.base, o.top] : [id]
       }
       const needsTerrain = wanted.some((p) => uses(p.id).some((x) => TERRAIN_IDS.has(x)) || (p.id === 'synth' && TERRAIN_IDS.has(synth.state.base)))
+      if (needsTerrain) setProgress({ done: 0, total: 0, label: '지형 분석' })
       const fine = needsTerrain ? fineTerrainCached(data.ngii, data.center, fineHalfFor(data.R)) : null
       const t = needsTerrain ? await analyzeTerrain(data.center, data.boundary, data.R, fine).catch(() => null) : null
       if (!alive) return
       setTerrain(t)
-      for (const def of wanted) {
+      const jobs = wanted.map((def) => {
         const used = uses(def.id)
         const tKey = used.some((x) => TERRAIN_IDS.has(x)) || def.id === 'synth' ? `|${t ? `${t.grid.source}${t.grid.version ?? ''}` : 'no-terrain'}` : ''
         // 속도 장면은 수집 뒤에도 늘어나므로 장면 수를 열쇠에 넣는다
@@ -137,18 +141,31 @@ export function useDiagrams(project: Project, vworldKey: string, only?: string[]
         const labels = labelEdits.filter((l) => l.panelId === def.id)
         const lKey = labels.length ? `|labels:${hashOf(labels.map((l) => `${l.key}:${l.dx.toFixed(1)},${l.dy.toFixed(1)}:${l.hidden ? 1 : 0}`).join('|'))}` : ''
         const key = `${dataSig}|${def.id}|${settingsKey(def.id, settings)}|${vworldKey ? 'k' : '-'}${tKey}${sKey}${yKey}${lKey}`
+        return { def, key, labels }
+      })
+      const total = jobs.filter((j) => !cache.has(j.key)).length
+      let drawn = 0
+      for (const { def, key, labels } of jobs) {
         let hit = cache.get(key)
         if (!hit) {
+          setProgress({ done: drawn, total, label: def.title })
+          // 진행도를 먼저 그리게 한 번 쉼
+          await new Promise((r) => setTimeout(r, 0))
+          if (!alive) return
           const r = await renderPanel(def, data, settings, vworldKey, date, t, def.id === 'synth' ? { synth, labels } : { labels })
           hit = { ...r, url: URL.createObjectURL(svgBlob(r.svg)), key }
           cachePut(hit)
+          drawn++
         }
         if (!alive) return
         const done = hit
         setPanels((cur) => (cur[def.id]?.key === done.key ? cur : { ...cur, [def.id]: done }))
         await new Promise((r) => setTimeout(r, 0))
       }
-      if (alive) setBusy(false)
+      if (alive) {
+        setBusy(false)
+        setProgress(null)
+      }
     })()
     return () => {
       alive = false
@@ -156,5 +173,5 @@ export function useDiagrams(project: Project, vworldKey: string, only?: string[]
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data, allKey, vworldKey, ids, date, synthSig, labelSig])
 
-  return { data, settings, panels, busy, terrain }
+  return { data, settings, panels, busy, terrain, progress }
 }

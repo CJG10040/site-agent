@@ -159,6 +159,15 @@ export interface CollectedLayer {
   features: { type: 'Feature'; geometry: Geometry | null; properties: Record<string, unknown> }[]
 }
 
+/** 15-C 렌더링 모델 디테일 단계 */
+export type RenderLevel = 'light' | 'normal' | 'detail'
+
+/** 15-C 렌더링 모델 설정: 단계 + 켠 항목 (단계를 고르면 그 단계의 항목으로 바뀜) */
+export interface RenderModelSettings {
+  level: RenderLevel
+  items: string[]
+}
+
 /** 15-B 콘타 모형 도로 처리: 새김선 / 따로 자른 조각(얇은 재료) / 파내기(한 판 내려앉힘) */
 export type ContourRoadMode = 'engrave' | 'pieces' | 'cutout'
 
@@ -207,6 +216,8 @@ export interface Project {
   modelExportedAt?: string
   /** 15-B 콘타 모형 설정 (축척·판 두께·재료 판·크기·도로 처리) */
   contour?: ContourSettings
+  /** 15-C 렌더링 모델 단계·항목 */
+  renderModel?: RenderModelSettings
   /** Phase 7 도판: 그리기 설정과 도판별 결론 */
   diagrams?: DiagramState
   /** Phase 12 종합 다이어그램 (⑧ 해석·가설에서 그림) */

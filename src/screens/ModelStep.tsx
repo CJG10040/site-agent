@@ -96,6 +96,12 @@ export default function ModelStep({ project, update, config, onGoData, onGoSite 
                   d.modelExportedAt = nowIso()
                 })
               }
+              render={project.renderModel}
+              onRender={(r) =>
+                update((d) => {
+                  d.renderModel = r
+                })
+              }
               contour={project.contour}
               onContour={(c) =>
                 update((d) => {

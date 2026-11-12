@@ -5,7 +5,7 @@ import { siteOverview } from '../diagrams/overview'
 import { ORDERED_PANELS, PANEL_GROUP_ORDER, panelNumber, type PanelDef } from '../diagrams/panels'
 import { buildPanelPrompt, parsePanelAnswer } from '../diagrams/prompt'
 import { DEFAULT_SETTINGS, panelFileName } from '../diagrams/render'
-import { useDiagrams } from '../diagrams/useDiagrams'
+import { settingsKey, useDiagrams } from '../diagrams/useDiagrams'
 import PanelEditor from '../components/PanelEditor'
 import { editsOf } from '../model/edits'
 import StylePanel from '../components/StylePanel'
@@ -38,6 +38,10 @@ interface Props {
 
 const EMPTY_NOTE: PanelNote = { conclusion: '', suggestions: [], include: true, source: null, updatedAt: '' }
 
+/** 그림에 영향을 주지 않아 바로 저장하는 설정 */
+const INSTANT_KEYS: (keyof DiagramSettings)[] = ['pngWidth']
+const sameValue = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
+
 function noteOf(project: Project, id: string): PanelNote {
   return { ...EMPTY_NOTE, ...(project.diagrams?.panels[id] ?? {}) }
 }
@@ -58,7 +62,11 @@ function Seg<T extends string | number>({ value, options, onChange, label }: { v
 }
 
 export default function DiagramStep({ project, update, config, keys, onGoData, onGoModel, onNext }: Props) {
-  const { data, settings, panels, busy, terrain } = useDiagrams(project, config.key)
+  // 그려진 도판은 저장된 설정(applied)으로. 설정 칸에서 고친 것은 초안(draft)에 모았다가 '도판 생성'을 누르면 저장·그리기
+  // (2026-11-13 사용자 요청: 설정을 바꿀 때마다 다시 그려 버벅임)
+  const { data, settings: applied, panels, busy, terrain, progress } = useDiagrams(project, config.key)
+  const [draft, setDraft] = useState<Partial<DiagramSettings>>({})
+  const settings: DiagramSettings = { ...applied, ...draft }
   const [viewing, setViewing] = useState<string | null>(null)
   const edits = editsOf(project)
   const [answer, setAnswer] = useState('')
@@ -72,12 +80,33 @@ export default function DiagramStep({ project, update, config, keys, onGoData, o
 
   const overview = useMemo(() => (data ? siteOverview(project, data, terrain) : null), [data, project, terrain])
 
-  const setSettings = (patch: Partial<DiagramSettings>) =>
+  const applySettings = (patch: Partial<DiagramSettings>) =>
     update((d) => {
       const cur = d.diagrams ?? { settings: { ...DEFAULT_SETTINGS }, panels: {} }
       cur.settings = { ...DEFAULT_SETTINGS, ...cur.settings, ...patch }
       d.diagrams = cur
     })
+  /** 설정 칸·도판 카드에서 고친 것: 초안에만 (저장된 값과 같아지면 초안에서 뺌) */
+  const setSettings = (patch: Partial<DiagramSettings>) => {
+    const instant = Object.fromEntries(Object.entries(patch).filter(([k]) => INSTANT_KEYS.includes(k as keyof DiagramSettings))) as Partial<DiagramSettings>
+    if (Object.keys(instant).length) applySettings(instant)
+    setDraft((cur) => {
+      const next: Record<string, unknown> = { ...cur }
+      for (const [k, v] of Object.entries(patch)) {
+        if (INSTANT_KEYS.includes(k as keyof DiagramSettings) || sameValue(v, applied[k as keyof DiagramSettings])) delete next[k]
+        else next[k] = v
+      }
+      return next as Partial<DiagramSettings>
+    })
+  }
+  const draftKeys = Object.keys(draft)
+  // 설정이 바뀌어 다시 그려야 하는 도판
+  const changedIds = new Set(draftKeys.length ? ORDERED_PANELS.filter((p) => settingsKey(p.id, settings) !== settingsKey(p.id, applied)).map((p) => p.id) : [])
+  const generate = () => {
+    if (!draftKeys.length) return
+    applySettings(draft)
+    setDraft({})
+  }
 
   const toggle3d = (id: string, on: boolean) => {
     const cur = new Set(settings.view3d ?? [])
@@ -173,7 +202,7 @@ export default function DiagramStep({ project, update, config, keys, onGoData, o
     const p = panels[def.id]
     if (!p) return
     try {
-      downloadBlob(panelFileName(project, def, 'png'), await svgToPng(p.svg, settings.pngWidth, settings.background === 'white' ? '#ffffff' : null))
+      downloadBlob(panelFileName(project, def, 'png'), await svgToPng(p.svg, settings.pngWidth, applied.background === 'white' ? '#ffffff' : null))
     } catch (e) {
       setMsg({ kind: 'error', text: e instanceof Error ? e.message : String(e) })
     }
@@ -186,7 +215,7 @@ export default function DiagramStep({ project, update, config, keys, onGoData, o
         const p = panels[def.id]
         files.push({
           name: panelFileName(project, def, kind),
-          data: kind === 'svg' ? `<?xml version="1.0" encoding="UTF-8"?>\n${p.svg}` : await svgToPng(p.svg, settings.pngWidth, settings.background === 'white' ? '#ffffff' : null),
+          data: kind === 'svg' ? `<?xml version="1.0" encoding="UTF-8"?>\n${p.svg}` : await svgToPng(p.svg, settings.pngWidth, applied.background === 'white' ? '#ffffff' : null),
         })
       }
       const name = (project.brief.projectName || '대지').replace(/[\\/:*?"<>|\s]+/g, '_')
@@ -270,6 +299,33 @@ export default function DiagramStep({ project, update, config, keys, onGoData, o
           <p className="muted small overview-note">{overview.note}</p>
         </section>
       )}
+
+      <div className={`gen-bar${draftKeys.length ? ' dirty' : ''}${busy ? ' busy' : ''}`} role="status" aria-live="polite">
+        {busy ? (
+          <div className="gen-progress">
+            <span>
+              도판 생성 중{progress && progress.total > 0 ? ` ${progress.done + 1}/${progress.total}` : ''}
+              {progress?.label ? <span className="muted"> — {progress.label}</span> : null}
+            </span>
+            <progress max={progress?.total || 1} value={progress && progress.total > 0 ? progress.done : 0} aria-label="도판 생성 진행도" />
+          </div>
+        ) : draftKeys.length ? (
+          <span>
+            설정을 바꿨습니다 — <strong>도판 {changedIds.size}장</strong>을 다시 그립니다{changedIds.size === 0 ? ' (그림이 바뀌지 않는 설정)' : ''}
+          </span>
+        ) : (
+          <span className="muted">도판 {Object.keys(panels).length}장 · 지금 설정으로 그렸습니다. 설정을 바꾼 뒤 '도판 생성'을 누르세요.</span>
+        )}
+        <span className="spacer" />
+        {draftKeys.length > 0 && (
+          <button type="button" className="btn small ghost" onClick={() => setDraft({})}>
+            되돌리기
+          </button>
+        )}
+        <button type="button" className="btn small primary" disabled={!draftKeys.length} onClick={generate}>
+          도판 생성
+        </button>
+      </div>
 
       <StylePanel settings={settings} setSettings={setSettings} />
 
@@ -501,7 +557,6 @@ export default function DiagramStep({ project, update, config, keys, onGoData, o
         </details>
       )}
 
-      {busy && <p className="loading">도판을 그리는 중… ({Object.keys(panels).length}/{ORDERED_PANELS.length})</p>}
 
       {PANEL_GROUP_ORDER.map((g) => {
         // 겹쳐 보기 칸은 앞 칸을 채우면 다음 칸이 나타남
@@ -518,9 +573,10 @@ export default function DiagramStep({ project, update, config, keys, onGoData, o
                 const note = noteOf(project, def.id)
                 const empty = p?.out.empty
                 return (
-                  <article key={def.id} className={`diagram-card${empty ? ' empty' : ''}`}>
+                  <article key={def.id} className={`diagram-card${empty ? ' empty' : ''}${changedIds.has(def.id) ? ' changed' : ''}`}>
                     <button type="button" className="diagram-thumb" onClick={() => p && setViewing(def.id)} aria-label={`${def.title} 크게 보기`} disabled={!p}>
                       {p ? <img src={p.url} alt={def.title} loading="lazy" /> : <span className="muted small">그리는 중…</span>}
+                      {changedIds.has(def.id) && <span className="changed-badge small">설정 바뀜 · 도판 생성 전</span>}
                     </button>
                     <div className="diagram-body">
                       <h4>
@@ -621,7 +677,7 @@ export default function DiagramStep({ project, update, config, keys, onGoData, o
           def={viewDef}
           panel={panels[viewing]}
           data={data}
-          settings={settings}
+          settings={applied}
           onClose={() => setViewing(null)}
           onSvg={() => downloadSvg(viewDef)}
           onPng={() => void downloadPng(viewDef)}

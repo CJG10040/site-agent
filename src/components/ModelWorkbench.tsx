@@ -5,10 +5,11 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import type { DiagramData } from '../diagrams/data'
 import { buildModelFor, modelStats } from '../export/modelBuild'
+import { filterModel, itemCounts, itemsOfLevel, LEVELS, MODEL_ITEMS } from '../export/modelItems'
 import type { SiteModel } from '../export/siteModel'
 import { siteModelToDxf } from '../export/toDxf'
 import { downloadBlob } from '../model/project'
-import type { ContourSettings } from '../model/types'
+import type { ContourSettings, RenderLevel, RenderModelSettings } from '../model/types'
 import ContourBench from './ContourBench'
 
 const ModelPreview = lazy(() => import('./ModelPreview'))
@@ -29,6 +30,9 @@ interface Props {
   /** 콘타 모형 설정 (프로젝트에 저장) */
   contour?: ContourSettings
   onContour?: (s: ContourSettings) => void
+  /** 렌더링 모델 단계·항목 (프로젝트에 저장) */
+  render?: RenderModelSettings
+  onRender?: (s: RenderModelSettings) => void
 }
 
 type Tab = 'render' | 'contour'
@@ -36,7 +40,7 @@ type Tab = 'render' | 'contour'
 const sideLabel = (h: number) => (h * 2 >= 1000 ? `${(h * 2) / 1000}km` : `${h * 2}m`)
 const fmt = (n: number, d = 0) => n.toLocaleString('ko-KR', { maximumFractionDigits: d })
 
-export default function ModelWorkbench({ data, baseName, meta, halfOptions, initialHalf, asPage = false, onClose, onExported, contour, onContour }: Props) {
+export default function ModelWorkbench({ data, baseName, meta, halfOptions, initialHalf, asPage = false, onClose, onExported, contour, onContour, render, onRender }: Props) {
   const [tab, setTab] = useState<Tab>('render')
   const [half, setHalf] = useState(initialHalf)
   const [model, setModel] = useState<SiteModel | null>(null)
@@ -81,17 +85,43 @@ export default function ModelWorkbench({ data, baseName, meta, halfOptions, init
     }
   }, [data, half])
 
-  const stats = useMemo(() => (model ? modelStats(model) : null), [model])
-  const name = `${baseName}_3D_${sideLabel(half)}`
+  // 15-C 단계·항목: 끈 항목을 비운 모형으로 물체 수·미리보기·내려받기
+  const [rs, setRs] = useState<RenderModelSettings>(() => render ?? { level: 'detail', items: itemsOfLevel('detail') })
+  useEffect(() => {
+    if (render) setRs(render)
+  }, [render])
+  const setRender = (next: RenderModelSettings) => {
+    setRs(next)
+    onRender?.(next)
+  }
+  const itemsKey = [...rs.items].sort().join(',')
+  const custom = itemsKey !== [...itemsOfLevel(rs.level)].sort().join(',')
+  const counts = useMemo(() => (model ? itemCounts(model) : null), [model])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const shown = useMemo(() => (model ? filterModel(model, rs.items) : null), [model, itemsKey])
+  // 미리보기는 항목을 연달아 끄고 켤 때 매번 다시 그리지 않게 조금 기다렸다가
+  const [previewModel, setPreviewModel] = useState<SiteModel | null>(null)
+  useEffect(() => {
+    if (!shown) {
+      setPreviewModel(null)
+      return
+    }
+    const t = window.setTimeout(() => setPreviewModel(shown), previewModel ? 400 : 0)
+    return () => window.clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shown])
+  const stats = useMemo(() => (shown ? modelStats(shown) : null), [shown])
+  const levelLabel = LEVELS.find((l) => l.id === rs.level)?.label ?? ''
+  const name = `${baseName}_3D_${sideLabel(half)}_${levelLabel}${custom ? '_고침' : ''}`
 
   const download3dm = async () => {
-    if (!model) return
+    if (!shown) return
     setBusy('라이노 모듈 불러오는 중')
     setMsg(null)
     try {
       const { siteModelTo3dm } = await import('../export/to3dm')
       const t0 = performance.now()
-      const bytes = await siteModelTo3dm(model, meta, (s) => setBusy(s))
+      const bytes = await siteModelTo3dm(shown, meta, (s) => setBusy(s))
       downloadBlob(`${name}.3dm`, new Blob([bytes as BlobPart], { type: 'application/octet-stream' }))
       onExported?.()
       setMsg({ kind: 'ok', text: `라이노 파일을 내려받았습니다 — ${fmt(bytes.length / 1e6, 1)}MB, 만드는 데 ${fmt((performance.now() - t0) / 1000, 1)}초.` })
@@ -102,8 +132,8 @@ export default function ModelWorkbench({ data, baseName, meta, halfOptions, init
     }
   }
   const downloadDxf = () => {
-    if (!model) return
-    downloadBlob(`${baseName}_평면_${sideLabel(half)}.dxf`, new Blob([siteModelToDxf(model, meta)], { type: 'application/dxf' }))
+    if (!shown) return
+    downloadBlob(`${baseName}_평면_${sideLabel(half)}.dxf`, new Blob([siteModelToDxf(shown, meta)], { type: 'application/dxf' }))
     onExported?.()
     setMsg({ kind: 'ok', text: 'DXF(평면 밑그림)를 내려받았습니다.' })
   }
@@ -147,6 +177,54 @@ export default function ModelWorkbench({ data, baseName, meta, halfOptions, init
             </section>
 
             <section>
+              <h3>디테일 단계</h3>
+              <div className="segmented small" role="radiogroup" aria-label="디테일 단계">
+                {LEVELS.map((l) => (
+                  <button
+                    key={l.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={rs.level === l.id}
+                    className={rs.level === l.id ? 'on' : ''}
+                    disabled={!!busy}
+                    onClick={() => setRender({ level: l.id as RenderLevel, items: itemsOfLevel(l.id) })}
+                  >
+                    {l.label}
+                  </button>
+                ))}
+              </div>
+              <p className="muted small">
+                {LEVELS.find((l) => l.id === rs.level)?.note}
+                {custom ? ' — 항목을 고쳤습니다' : ''}
+              </p>
+              <details className="model-items">
+                <summary className="small">항목 켜고 끄기{custom ? ' (고침)' : ''}</summary>
+                {LEVELS.map((l) => (
+                  <div key={l.id} className="model-item-group">
+                    <span className="label small">{l.id === 'light' ? '가벼움' : `${l.label}에 더함`}</span>
+                    {MODEL_ITEMS.filter((it) => it.level === l.id).map((it) => {
+                      const n = counts?.[it.id] ?? 0
+                      const on = rs.items.includes(it.id)
+                      return (
+                        <label key={it.id} className={`check-row small${n ? '' : ' muted'}`}>
+                          <input
+                            type="checkbox"
+                            checked={on && n > 0}
+                            disabled={!n || !!busy}
+                            onChange={(e) => setRender({ level: rs.level, items: e.target.checked ? [...rs.items, it.id] : rs.items.filter((x) => x !== it.id) })}
+                          />
+                          {it.label}
+                          <span className="muted">{n ? (it.unit ? ` ${fmt(n)}${it.unit}` : '') : ' 자료 없음'}</span>
+                        </label>
+                      )
+                    })}
+                  </div>
+                ))}
+                <p className="muted small">파라펫·지붕 모양(건축물대장 지붕 구조)은 다음 단계(15-D)에서 자세히에 더합니다.</p>
+              </details>
+            </section>
+
+            <section>
               <h3>들어가는 것</h3>
               {building && <p className="muted small">모형 만드는 중…</p>}
               {stats && (
@@ -174,16 +252,14 @@ export default function ModelWorkbench({ data, baseName, meta, halfOptions, init
                 </p>
               )}
               {stats?.warn && <p className="notice error">{stats.warn}</p>}
-              <p className="muted small">
-                디테일(가로수·정류장·차선 등)은 ④에서 1:1,000 수치지도·정밀도로지도를 올렸을 때 들어갑니다. 가벼움·보통·자세히 단계와 항목 끄기는 다음 단계(15-C)에서 붙입니다.
-              </p>
+              <p className="muted small">디테일(가로수·정류장·차선 등)은 1:1,000 수치지도·정밀도로지도를 올렸을 때 들어갑니다.</p>
             </section>
 
             <section className="workbench-actions">
-              <button type="button" className="btn primary" disabled={!model || !!busy} onClick={() => void download3dm()}>
+              <button type="button" className="btn primary" disabled={!shown || !!busy} onClick={() => void download3dm()}>
                 {busy ? `만드는 중… ${busy}` : '라이노 .3dm 내려받기'}
               </button>
-              <button type="button" className="btn small" disabled={!model || !!busy} onClick={downloadDxf}>
+              <button type="button" className="btn small" disabled={!shown || !!busy} onClick={downloadDxf}>
                 DXF (평면 밑그림)
               </button>
               {msg && <p className={`notice ${msg.kind === 'error' ? 'error' : 'ok'}`}>{msg.text}</p>}
@@ -198,9 +274,9 @@ export default function ModelWorkbench({ data, baseName, meta, halfOptions, init
               </label>
               <span className="muted small">끌어서 돌리기 · 휠로 확대 · 오른쪽 끌기로 옮기기</span>
             </div>
-            {showPreview && model ? (
+            {showPreview && previewModel ? (
               <Suspense fallback={<p className="model-preview-note">3D 미리보기 불러오는 중…</p>}>
-                <ModelPreview model={model} onReady={setPreviewInfo} />
+                <ModelPreview model={previewModel} onReady={setPreviewInfo} />
               </Suspense>
             ) : (
               <div className="model-preview-empty muted">{building ? '모형 만드는 중…' : '미리보기를 끈 상태'}</div>
