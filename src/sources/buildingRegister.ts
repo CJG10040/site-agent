@@ -137,3 +137,48 @@ export async function registerForParcel(keys: ApiKeys, pnu: string, addr: string
     return { pnu, addr, role, titles: [], floors: [], error: e instanceof Error ? e.message : String(e) }
   }
 }
+
+// ───────────────────────── 15-D 지붕 구조 (2026-11-13) ─────────────────────────
+
+/** 표제부에서 지붕 모양에 쓰는 것만 */
+export interface RoofTitle {
+  dongNm: string
+  /** 주건축물이면 true (부속건축물 false) */
+  main: boolean
+  /** 지붕 구조 (roofCdNm, 예: '(철근)콘크리트', '기와', '슬레이트', '기타지붕') */
+  roof: string
+  /** 건물 구조 (strctCdNm) */
+  strct: string
+  purpose: string
+  floors: number | null
+  heit: number | null
+  archArea: number | null
+}
+
+const numOrNull = (v: unknown) => {
+  const n = Number(v)
+  return Number.isFinite(n) && n > 0 ? n : null
+}
+
+/** 필지 하나의 표제부 → 지붕 구조 (표제부만 조회) */
+export async function roofTitlesForParcel(keys: ApiKeys, pnu: string): Promise<{ pnu: string; titles: RoofTitle[]; error: string | null }> {
+  try {
+    const items = await hubGet(keys, 'getBrTitleInfo', pnuToParams(pnu))
+    return {
+      pnu,
+      titles: items.map((t) => ({
+        dongNm: String(t.dongNm ?? '').trim(),
+        main: !/부속/.test(String(t.mainAtchGbCdNm ?? '')),
+        roof: String(t.roofCdNm ?? '').trim(),
+        strct: String(t.strctCdNm ?? '').trim(),
+        purpose: String(t.mainPurpsCdNm ?? '').trim(),
+        floors: numOrNull(t.grndFlrCnt),
+        heit: numOrNull(t.heit),
+        archArea: numOrNull(t.archArea),
+      })),
+      error: null,
+    }
+  } catch (e) {
+    return { pnu, titles: [], error: e instanceof Error ? e.message : String(e) }
+  }
+}

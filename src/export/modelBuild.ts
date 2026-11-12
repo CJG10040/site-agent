@@ -80,7 +80,9 @@ export function modelStats(m: SiteModel): ModelStats {
   const ribbonLen = m.lanes.reduce((s, l) => s + lenOf(l.pts) * (l.double ? 2 : 1), 0) + m.curbs.reduce((s, c) => s + lenOf(c) * 3, 0)
   const bytes =
     terrainCells * 92 + drapedArea * (2 / (drapeEdge * drapeEdge)) * 65 + objects * 420 + m.trees.length * 32 * 30 + ribbonLen * 45 + m.lamps.length * 900 + m.stops.length * 3000 +
-    m.poles.length * 400 + m.signals.length * 300 + m.signs.length * 1800 + m.barriers.reduce((s, b) => s + lenOf(b.pts), 0) * 180 + m.bumps.length * 9000 + m.arrows.length * 280
+    m.poles.length * 400 + m.signals.length * 300 + m.signs.length * 1800 + m.barriers.reduce((s, b) => s + lenOf(b.pts), 0) * 180 + m.bumps.length * 9000 + m.arrows.length * 280 +
+    // 15-D 지붕: 파라펫(꼭짓점마다 약 160B)·경사 지붕(벽 메시 + 지붕 면, 꼭짓점마다 약 260B)
+    m.buildings.reduce((s, b) => s + (b.roof ? b.parts.reduce((t, p) => t + p.outer.length, 0) * (b.roof.kind === 'flat' ? 160 : 260) : 0), 0)
   const mb = bytes / 1e6
   const rows = [
     { label: '지형 면', n: terrainCells, unit: `칸 (${cell}m)` },

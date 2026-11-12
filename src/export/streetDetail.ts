@@ -22,6 +22,9 @@ export const STREET = {
   hatchEdge: 0.15,
 }
 
+/** 인도·보도 윗면 삼각형 최대 변 (m) — 가는 띠라 넓게 잡아도 지형을 따름 */
+export const WALK_EDGE = 8
+
 const dot = (a: XY, b: XY) => a[0] * b[0] + a[1] * b[1]
 const unit = (v: XY): XY => {
   const L = Math.hypot(v[0], v[1]) || 1

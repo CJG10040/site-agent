@@ -4821,3 +4821,28 @@ dl {
   font-weight: 700;
   color: var(--muted);
 }
+
+/* 15-D 지붕 구조 조회 */
+.roof-lookup {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.roof-lookup h4 {
+  margin: 0 0 4px;
+  font-size: 14px;
+}
+
+.roof-lookup .row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  margin: 6px 0;
+}
+
+.roof-lookup progress {
+  width: 160px;
+  accent-color: var(--accent);
+}

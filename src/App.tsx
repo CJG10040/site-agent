@@ -171,7 +171,7 @@ export default function App() {
                 )}
                 {step === 'interpret' && <InterpretStep project={project} update={update} config={config} />}
                 {step === 'report' && <ReportStep project={project} update={update} config={config} />}
-                {step === 'model' && <ModelStep project={project} update={update} config={config} onGoData={() => go('data')} onGoSite={() => go('site')} />}
+                {step === 'model' && <ModelStep project={project} update={update} config={config} keys={keys} onGoData={() => go('data')} onGoSite={() => go('site')} />}
               </main>
             </div>
           )}

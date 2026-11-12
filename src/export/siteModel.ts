@@ -13,6 +13,10 @@ import type { Areal } from '../lib/geo'
 import { wgs84To5186, wgs84ToUtmk } from '../lib/proj'
 import { terrainAround, type TerrainGrid } from '../lib/terrain'
 import { densifyLine, hatchStripes, markGlyph, ribbon, roadDirs, zebraStripes } from './streetDetail'
+import { centroidOf } from '../diagrams/frame'
+import { parcelFinder } from '../lib/parcelFind'
+import type { RoofTitle } from '../sources/buildingRegister'
+import { pitchedFits, roofKindOf, ruleRoof, type ModelRoof } from './roofs'
 
 export type XY = [number, number]
 
@@ -32,6 +36,8 @@ export interface ModelBuilding {
   name: string
   use: string
   onSite: boolean
+  /** 15-D 지붕 모양 (높이를 모르면 null) */
+  roof: ModelRoof | null
 }
 
 export interface ModelArea {
@@ -538,6 +544,29 @@ export async function buildSiteModel(d: DiagramData, half: number, opts: { grid?
 
   const inSquare = ([x, y]: XY) => Math.abs(x) <= half && Math.abs(y) <= half
 
+  // ── 15-D 지붕: 건물이 놓인 필지의 건축물대장 지붕 구조 → 모양, 없으면 규칙
+  const roofsBy = d.roofs ?? {}
+  const findPnu = Object.keys(roofsBy).length ? parcelFinder(d.parcels) : null
+  const roofFor = (b: DiagramData['buildings'][number]): ModelRoof => {
+    if (findPnu) {
+      const c = centroidOf(b.geom)
+      const pnu = c ? findPnu(c[0], c[1]) : null
+      const titles = pnu ? roofsBy[pnu] : undefined
+      if (titles?.length) {
+        // 한 필지에 여러 동이면 주건축물 중 층수·건축면적이 가까운 동
+        const pool = titles.some((t) => t.main) ? titles.filter((t) => t.main) : titles
+        const score = (t: RoofTitle) => Math.abs((t.floors ?? 0) - (b.floors ?? 0)) * 10 + (t.archArea ? Math.abs(Math.log(t.archArea / Math.max(1, b.area))) : 1)
+        const t = pool.reduce((s, q) => (score(q) < score(s) ? q : s))
+        const kind = roofKindOf(t.roof, t.strct)
+        if (kind) return { kind, source: 'register', label: t.roof || t.strct }
+      }
+    }
+    return { kind: ruleRoof(b.use, b.floors, b.area), source: 'rule', label: '' }
+  }
+
+  /** 경사 지붕을 못 얹는 바닥(넓거나 오목하거나 안마당)이면 평지붕으로 기록 */
+  const fitRoof = (r: ModelRoof, parts: Poly[]): ModelRoof => (r.kind !== 'flat' && !parts.every((p) => pitchedFits(p, r.kind as 'gable' | 'metal')) ? { ...r, kind: 'flat' } : r)
+
   const buildings: ModelBuilding[] = []
   for (const b of d.buildings) {
     if (b.underground) continue
@@ -550,14 +579,16 @@ export async function buildSiteModel(d: DiagramData, half: number, opts: { grid?
     const zs = [...parts.flatMap((p) => p.outer.map(([x, y]) => zAt(x, y))), zAt(cx, cy)]
     const base = Math.min(...zs) - 0.2
     const mean = zs.reduce((s, z) => s + z, 0) / zs.length
+    const top = bldHeight(b) !== null ? mean + (bldHeight(b) as number) : null
     buildings.push({
       parts,
       base,
-      top: bldHeight(b) !== null ? mean + (bldHeight(b) as number) : null,
+      top,
       floors: b.floors,
       name: b.name,
       use: b.use,
       onSite: b.onSite,
+      roof: top === null ? null : fitRoof(roofFor(b), parts),
     })
   }
 

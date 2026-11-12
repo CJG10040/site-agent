@@ -218,6 +218,8 @@ export interface Project {
   contour?: ContourSettings
   /** 15-C 렌더링 모델 단계·항목 */
   renderModel?: RenderModelSettings
+  /** 15-D 지붕 구조를 건축물대장에서 조회할 반경 (m, 학생이 정함) */
+  roofRadiusM?: number
   /** Phase 7 도판: 그리기 설정과 도판별 결론 */
   diagrams?: DiagramState
   /** Phase 12 종합 다이어그램 (⑧ 해석·가설에서 그림) */

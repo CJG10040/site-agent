@@ -4,6 +4,8 @@
 
 import * as THREE from 'three'
 import { dashesOf, densify, offsetLine, triangulate, type Poly, type SiteModel, type XY } from './siteModel'
+import { gableGeometry, parapetGeometry } from './roofs'
+import { WALK_EDGE } from './streetDetail'
 import { BARRIER_RAIL, barrierPosts, boxMesh, BUMP_H, densifyLine, hatchStripes, lampBoxes, poleBoxes, ribbon, shelterBoxes, signalBoxes, signPanels, STREET, type Box, type SignColor } from './streetDetail'
 
 export interface PreviewParts {
@@ -157,15 +159,15 @@ export function buildPreview(m: SiteModel): PreviewParts {
     }
   }
   /** 올라온 면: 윗면 + 옆면 */
-  const raised = (polys: Poly[], color: string, name: string) => {
+  const raised = (polys: Poly[], color: string, name: string, e = Math.min(edge, 3)) => {
     if (!polys.length) return
     const out: number[] = []
-    drapedPolys(polys, R + H, Math.min(edge, 3), out)
+    drapedPolys(polys, R + H, e, out)
     for (const p of polys) for (const r of [p.outer, ...p.holes]) sideTris(r, R, R + H, out)
     addMesh(out, color, { side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }, name)
   }
-  raised(m.walks, COLORS.walk, '인도')
-  raised(m.hdPaths, COLORS.hdPath, '보도 면')
+  raised(m.walks, COLORS.walk, '인도', WALK_EDGE)
+  raised(m.hdPaths, COLORS.hdPath, '보도 면', WALK_EDGE)
   raised(
     m.safety.filter((s) => s.kind === 'island').map((s) => s.poly),
     COLORS.island,
@@ -221,11 +223,22 @@ export function buildPreview(m: SiteModel): PreviewParts {
 
   // ── 건물 (벽 + 지붕), 층수 모르면 납작한 발자국
   const walls: Record<'bldg' | 'bldgSite' | 'bldgUnknown', number[]> = { bldg: [], bldgSite: [], bldgUnknown: [] }
+  const roofTris: number[] = []
   for (const b of m.buildings) {
     const key = b.top === null ? 'bldgUnknown' : b.onSite ? 'bldgSite' : 'bldg'
     const top = b.top ?? b.base + 0.4
     const out = walls[key]
     for (const p of b.parts) {
+      // 15-D: 경사 지붕 (벽은 지붕에 맞춤), 평지붕은 파라펫
+      if (b.top !== null && b.roof && b.roof.kind !== 'flat') {
+        const g = gableGeometry(p, b.base, b.top, b.roof.kind)
+        if (g) {
+          for (const v of g.walls) out.push(v)
+          for (const v of g.roof) roofTris.push(v)
+          continue
+        }
+      }
+      if (b.top !== null && b.roof) for (const v of parapetGeometry(p, b.top)) out.push(v)
       for (const ring of [p.outer, ...p.holes])
         for (let i = 0; i < ring.length; i++) {
           const [x1, y1] = ring[i]
@@ -240,6 +253,7 @@ export function buildPreview(m: SiteModel): PreviewParts {
   addMesh(walls.bldg, COLORS.bldg, { side: THREE.DoubleSide }, '주변 건물')
   addMesh(walls.bldgSite, COLORS.bldgSite, { side: THREE.DoubleSide }, '대지 안 건물')
   addMesh(walls.bldgUnknown, COLORS.bldgUnknown, { side: THREE.DoubleSide }, '층수 모름')
+  addMesh(roofTris, '#a8705c', { side: THREE.DoubleSide }, '경사 지붕')
 
   // ── 담장·가드레일 (세운 면)
   {

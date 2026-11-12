@@ -3,6 +3,7 @@
 
 import { lazy, Suspense, useMemo } from 'react'
 import NgiiUpload from '../components/NgiiUpload'
+import RoofLookup from '../components/RoofLookup'
 import { buildDiagramData } from '../diagrams/data'
 import { collectedDate } from '../diagrams/render'
 import { defaultHalf, halfOptionsFor } from '../export/modelBuild'
@@ -11,6 +12,7 @@ import { nowIso } from '../model/project'
 import type { Project } from '../model/types'
 import { HD_READER_V } from '../sources/hdMap'
 import { NGII_READER_V } from '../sources/ngiiMap'
+import type { ApiKeys } from '../sources/keys'
 import type { VWorldConfig } from '../sources/vworld'
 
 // 작업대·3D 미리보기는 이 화면을 열 때만 불러옴
@@ -20,14 +22,16 @@ interface Props {
   project: Project
   update: (fn: (draft: Project) => void) => void
   config: VWorldConfig
+  keys: ApiKeys
   onGoData: () => void
   onGoSite: () => void
 }
 
-export default function ModelStep({ project, update, config, onGoData, onGoSite }: Props) {
+export default function ModelStep({ project, update, config, keys, onGoData, onGoSite }: Props) {
   // 자료가 바뀔 때만 다시 (결론 고치기 같은 다른 변경에는 그대로)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const data = useMemo(() => buildDiagramData(project), [project.collected, project.site, project.edits?.hides])
+  // 지붕 구조를 받으면 collected가 바뀌어 모형을 다시 만듦
   const halfOptions = useMemo(() => (data ? halfOptionsFor(data) : []), [data])
   const meta = {
     title: project.brief.projectName || '대지',
@@ -93,6 +97,7 @@ export default function ModelStep({ project, update, config, onGoData, onGoSite 
               <summary className="small">수치지도·정밀도로지도 올리기 (④ 공간정보와 같은 칸)</summary>
               <NgiiUpload project={project} update={update} config={config} />
             </details>
+            <RoofLookup project={project} update={update} keys={keys} data={data} />
           </section>
 
           <Suspense fallback={<p className="loading">작업대 불러오는 중…</p>}>

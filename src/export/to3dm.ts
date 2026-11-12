@@ -5,6 +5,8 @@
 import type { RhinoModule } from 'rhino3dm'
 import wasmUrl from 'rhino3dm/rhino3dm.wasm?url'
 import { dashesOf, densify, modelNotes, offsetLine, triangulate, type Poly, type SiteModel, type XY } from './siteModel'
+import { gableGeometry, parapetGeometry, ROOF_LABEL } from './roofs'
+import { WALK_EDGE } from './streetDetail'
 import { BARRIER_RAIL, barrierPosts, boxMesh, BUMP_H, densifyLine, hatchStripes, lampBoxes, poleBoxes, ribbon, shelterBoxes, signalBoxes, signPanels, STREET, type SignColor } from './streetDetail'
 
 type Rgb = [number, number, number]
@@ -24,6 +26,8 @@ const LAYERS: LayerDef[] = [
   { key: 'bldgSite', name: '대지 안 기존 건물', color: [230, 150, 150], parent: 'bldg' },
   { key: 'bldgUnknown', name: '층수 모름 (발자국만)', color: [190, 190, 190], parent: 'bldg' },
   { key: 'bldgMinor', name: '지붕 구조물·가건물 (수치지도, 발자국)', color: [200, 190, 170], parent: 'bldg' },
+  { key: 'roofPitched', name: '경사 지붕 (박공 25°·금속 8°, 건축물대장 지붕 구조 또는 규칙)', color: [160, 100, 80], parent: 'bldg' },
+  { key: 'parapet', name: '파라펫 (평지붕 테두리, 높이 1m·두께 20cm 어림)', color: [205, 200, 192], parent: 'bldg' },
   { key: 'terrain', name: '지형', color: [150, 120, 90] },
   { key: 'mesh', name: '지형 면', color: [215, 205, 185], parent: 'terrain' },
   { key: 'contour', name: '등고선', color: [176, 130, 90], parent: 'terrain' },
@@ -183,6 +187,8 @@ export async function siteModelTo3dm(m: SiteModel, meta: ExportMeta, onStep?: (s
         curb: m.curbs.length > 0,
       }
       if (def.key === 'detail' && !Object.values(detailHas).some(Boolean)) continue
+      if (def.key === 'roofPitched' && !m.buildings.some((b) => b.roof && b.roof.kind !== 'flat')) continue
+      if (def.key === 'parapet' && !m.buildings.some((b) => b.roof)) continue
       if (def.key in detailHas && !detailHas[def.key]) continue
       const L = new rhino.Layer()
       L.name =
@@ -371,20 +377,44 @@ export async function siteModelTo3dm(m: SiteModel, meta: ExportMeta, onStep?: (s
         { 높이: String(c.level) },
       )
 
-    // ── 건물
+    // ── 건물 (15-D: 경사 지붕은 지붕에 맞춘 벽 메시 + 지붕 면, 평지붕은 돌출 + 파라펫)
     onStep?.('건물')
+    const addTris = (mb: MB, tris: number[]) => {
+      for (let i = 0; i + 8 < tris.length; i += 9) {
+        const a = mb.vs.add(tris[i], tris[i + 1], tris[i + 2])
+        const b2 = mb.vs.add(tris[i + 3], tris[i + 4], tris[i + 5])
+        const c = mb.vs.add(tris[i + 6], tris[i + 7], tris[i + 8])
+        mb.fs.addTriFace(a, b2, c)
+      }
+    }
+    const roofMb = newMesh()
+    const parapetMb = newMesh()
+    let pitched = 0
     for (const b of m.buildings) {
       const key = b.top === null ? 'bldgUnknown' : b.onSite ? 'bldgSite' : 'bldgAround'
       const label = [b.name, b.floors ? `${b.floors}층` : '층수 모름'].filter(Boolean).join(' ')
       const user: Record<string, string> = { 층수: b.floors ? String(b.floors) : '모름' }
       if (b.use) user['용도'] = b.use
       if (b.top !== null) user['높이(m, 어림)'] = (b.top - b.base).toFixed(1)
+      if (b.roof) user['지붕'] = `${ROOF_LABEL[b.roof.kind]} — ${b.roof.source === 'register' ? `건축물대장 지붕 구조: ${b.roof.label}` : '규칙 (대장에서 찾지 못함)'}`
       for (const p of b.parts) {
         const ring = (r: XY[]) => [...r, r[0]].map(([x, y]) => [x, y, b.base])
         if (b.top === null) {
           addPolyline(ring(p.outer), key, label, user)
           continue
         }
+        if (b.roof && b.roof.kind !== 'flat') {
+          const g = gableGeometry(p, b.base, b.top, b.roof.kind)
+          if (g) {
+            const wm = newMesh()
+            addTris(wm, g.walls)
+            addMeshObj(wm, key, label, { ...user, '용마루 높이(m, 어림)': (g.ridge - b.base).toFixed(1) })
+            addTris(roofMb, g.roof)
+            pitched++
+            continue
+          }
+        }
+        if (b.roof) addTris(parapetMb, parapetGeometry(p, b.top))
         const outer = new rhino.PolylineCurve(ring(p.outer))
         const ex = rhino.Extrusion.create(outer, b.top - b.base, true)
         free(outer)
@@ -403,6 +433,8 @@ export async function siteModelTo3dm(m: SiteModel, meta: ExportMeta, onStep?: (s
         free(at)
       }
     }
+    addMeshObj(roofMb, 'roofPitched', `경사 지붕 ${pitched}동`)
+    addMeshObj(parapetMb, 'parapet', '파라펫')
 
     // ── 수치지도: 원본 등고선·표고점·옹벽·절성토·지붕 구조물
     for (const c of m.mapContours) addPolyline(c.pts.map(([x, y]) => [x, y, c.z]), 'mapContour', `해발 ${c.level}m`, { 해발: String(c.level), 구분: c.major ? '계곡선' : '주곡선' })
@@ -458,7 +490,8 @@ export async function siteModelTo3dm(m: SiteModel, meta: ExportMeta, onStep?: (s
     // ── 도로·필지·공원·하천·대지
     onStep?.('도로·필지')
     drapedMesh(m.roads, 'roadSurf', '도로 면', 0.08)
-    addRaised(m.walks, 'walk', '인도 (15cm 단차)', DRAPE_EDGE)
+    // 인도·보도 윗면은 좁고 길어 삼각형을 8m까지 (3m면 가는 띠가 잘게 쪼개져 파일이 몇 MB 커짐 — 2026-11-13 측정)
+    addRaised(m.walks, 'walk', '인도 (15cm 단차)', WALK_EDGE)
     for (const r of m.roadCenters) addPolyline(draped(r.pts, false, 0.12), 'roadCenter', r.width ? `폭 ${r.width}m` : '폭 모름')
     for (const p of m.parcels)
       for (const poly of p.polys) addPolyline(draped(poly.outer, true, 0.04), 'parcel', p.jibun, { 지번: p.jibun, 지목: p.jimok })
@@ -477,7 +510,7 @@ export async function siteModelTo3dm(m: SiteModel, meta: ExportMeta, onStep?: (s
 
     // ── 1:1,000 수치지도·정밀도로지도 디테일 (15-F)
     if (m.crosswalks.length || m.marks.length || m.hdPaths.length || m.lanes.length || m.trees.length || m.fences.length || m.stops.length || m.lamps.length || m.curbs.length) onStep?.('디테일 (나무·차선·횡단보도 등)')
-    addRaised(m.hdPaths, 'hdPath', '보도 면 (15cm 단차)', DRAPE_EDGE)
+    addRaised(m.hdPaths, 'hdPath', '보도 면 (15cm 단차)', WALK_EDGE)
     // 횡단보도: 줄무늬 (줄무늬를 못 만든 것은 면 그대로)
     drapedMesh(m.zebra.length ? m.zebra : m.crosswalks, 'crosswalk', '횡단보도 줄무늬', R + 0.03, Math.min(DRAPE_EDGE, 3))
     drapedMesh(m.marks, 'mark', '노면표시', R + 0.04, Math.min(DRAPE_EDGE, 3))

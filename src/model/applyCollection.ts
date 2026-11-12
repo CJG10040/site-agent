@@ -64,6 +64,9 @@ export function applyCollection(project: Project, outcome: CollectOutcome, bound
   // 사용자가 올린 수치지도도 같은 대지면 남긴다 (사실 카드는 DataStep이 수집 뒤 다시 만듦)
   const uploadedFor = project.collected['ngii:sheets']?.features[0]?.properties.siteKey ?? project.collected['hd:files']?.features[0]?.properties.siteKey
   const keepUploads = uploadedFor === siteKey(site) ? Object.fromEntries(Object.entries(project.collected).filter(([k]) => k.startsWith('ngii:') || k.startsWith('hd:'))) : {}
+  // 15-D 지붕 구조(건축물대장)도 같은 대지면 남긴다 (한 번 받으면 다시 쓰기)
+  const roofs = project.collected['hub:roofs']
+  if (roofs && roofs.features[0]?.properties.siteKey === siteKey(site)) keepUploads['hub:roofs'] = roofs
   project.collected = keepUploads
   const layerSource: Record<string, string> = {}
   for (const o of outcome.layers) {

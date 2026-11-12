@@ -7,6 +7,7 @@ import type { SiteModel } from './siteModel'
 export type ModelItem =
   | 'terrain'
   | 'buildings'
+  | 'roofs'
   | 'site'
   | 'contours'
   | 'spots'
@@ -54,6 +55,7 @@ export const MODEL_ITEMS: { id: ModelItem; label: string; level: RenderLevel; un
   { id: 'parcels', label: '필지', level: 'normal', unit: '필' },
   { id: 'parks', label: '공원·녹지', level: 'normal', unit: '곳' },
   { id: 'rivers', label: '하천', level: 'normal', unit: '곳' },
+  { id: 'roofs', label: '지붕 모양 (박공·파라펫)', level: 'detail', unit: '동' },
   { id: 'trees', label: '가로수·독립수', level: 'detail', unit: '그루' },
   { id: 'stops', label: '버스정류장', level: 'detail', unit: '곳' },
   { id: 'lamps', label: '가로등', level: 'detail', unit: '개' },
@@ -82,6 +84,7 @@ export function itemCounts(m: SiteModel): Record<ModelItem, number> {
   return {
     terrain: m.terrain ? m.terrain.cols * m.terrain.rows : 0,
     buildings: m.buildings.length,
+    roofs: m.buildings.filter((b) => b.roof).length,
     site: m.site.length,
     contours: m.contours.length + m.mapContours.length,
     spots: m.spots.length,
@@ -117,7 +120,8 @@ export function filterModel(m: SiteModel, items: Iterable<string>): SiteModel {
   return {
     ...m,
     terrain: on.has('terrain') ? m.terrain : null,
-    buildings: keep('buildings', m.buildings),
+    // 지붕 모양을 끄면 평평한 매스 (파라펫 없음)
+    buildings: keep('buildings', on.has('roofs') ? m.buildings : m.buildings.map((b) => ({ ...b, roof: null }))),
     site: keep('site', m.site),
     contours: keep('contours', m.contours),
     mapContours: keep('contours', m.mapContours),

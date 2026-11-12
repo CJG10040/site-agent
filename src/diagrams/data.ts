@@ -1,5 +1,6 @@
 // 도판에 쓸 자료를 프로젝트의 수집 결과에서 한 번에 꺼낸다.
 
+import type { RoofTitle } from '../sources/buildingRegister'
 import { area, booleanPointInPolygon, feature, point } from '@turf/turf'
 import type { Geometry, LineString, MultiLineString } from 'geojson'
 import { centerOf, isAreal, isLinear, siteBoundary, type Areal } from '../lib/geo'
@@ -253,6 +254,8 @@ export interface DiagramData {
   ngii: NgiiData | null
   /** 올린 정밀도로지도 (없으면 null) */
   hd: HdData | null
+  /** 15-D 건축물대장 지붕 구조: 조회한 필지(PNU)마다 표제부 (대장이 없으면 빈 배열) */
+  roofs: Record<string, RoofTitle[]>
   /** 대지 필지의 토지이용계획 (지역·지구 이름, 포함/저촉/접합) — 법규 개요 도판 (14-C) */
   landUse: { name: string; kind: string }[]
   /** 토지대장 면적 합계(㎡) — 대지 필지 전체, 직접 그린 경계면 경계 안 면적과 다름 */
@@ -739,6 +742,7 @@ export function buildDiagramData(project: Project): DiagramData | null {
     env,
     ngii,
     hd,
+    roofs: Object.fromEntries((project.collected['hub:roofs']?.features ?? []).map((f) => [str(f.properties.pnu), (f.properties.titles as RoofTitle[]) ?? []])),
     landUse,
     officialArea,
     has,
