@@ -60,7 +60,10 @@ export async function renderPanel(
   terrain: TerrainAnalysis | null = null,
   extra: { synth?: SynthCtx | null; labels?: LabelEdit[] } = {},
 ): Promise<RenderedPanel> {
-  const R = def.frameR ? def.frameR(data, extra) : data.R
+  // 겹쳐 보기는 아래 도판의 틀을 빌림
+  const borrow = def.frameFrom?.(settings)
+  const fd = borrow ? (ORDERED_PANELS.find((p) => p.id === borrow) ?? def) : def
+  const R = fd.frameR ? fd.frameR(data, extra) : data.R
   const frame = makeFrame(data.center[0], data.center[1], R, settings.frame)
   const pal = paletteFor(settings, def.id)
   let out: PanelOutput

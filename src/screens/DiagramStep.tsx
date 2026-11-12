@@ -10,6 +10,8 @@ import PanelEditor from '../components/PanelEditor'
 import { editsOf } from '../model/edits'
 import { DXF_LAYERS, siteModelToDxf } from '../export/toDxf'
 import StylePanel from '../components/StylePanel'
+import OverlayControls from '../components/OverlayControls'
+import { isOverlayId, OVERLAY_IDS } from '../diagrams/overlay'
 import { wgs84ToUtmk } from '../lib/proj'
 import { terrainAround, type TerrainGrid } from '../lib/terrain'
 import { compositeGrid, fineHalfFor, fineTerrainCached } from '../lib/terrainFine'
@@ -585,7 +587,11 @@ export default function DiagramStep({ project, update, config, keys, onGoData, o
       {busy && <p className="loading">도판을 그리는 중… ({Object.keys(panels).length}/{ORDERED_PANELS.length})</p>}
 
       {PANEL_GROUP_ORDER.map((g) => {
-        const defs = ORDERED_PANELS.filter((p) => p.group === g)
+        // 겹쳐 보기 칸은 앞 칸을 채우면 다음 칸이 나타남
+        const defs = ORDERED_PANELS.filter((p) => p.group === g).filter((p) => {
+          const i = OVERLAY_IDS.indexOf(p.id)
+          return i <= 0 || !!settings.overlays?.[i - 1] || !!settings.overlays?.[i]
+        })
         return (
           <section key={g} className="diagram-group">
             <h3>{g}</h3>
@@ -603,6 +609,7 @@ export default function DiagramStep({ project, update, config, keys, onGoData, o
                       <h4>
                         <span className="muted">{String(panelNumber(def.id)).padStart(2, '0')}</span> {def.title}
                       </h4>
+                      {isOverlayId(def.id) && <OverlayControls id={def.id} settings={settings} setSettings={setSettings} />}
                       {empty ? (
                         <p className="muted small">
                           {empty}. {def.needs}

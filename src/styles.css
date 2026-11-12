@@ -4364,3 +4364,41 @@ dl {
 .theme-note {
   margin: 0;
 }
+
+/* 겹쳐 보기 카드 (14-D) */
+.overlay-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 4px 0 8px;
+  padding: 8px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+}
+
+.overlay-controls select {
+  width: 100%;
+}
+
+.overlay-row {
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+.overlay-opacity {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.overlay-opacity input[type='range'] {
+  width: 110px;
+}
+
+.overlay-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  align-items: center;
+}

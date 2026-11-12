@@ -11,6 +11,7 @@ import { buildDiagramData, type DiagramData } from './data'
 import { synthCtxOf } from './synth'
 import { svgBlob } from './export'
 import { paletteKey } from './palette'
+import { isOverlayId, overlaySpec } from './overlay'
 import { ORDERED_PANELS } from './panels'
 import { collectedDate, renderPanel, settingsOf, type RenderedPanel } from './render'
 
@@ -57,6 +58,10 @@ function settingsKey(id: string, s: DiagramSettings): string {
   if (id === 'windSummer' || id === 'windWinter') return `${common}|${s.fieldStyle}|${s.windStyle}`
   if (id === 'terrain' || id === 'slopeWater') return `${common}|${s.fieldStyle}|${s.terrainShade}`
   if (id === 'svfMap' || id === 'noise') return `${common}|${s.fieldStyle}`
+  if (isOverlayId(id)) {
+    const o = overlaySpec(s, id)
+    return o ? `${common}|${o.base}>${o.top}|${o.opacity}|${o.mode}|${settingsKey(o.base, s)}|${settingsKey(o.top, s)}` : common
+  }
   if (id === 'synth') return `${common}|${s.fieldStyle}|${s.windStyle}|${s.terrainShade}`
   if (id === 'sectionA' || id === 'sectionB') return `${common}|${s.sectionAngle}|${s.sectionVex}|${s.sectionRange}`
   return common
@@ -102,15 +107,21 @@ export function useDiagrams(project: Project, vworldKey: string, only?: string[]
     const wanted = ORDERED_PANELS.filter((p) => ids.split(',').includes(p.id))
     void (async () => {
       setBusy(true)
-      const needsTerrain = wanted.some((p) => TERRAIN_IDS.has(p.id) || (p.id === 'synth' && TERRAIN_IDS.has(synth.state.base)))
+      // 겹쳐 보기가 쓰는 도판 (지형·속도 열쇠에)
+      const uses = (id: string): string[] => {
+        const o = isOverlayId(id) ? overlaySpec(settings, id) : null
+        return o ? [o.base, o.top] : [id]
+      }
+      const needsTerrain = wanted.some((p) => uses(p.id).some((x) => TERRAIN_IDS.has(x)) || (p.id === 'synth' && TERRAIN_IDS.has(synth.state.base)))
       const fine = needsTerrain ? fineTerrainCached(data.ngii, data.center, fineHalfFor(data.R)) : null
       const t = needsTerrain ? await analyzeTerrain(data.center, data.boundary, data.R, fine).catch(() => null) : null
       if (!alive) return
       setTerrain(t)
       for (const def of wanted) {
-        const tKey = TERRAIN_IDS.has(def.id) || def.id === 'synth' ? `|${t ? `${t.grid.source}${t.grid.version ?? ''}` : 'no-terrain'}` : ''
+        const used = uses(def.id)
+        const tKey = used.some((x) => TERRAIN_IDS.has(x)) || def.id === 'synth' ? `|${t ? `${t.grid.source}${t.grid.version ?? ''}` : 'no-terrain'}` : ''
         // 속도 장면은 수집 뒤에도 늘어나므로 장면 수를 열쇠에 넣는다
-        const sKey = def.id === 'speed' || def.id === 'speedLocal' ? `|snaps:${data.speedSnaps.length}` : ''
+        const sKey = used.some((x) => x === 'speed' || x === 'speedLocal') ? `|snaps:${data.speedSnaps.length}` : ''
         const yKey = def.id === 'synth' ? `|synth:${hashOf(synthSig)}` : ''
         const labels = labelEdits.filter((l) => l.panelId === def.id)
         const lKey = labels.length ? `|labels:${hashOf(labels.map((l) => `${l.key}:${l.dx.toFixed(1)},${l.dy.toFixed(1)}:${l.hidden ? 1 : 0}`).join('|'))}` : ''

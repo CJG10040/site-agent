@@ -21,6 +21,7 @@ import { flowAccumulation } from '../lib/flow'
 import { arealRings, pointInRings, pointToRingsDist, toXY } from '../lib/xy'
 import { ENV_PANELS } from './panelsEnv'
 import { LAW_PANEL } from './panelsLaw'
+import { OVERLAY_PANELS } from './overlay'
 import { LIFE_PANELS } from './panelsLife'
 import { MOVE_PANELS } from './panelsMove'
 import { SECTION_PANELS } from './panelsSection'
@@ -44,7 +45,7 @@ export interface PanelCtx {
   panelLabel?: (id: string) => string
 }
 
-export type PanelGroup = '위치' | '땅의 조건' | '지형' | '주변 현황' | '연계와 접근' | '환경' | '사회·경제' | '현장' | '종합'
+export type PanelGroup = '위치' | '땅의 조건' | '지형' | '주변 현황' | '연계와 접근' | '환경' | '사회·경제' | '현장' | '겹쳐 보기' | '종합'
 
 export interface PanelDef {
   id: string
@@ -54,6 +55,8 @@ export interface PanelDef {
   needs: string
   /** 도판 틀 반경(m)을 수집 반경과 다르게 (예: 도보권 15분) */
   frameR?: (d: DiagramData, extra?: { synth?: SynthCtx | null }) => number
+  /** 다른 도판의 틀을 빌림 (겹쳐 보기: 아래 도판 id) */
+  frameFrom?: (st: DiagramSettings) => string | null
   render: (c: PanelCtx) => PanelOutput | Promise<PanelOutput>
 }
 
@@ -1252,10 +1255,10 @@ export const TERRAIN_PANELS: PanelDef[] = [
   },
 ]
 
-export const PANEL_GROUP_ORDER: PanelGroup[] = ['위치', '땅의 조건', '지형', '주변 현황', '연계와 접근', '환경', '사회·경제', '현장', '종합']
+export const PANEL_GROUP_ORDER: PanelGroup[] = ['위치', '땅의 조건', '지형', '주변 현황', '연계와 접근', '환경', '사회·경제', '현장', '겹쳐 보기', '종합']
 
 /** 보고서 배치 순서 (위치 → 땅의 조건 → 지형 → 주변 현황 → 연계와 접근 → 환경 → 사회·현장) */
-export const ORDERED_PANELS: PanelDef[] = PANEL_GROUP_ORDER.flatMap((g) => [...PANELS, LAW_PANEL, ...TERRAIN_PANELS, ...SECTION_PANELS, ...MOVE_PANELS, ...ENV_PANELS, ...LIFE_PANELS, SYNTH_PANEL].filter((p) => p.group === g))
+export const ORDERED_PANELS: PanelDef[] = PANEL_GROUP_ORDER.flatMap((g) => [...PANELS, LAW_PANEL, ...TERRAIN_PANELS, ...SECTION_PANELS, ...MOVE_PANELS, ...ENV_PANELS, ...LIFE_PANELS, ...OVERLAY_PANELS, SYNTH_PANEL].filter((p) => p.group === g))
 
 export function panelNumber(id: string): number {
   return ORDERED_PANELS.findIndex((p) => p.id === id) + 1

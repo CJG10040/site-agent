@@ -255,6 +255,18 @@ export interface PaletteEdit {
 }
 
 /** 도판 하나만 다른 색 (2026-11-12 사용자 결정: 보드 전체 + 도판별 덮어쓰기) */
+/** 14-D 두 주제 겹쳐 보기 한 칸 */
+export interface OverlaySpec {
+  /** 아래 도판 id */
+  base: string
+  /** 위 도판 id */
+  top: string
+  /** 위 도판 진하기 0.15~1 */
+  opacity: number
+  /** fill 그대로 / lines 면을 테두리로 */
+  mode: 'fill' | 'lines'
+}
+
 /** 테마색 하나로 만드는 색 조합 (2026-11-12 사용자 요청) */
 export interface ThemeSpec {
   /** 테마색 #rrggbb */
@@ -314,6 +326,8 @@ export interface DiagramSettings {
   windStyle: 'lines' | 'arrows'
   /** 지형 도판 음영 기복 */
   terrainShade: boolean
+  /** 두 주제 겹쳐 보기 칸 (14-D, 비면 null) */
+  overlays?: (OverlaySpec | null)[]
 }
 
 /** 도판 하나의 결론 */
