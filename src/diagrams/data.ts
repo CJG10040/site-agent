@@ -207,6 +207,10 @@ export interface DiagramData {
   env: EnvResult | null
   /** 올린 수치지도 (없으면 null) */
   ngii: NgiiData | null
+  /** 대지 필지의 토지이용계획 (지역·지구 이름, 포함/저촉/접합) — 법규 개요 도판 (14-C) */
+  landUse: { name: string; kind: string }[]
+  /** 토지대장 면적 합계(㎡) — 대지 필지 전체, 직접 그린 경계면 경계 안 면적과 다름 */
+  officialArea: number | null
   /** 어떤 자료가 수집되었는지 */
   has: Record<string, boolean>
   /** 학생이 뺀 자료: 이번에 찾아 뺀 수와 못 찾은 기록 */
@@ -560,6 +564,23 @@ export function buildDiagramData(project: Project): DiagramData | null {
   const network = (feats('network:graph')[0]?.properties as unknown as NetworkResult | undefined) ?? null
   const wind = (feats('kma:wind')[0]?.properties as unknown as WindResult | undefined) ?? null
   const env = (feats('env:result')[0]?.properties as unknown as EnvResult | undefined) ?? null
+  // 토지이용계획·토지대장 (대지 필지)
+  const luSeen = new Map<string, string>()
+  for (const f of feats('ned:landUse')) {
+    const name = str(f.properties.prposAreaDstrcCodeNm)
+    if (!name) continue
+    const kind = str(f.properties.cnflcAtNm) || '포함'
+    const prev = luSeen.get(name)
+    if (!prev || (prev !== '포함' && kind === '포함')) luSeen.set(name, kind)
+  }
+  const landUse = [...luSeen.entries()].map(([name, kind]) => ({ name, kind }))
+  const lad = feats('ned:ladfrl')
+  const ladPnu = new Map<string, number>()
+  for (const f of lad) {
+    const a = num(f.properties.lndpclAr)
+    if (a && a > 0) ladPnu.set(str(f.properties._pnu) || String(ladPnu.size), a)
+  }
+  const officialArea = ladPnu.size ? [...ladPnu.values()].reduce((a, b) => a + b, 0) : null
 
   const observations: Pt[] = observationsOf(project)
     .filter((o) => o.observation?.location)
@@ -594,6 +615,8 @@ export function buildDiagramData(project: Project): DiagramData | null {
     wind,
     env,
     ngii,
+    landUse,
+    officialArea,
     has,
     hidden: { applied: 0, missing: [] },
   }

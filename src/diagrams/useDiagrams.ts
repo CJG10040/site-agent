@@ -30,7 +30,7 @@ function hashOf(s: string): string {
   }
   return (h >>> 0).toString(36) + s.length.toString(36)
 }
-const TERRAIN_IDS = new Set(['terrain', 'sectionA', 'sectionB'])
+const TERRAIN_IDS = new Set(['terrain', 'slopeWater', 'sectionA', 'sectionB'])
 const MAX_CACHE = 80
 
 function cachePut(p: CachedPanel) {
@@ -55,7 +55,8 @@ function settingsKey(id: string, s: DiagramSettings): string {
   if (id === 'viewshed') return `${common}|${s.planFloors}|${s.fieldStyle}`
   if (id === 'heat') return `${common}|${s.fieldStyle}`
   if (id === 'windSummer' || id === 'windWinter') return `${common}|${s.fieldStyle}|${s.windStyle}`
-  if (id === 'terrain') return `${common}|${s.fieldStyle}|${s.terrainShade}`
+  if (id === 'terrain' || id === 'slopeWater') return `${common}|${s.fieldStyle}|${s.terrainShade}`
+  if (id === 'svfMap' || id === 'noise') return `${common}|${s.fieldStyle}`
   if (id === 'synth') return `${common}|${s.fieldStyle}|${s.windStyle}|${s.terrainShade}`
   if (id === 'sectionA' || id === 'sectionB') return `${common}|${s.sectionAngle}|${s.sectionVex}|${s.sectionRange}`
   return common

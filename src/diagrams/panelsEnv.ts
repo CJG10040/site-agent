@@ -9,9 +9,10 @@ import { FLOOR_M, windName, windRadius, type EnvResult } from '../sources/env'
 import type { LegendItem, PanelLayer, PanelOutput } from './compose'
 import { MAP_CX, MAP_CY, MAP_R } from './frame'
 import { HEIGHT_SHORT, type DiagramData } from './data'
-import { siteRingsXY } from './move'
+import { projOf, siteRingsXY } from './move'
+import { arealRings, toXY } from '../lib/xy'
 import { sampleGrid, streamlineSvg, traceStreamlines, type Pt } from './raster'
-import { heatColors, isStock, mix, monoShades, steps, sunPathColors } from './palette'
+import { heatColors, isStock, mix, monoShades, ramp, steps, sunPathColors } from './palette'
 import type { PanelCtx, PanelDef } from './panels'
 
 const fmt = (n: number, digits = 0) => n.toLocaleString('ko-KR', { maximumFractionDigits: digits })
@@ -500,6 +501,216 @@ function windPanel(season: '여름' | '겨울'): PanelDef {
   }
 }
 
+// ───────────────────────── 14-C 천공률 지도 ─────────────────────────
+
+const SVF_BINS = [0, 0.3, 0.5, 0.7, 0.85]
+const SVF_LABELS = ['30% 미만 (깊은 골목·안뜰)', '30~50%', '50~70%', '70~85%', '85% 넘음 (탁 트임)']
+
+const svfPanel: PanelDef = {
+  id: 'svfMap',
+  title: '천공률 지도 (하늘이 보이는 비율)',
+  group: '환경',
+  needs: NEED,
+  render: (c): PanelOutput => {
+    const e = envOf(c)
+    if (!e) return emptyOut('환경 계산 결과가 없습니다')
+    const g = unpackGrid(e.coarse.svf)
+    // 막힐수록(하늘이 적게 보일수록) 진하게
+    const colors = c.pal.kind === 'mono' ? [...monoShades(c.pal, 5)].reverse() : [...steps(c.pal, 5)].reverse()
+    const keyOf = (v: number) => SVF_BINS.filter((b) => v >= b).length - 1
+    const rad = maskOf(c, g, 'radius')
+    const site = maskOf(c, g, 'site')
+    let n = 0
+    let low = 0
+    let sum = 0
+    let sn = 0
+    let ssum = 0
+    for (let k = 0; k < rad.length; k++) {
+      const v = g.at(k)
+      if (!Number.isFinite(v)) continue
+      if (rad[k]) {
+        n++
+        sum += v
+        if (v < 0.5) low++
+      }
+      if (site[k]) {
+        sn++
+        ssum += v
+      }
+    }
+    return {
+      layers: [{ id: '천공률', svg: gridImage(c, g, (v) => colors[Math.max(0, keyOf(v))]) }, buildingsLayer(c)],
+      legend: SVF_LABELS.map((l, i) => ({ color: colors[i], label: l })),
+      legendTitle: '지면 눈높이(1.5m)에서 하늘 반구 중 건물·지형에 가리지 않는 비율',
+      summary: [
+        sn ? `대지 안 평균 ${pctText(ssum / sn)} (지금은 빈 땅으로 봄 — 지으면 달라짐)` : '',
+        n ? `반경 안 건물 밖 땅 평균 ${pctText(sum / n)}, 하늘이 절반도 안 보이는 곳 ${pctText(low / n)}` : '',
+        `대지 가운데 한 점: ${pctText(e.sky.svf)} (도판 '대지에서 올려다본 하늘')`,
+      ].filter(Boolean),
+      caption: envCaption(e, '4m 칸 · 칸마다 여러 방향으로 건물·지형이 가리는 각도를 재어 천공률(SVF) 계산 · 나무는 빠짐 · 낮을수록 그늘지고 바람이 막히며 열이 잘 빠지지 않음'),
+    }
+  },
+}
+
+// ───────────────────────── 14-C 교통소음 추정 (실험) ─────────────────────────
+
+const NOISE_BINS = [50, 55, 60, 65, 70]
+const NOISE_LABELS = ['50dB 미만 (조용)', '50~55dB', '55~60dB', '60~65dB', '65~70dB', '70dB 넘음 (시끄러움)']
+/** 도로 폭으로 정한 낮 시간 기준 소음(dB, 도로 끝에서 7.5m) — 어림 */
+const NOISE_BY_WIDTH: [number, number, string][] = [
+  [40, 74, '폭 40m 이상'],
+  [25, 71, '25~40m'],
+  [12, 66, '12~25m'],
+  [8, 61, '8~12m'],
+  [0, 56, '8m 미만'],
+]
+const NOISE_UNKNOWN = 58
+const NOISE_SHIELD = 8
+const NOISE_MAX_D = 220
+
+function noiseColors(c: PanelCtx, n: number): string[] {
+  if (c.pal.kind === 'mono') return monoShades(c.pal, n)
+  const p = c.pal
+  return ramp([mix(p.paper, p.div[1], 0.55), p.div[1], mix(p.div[2], p.cat[0], 0.55), p.div[3], p.div[4], mix(p.div[4], p.dark ? '#ffffff' : '#000000', 0.35)], n)
+}
+
+const noisePanel: PanelDef = {
+  id: 'noise',
+  title: '교통소음 추정 (실험)',
+  group: '환경',
+  needs: "공간정보에서 '도로'와 '주변 건물'을 수집하세요.",
+  render: (c): PanelOutput => {
+    const d = c.d
+    if (!d.roads.length) return emptyOut('도로 자료가 없습니다')
+    const p = projOf(d)
+    const R = c.f.R
+    const cell = Math.max(5, Math.round(R / 80))
+    const n = Math.ceil((2 * R) / cell)
+    const spec: GridSpec = { x0: -R, y0: R, cell, nx: n, ny: n }
+    const bld = new Uint8Array(n * n)
+    for (const b of d.buildings) if (!b.underground) rasterize(spec, arealRings(p, b.geom), (k) => (bld[k] = 1))
+    const E = new Float64Array(n * n).fill(10 ** 4.5)
+    const roads = d.roads.map((r) => {
+      const lines = (r.geom.type === 'LineString' ? [r.geom.coordinates] : r.geom.coordinates).map((l) => l.map((q) => toXY(p, q)))
+      const L0 = r.width === null ? NOISE_UNKNOWN : (NOISE_BY_WIDTH.find(([w]) => (r.width ?? 0) >= w) ?? NOISE_BY_WIDTH[NOISE_BY_WIDTH.length - 1])[1]
+      const xs = lines.flat().map((q) => q[0])
+      const ys = lines.flat().map((q) => q[1])
+      return { lines, L0, half: (r.width ?? 6) / 2, bbox: [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)] }
+    })
+    const blocked = (x0: number, y0: number, x1: number, y1: number) => {
+      const L = Math.hypot(x1 - x0, y1 - y0)
+      const steps = Math.floor(L / (cell * 1.2))
+      for (let i = 1; i < steps; i++) {
+        const t = i / steps
+        const col = Math.floor((x0 + (x1 - x0) * t - spec.x0) / cell)
+        const row = Math.floor((spec.y0 - (y0 + (y1 - y0) * t)) / cell)
+        if (col < 0 || row < 0 || col >= n || row >= n) continue
+        if (bld[row * n + col]) return true
+      }
+      return false
+    }
+    for (const r of roads) {
+      if (r.bbox[2] < -R - NOISE_MAX_D || r.bbox[0] > R + NOISE_MAX_D || r.bbox[3] < -R - NOISE_MAX_D || r.bbox[1] > R + NOISE_MAX_D) continue
+      const c0 = Math.max(0, Math.floor((r.bbox[0] - NOISE_MAX_D - spec.x0) / cell))
+      const c1 = Math.min(n - 1, Math.floor((r.bbox[2] + NOISE_MAX_D - spec.x0) / cell))
+      const r0 = Math.max(0, Math.floor((spec.y0 - (r.bbox[3] + NOISE_MAX_D)) / cell))
+      const r1 = Math.min(n - 1, Math.floor((spec.y0 - (r.bbox[1] - NOISE_MAX_D)) / cell))
+      for (let row = r0; row <= r1; row++)
+        for (let col = c0; col <= c1; col++) {
+          const k = row * n + col
+          if (bld[k]) continue
+          const x = spec.x0 + (col + 0.5) * cell
+          const y = spec.y0 - (row + 0.5) * cell
+          let best = Infinity
+          let bx = 0
+          let by = 0
+          for (const line of r.lines)
+            for (let i = 1; i < line.length; i++) {
+              const [ax, ay] = line[i - 1]
+              const [qx, qy] = line[i]
+              const dx = qx - ax
+              const dy = qy - ay
+              const L2 = dx * dx + dy * dy
+              const t = L2 ? Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / L2)) : 0
+              const px = ax + dx * t
+              const py = ay + dy * t
+              const dd = Math.hypot(px - x, py - y)
+              if (dd < best) {
+                best = dd
+                bx = px
+                by = py
+              }
+            }
+          if (best > NOISE_MAX_D) continue
+          let L = r.L0 - 10 * Math.log10((Math.max(0, best - r.half) + 7.5) / 7.5)
+          if (L < 40) continue
+          if (best > r.half + 2 && blocked(x, y, bx, by)) L -= NOISE_SHIELD
+          E[k] += 10 ** (L / 10)
+        }
+    }
+    const raw = new Float32Array(n * n)
+    for (let k = 0; k < raw.length; k++) raw[k] = bld[k] ? NaN : 10 * Math.log10(E[k])
+    // 매끄럽게: 건물 뒤 가림을 한 줄로만 재서 생기는 줄무늬를 3×3 평균으로 누그러뜨림 (건물 칸은 빼고)
+    const vals = c.st.fieldStyle === 'cells' ? raw : new Float32Array(n * n)
+    if (vals !== raw)
+      for (let row = 0; row < n; row++)
+        for (let col = 0; col < n; col++) {
+          const k = row * n + col
+          if (!Number.isFinite(raw[k])) {
+            vals[k] = NaN
+            continue
+          }
+          let sE = 0
+          let cnt = 0
+          for (let j = -1; j <= 1; j++)
+            for (let i = -1; i <= 1; i++) {
+              const rr = row + j
+              const cc = col + i
+              if (rr < 0 || cc < 0 || rr >= n || cc >= n) continue
+              const v = raw[rr * n + cc]
+              if (!Number.isFinite(v)) continue
+              sE += 10 ** (v / 10)
+              cnt++
+            }
+          vals[k] = 10 * Math.log10(sE / cnt)
+        }
+    const grid = { ...spec, raw: new Uint8Array(0), scale: 1, offset: 0, at: (k: number) => vals[k] } as UnpackedGrid
+    const colors = noiseColors(c, NOISE_LABELS.length)
+    const keyOf = (v: number) => NOISE_BINS.filter((b) => v >= b).length
+    const rad = maskOf(c, grid, 'radius')
+    const site = maskOf(c, grid, 'site')
+    let nr = 0
+    let over65 = 0
+    let smax = -Infinity
+    let ssum = 0
+    let sn = 0
+    for (let k = 0; k < vals.length; k++) {
+      const v = vals[k]
+      if (!Number.isFinite(v)) continue
+      if (rad[k]) {
+        nr++
+        if (v >= 65) over65++
+      }
+      if (site[k]) {
+        sn++
+        ssum += v
+        if (v > smax) smax = v
+      }
+    }
+    return {
+      layers: [{ id: '소음_추정', svg: gridImage(c, grid, (v) => colors[keyOf(v)]) }, buildingsLayer(c)],
+      legend: NOISE_LABELS.map((l, i) => ({ color: colors[i], label: l })),
+      legendTitle: '낮 시간 도로 소음 어림 (실험) · 도로변 주거지역 환경기준 낮 65dB',
+      summary: [
+        sn ? `대지 안 어림 평균 ${fmt(ssum / sn)}dB, 가장 시끄러운 곳 ${fmt(smax)}dB${smax >= 65 ? ' — 도로변 주거 기준(낮 65dB)을 넘을 수 있음' : ''}` : '',
+        nr ? `반경 안 건물 밖 땅 중 65dB 넘는 곳 ${pctText(over65 / nr)}` : '',
+        `기준 소음: ${NOISE_BY_WIDTH.map(([, l, t]) => `${t} ${l}dB`).join(', ')}, 폭 모름 ${NOISE_UNKNOWN}dB`,
+      ].filter(Boolean),
+      caption: `실험·어림, 측정값 아님 · 도로 폭으로 정한 낮 시간 기준 소음(도로 끝에서 7.5m)을 거리에 따라 줄이고(선 음원, 거리 2배마다 약 3dB), 건물에 가리면 ${NOISE_SHIELD}dB 줄여 ${cell}m 칸으로 더함 · 교통량·속도·대형차·밤 시간·고가도로·방음벽·반사는 반영 안 함 · 소음 환경기준(환경정책기본법 시행령): 도로변 주거지역 낮 65dB·밤 55dB · 실제 값은 국가소음정보시스템 측정망 확인`,
+    }
+  },
+}
+
 // ───────────────────────── 여름 열쾌적 (실험) ─────────────────────────
 
 const HEAT_STOPS = ['#fff3c4', '#fbd77a', '#f4a259', '#e8774a', '#d4504f', '#b02f4a', '#8c1f3d']
@@ -586,7 +797,7 @@ const heatPanel: PanelDef = {
   },
 }
 
-export const ENV_PANELS: PanelDef[] = [sunPanel('site'), sunPanel('wide'), skyDomePanel, viewPanel, windPanel('여름'), windPanel('겨울'), heatPanel]
+export const ENV_PANELS: PanelDef[] = [sunPanel('site'), sunPanel('wide'), skyDomePanel, svfPanel, viewPanel, windPanel('여름'), windPanel('겨울'), heatPanel, noisePanel]
 
 export function envPanelIds(): string[] {
   return ENV_PANELS.map((p) => p.id)

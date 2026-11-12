@@ -7,7 +7,7 @@ import type { Position } from 'geojson'
 import { geometryToAreaDistanceM, lineToAreaDistanceM, overlapsSite, pointToAreaDistanceM, radiusCircle, type Areal } from '../lib/geo'
 import { wgs84ToUtmk } from '../lib/proj'
 import { sunAt, sunPathFeatures, SUN_DAYS } from '../lib/sun'
-import { contourInterval, contourLines, rangeText, type TerrainAnalysis } from '../lib/terrainSite'
+import { contourInterval, contourLines, rangeText, SLOPE_BINS, type TerrainAnalysis } from '../lib/terrainSite'
 import type { DiagramSettings } from '../model/types'
 import { ALL_LAYERS } from '../sources/vworldLayers'
 import { aerialImage } from './aerial'
@@ -15,10 +15,12 @@ import { esc, type PanelLayer, type PanelOutput } from './compose'
 import { bldHeight, bldSourceText, type Bld, type DiagramData, type Pt } from './data'
 import { centroidOf, dir8, MAP_CX, MAP_CY, MAP_R, type Frame } from './frame'
 import { isStock, mix, monoShades, steps, sunPathColors, themeColor, zoningColor, type Palette } from './palette'
-import { projOf } from './move'
+import { projOf, siteRingsXY } from './move'
 import { hillshade, hillshadeExaggeration, sampleGrid, shadeRgb } from './raster'
+import { flowAccumulation } from '../lib/flow'
 import { arealRings, pointInRings, pointToRingsDist, toXY } from '../lib/xy'
 import { ENV_PANELS } from './panelsEnv'
+import { LAW_PANEL } from './panelsLaw'
 import { LIFE_PANELS } from './panelsLife'
 import { MOVE_PANELS } from './panelsMove'
 import { SECTION_PANELS } from './panelsSection'
@@ -275,7 +277,7 @@ export const PANELS: PanelDef[] = [
       const site = [...new Set(c.d.zoning.filter((z) => overlapsSite(z.geom, c.d.boundary)).map((z) => z.name))]
       const order = [...areaBy.entries()].sort((a, b) => b[1] - a[1])
       return {
-        layers: [{ id: '용도지역', svg: grouped(c.d.zoning.map((z) => ({ d: c.f.path(z.geom), key: z.name })), styles) }, baseBuildings(c, 'rgba(255,255,255,0.35)')],
+        layers: [{ id: '용도지역', svg: grouped(c.d.zoning.map((z) => ({ d: c.f.path(z.geom), key: z.name })), styles) }, baseBuildings(c, c.pal.dark ? 'rgba(0,0,0,0.3)' : 'rgba(255,255,255,0.35)')],
         legend: order.map(([n]) => ({ color: styles[n].fill, label: n })),
         summary: [
           site.length ? `대지는 ${site.join('·')}에 속함` : '대지에 걸친 용도지역을 찾지 못함',
@@ -1032,7 +1034,7 @@ function frameAffine(c: PanelCtx) {
 
 /** 격자 값마다 색을 칠한 그림 (도판 틀 크기) */
 /** 지형 높이 단계 그림. 14-B: 매끄럽게(보간한 높이로 단계) + 음영 기복(북서쪽 빛) */
-function terrainRaster(c: PanelCtx, t: TerrainAnalysis, colorOf: (v: number) => string | null): string {
+function terrainRaster(c: PanelCtx, t: TerrainAnalysis, colorOf: (v: number) => string | null, values: ArrayLike<number> = t.rel): string {
   const S = MAP_R * 2
   const canvas = document.createElement('canvas')
   canvas.width = S
@@ -1043,7 +1045,7 @@ function terrainRaster(c: PanelCtx, t: TerrainAnalysis, colorOf: (v: number) => 
   const A = frameAffine(c)
   const grid = t.grid
   const smooth = c.st.fieldStyle !== 'cells'
-  const zg = { nx: grid.nx, ny: grid.ny, at: (k: number) => t.rel[k] }
+  const zg = { nx: grid.nx, ny: grid.ny, at: (k: number) => values[k] }
   const shade = c.st.terrainShade ? hillshade(t.rel, grid.nx, grid.ny, grid.cell) : null
   const sg = shade ? { nx: grid.nx, ny: grid.ny, at: (k: number) => shade[k] } : null
   const cache = new Map<string, number[]>()
@@ -1156,12 +1158,104 @@ export const TERRAIN_PANELS: PanelDef[] = [
       }
     },
   },
+  // 14-C 경사도·물길 (2026-11-12): 50m 평활 경사 구간 + 지형만으로 계산한 빗물 흐름
+  {
+    id: 'slopeWater',
+    title: '경사도·물길',
+    group: '지형',
+    needs: "공간정보에서 '지형'을 수집하거나 대지를 정하면 그려집니다.",
+    render: (c) => {
+      const t = c.t
+      if (!t) return { layers: [], legend: [], summary: [], caption: '', empty: '지형 자료를 받지 못했습니다' }
+      const labels = ['0~5° (평지·완경사)', '5~10°', '10~15°', '15~20°', '20° 넘음 (급경사)']
+      const colors = c.pal.kind === 'mono' ? monoShades(c.pal, 5) : steps(c.pal, 5)
+      const raster = terrainRaster(c, t, (v) => colors[SLOPE_BINS.filter((b) => v >= b).length], t.slope)
+      // 물길: 집수 면적이 기준(1ha, 반경이 크면 더 크게)을 넘는 칸을 아래 칸과 잇기
+      const g = t.grid
+      const flow = flowAccumulation(t.rel, g.nx, g.ny, g.cell)
+      const cellA = g.cell * g.cell
+      const thr = Math.max(10000, (Math.PI * c.f.R * c.f.R) / 200)
+      const A = frameAffine(c)
+      const center = (k: number): [number, number] => A.toPx(g.x0 + ((k % g.nx) + 0.5) * g.cell, g.y0 - (Math.floor(k / g.nx) + 0.5) * g.cell)
+      const widths = [1.1, 1.9, 2.9, 4.2]
+      const paths = widths.map(() => '')
+      let maxNear = 0
+      const siteRings = siteRingsXY(c.d)
+      const p0 = projOf(c.d)
+      // 웅덩이(채운 깊이 0.3m 이상) = 물이 고일 수 있는 낮은 곳. 채운 칸 안의 흐름은 계산상 지어낸 길이라 긋지 않음
+      let pond = ''
+      let pondCells = 0
+      let pondNear = false
+      for (let r = 0; r < g.ny; r++) {
+        let run = -1
+        for (let col = 0; col <= g.nx; col++) {
+          const k = r * g.nx + col
+          const deep = col < g.nx && flow.fill[k] - t.rel[k] >= 0.3
+          if (deep) {
+            pondCells++
+            if (run < 0) run = col
+            if (!pondNear) {
+              const [px1, py1] = center(k)
+              const xy1 = toXY(p0, c.f.inv(px1, py1))
+              if (pointInRings(xy1, siteRings) || pointToRingsDist(xy1, siteRings) <= 15) pondNear = true
+            }
+          } else if (run >= 0) {
+            const a1 = A.toPx(g.x0 + run * g.cell, g.y0 - r * g.cell)
+            const b1 = A.toPx(g.x0 + col * g.cell, g.y0 - r * g.cell)
+            const c1 = A.toPx(g.x0 + col * g.cell, g.y0 - (r + 1) * g.cell)
+            const d1 = A.toPx(g.x0 + run * g.cell, g.y0 - (r + 1) * g.cell)
+            pond += `M${a1[0].toFixed(1)} ${a1[1].toFixed(1)}L${b1[0].toFixed(1)} ${b1[1].toFixed(1)}L${c1[0].toFixed(1)} ${c1[1].toFixed(1)}L${d1[0].toFixed(1)} ${d1[1].toFixed(1)}Z`
+            run = -1
+          }
+        }
+      }
+      for (let k = 0; k < flow.acc.length; k++) {
+        const a = flow.acc[k] * cellA
+        if (a < thr || flow.down[k] < 0) continue
+        if (flow.fill[k] - t.rel[k] > 0.02) continue
+        const [x1, y1] = center(k)
+        const [x2, y2] = center(flow.down[k])
+        if (Math.hypot(x1 - MAP_CX, y1 - MAP_CY) > MAP_R + 10) continue
+        const cls = Math.min(widths.length - 1, Math.floor(Math.log(a / thr) / Math.log(4)))
+        paths[cls] += `M${x1.toFixed(1)} ${y1.toFixed(1)}L${x2.toFixed(1)} ${y2.toFixed(1)}`
+        // 대지 30m 안을 지나는 물길 중 가장 큰 집수 면적
+        const [lon, lat] = c.f.inv(x1, y1)
+        const xy = toXY(p0, [lon, lat])
+        if (a > maxNear && (pointInRings(xy, siteRings) || pointToRingsDist(xy, siteRings) <= 30)) maxNear = a
+      }
+      const water = mix(c.pal.water, c.pal.ink, c.pal.dark ? 0 : 0.35)
+      const flowSvg = paths.map((d, i) => (d ? `<path d="${d}" fill="none" stroke="${water}" stroke-width="${widths[i]}" stroke-linecap="round" stroke-opacity="0.9"/>` : '')).join('')
+      const ha = (m2: number) => (m2 >= 10000 ? `${fmt(m2 / 10000, 1)}ha` : `${fmt(m2)}㎡`)
+      const share = t.slopeShare
+      return {
+        layers: [
+          { id: '경사_구간', svg: raster },
+          { id: '바탕_건물', svg: `<path d="${c.d.buildings.map((b) => c.f.path(b.geom, false)).join('')}" fill="none" stroke="${c.pal.ink}" stroke-opacity="0.18" stroke-width="0.5"/>` },
+          { id: '웅덩이', svg: pond ? `<path d="${pond}" fill="${c.pal.water}" fill-opacity="0.55" stroke="none"/>` : '' },
+          { id: '물길', svg: flowSvg },
+        ],
+        legendTitle: '경사도(50m 평활) · 빗물이 모이는 길',
+        legend: [
+          ...labels.map((l, i) => ({ color: colors[i], label: l })),
+          { color: water, label: `물길 (집수 ${ha(thr)} 이상, 굵을수록 많이 모임)`, shape: 'line' as const },
+          ...(pond ? [{ color: c.pal.water, label: '물이 고일 수 있는 낮은 곳 (둘레보다 0.3m 이상 낮음)' }] : []),
+        ],
+        summary: [
+          `대지 안 평균 경사 ${fmt(t.site.meanSlope, 1)}°${t.site.aspect !== null ? `, ${dir8(t.site.aspect)}쪽으로 내려감` : ' (평지)'}`,
+          `반경 안 경사: ${labels.map((l, i) => `${l.replace(/ \(.*\)/, '')} ${Math.round((share[i] ?? 0) * 100)}%`).join(', ')}`,
+          maxNear > 0 ? `대지 30m 안을 지나는 물길: 위쪽에서 약 ${ha(maxNear)}의 빗물이 모여 지남 — 배수·입구 높이 검토` : '대지 30m 안을 지나는 큰 물길 없음 (지형 기준)',
+          pondCells ? `둘레보다 0.3m 이상 낮아 물이 고일 수 있는 곳 약 ${ha(pondCells * cellA)}${pondNear ? ' — 대지 15m 안에도 있음' : ''}` : '',
+        ].filter(Boolean),
+        caption: `${terrainCaption(t)} · 경사는 50m로 평활한 값(옹벽 같은 작은 단차는 경사로 잡히지 않음) · 물길은 지형만으로 계산(웅덩이는 채워 흘려보냄, 8방향 가장 가파른 쪽) — 하수관·도로 배수·건물은 반영 안 함 · 침수 흔적은 생활안전지도에서 확인`,
+      }
+    },
+  },
 ]
 
 export const PANEL_GROUP_ORDER: PanelGroup[] = ['위치', '땅의 조건', '지형', '주변 현황', '연계와 접근', '환경', '사회·경제', '현장', '종합']
 
 /** 보고서 배치 순서 (위치 → 땅의 조건 → 지형 → 주변 현황 → 연계와 접근 → 환경 → 사회·현장) */
-export const ORDERED_PANELS: PanelDef[] = PANEL_GROUP_ORDER.flatMap((g) => [...PANELS, ...TERRAIN_PANELS, ...SECTION_PANELS, ...MOVE_PANELS, ...ENV_PANELS, ...LIFE_PANELS, SYNTH_PANEL].filter((p) => p.group === g))
+export const ORDERED_PANELS: PanelDef[] = PANEL_GROUP_ORDER.flatMap((g) => [...PANELS, LAW_PANEL, ...TERRAIN_PANELS, ...SECTION_PANELS, ...MOVE_PANELS, ...ENV_PANELS, ...LIFE_PANELS, SYNTH_PANEL].filter((p) => p.group === g))
 
 export function panelNumber(id: string): number {
   return ORDERED_PANELS.findIndex((p) => p.id === id) + 1

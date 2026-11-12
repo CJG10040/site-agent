@@ -40,7 +40,7 @@ function SymIcon({ sym }: { sym: SynthSym }) {
 }
 
 const RADII = [150, 300, 500, 800]
-const TERRAIN_BASES = new Set(['terrain'])
+const TERRAIN_BASES = new Set(['terrain', 'slopeWater'])
 
 const newId = () => `s${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`
 
