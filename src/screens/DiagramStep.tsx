@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { lazy, Suspense, useMemo, useState } from 'react'
 import type { PanelOutput } from '../diagrams/compose'
 import { svgBlob, svgToPng, zipBlob } from '../diagrams/export'
 import { siteOverview } from '../diagrams/overview'
@@ -10,14 +10,15 @@ import PanelEditor from '../components/PanelEditor'
 import { editsOf } from '../model/edits'
 import { DXF_LAYERS, siteModelToDxf } from '../export/toDxf'
 import StylePanel from '../components/StylePanel'
+
+// 15-A 모형 작업대: 열 때만 불러옴 (3D 미리보기의 three.js도 그 안에서)
+const ModelWorkbench = lazy(() => import('../components/ModelWorkbench'))
 import OverlayControls from '../components/OverlayControls'
 import ExplodedControls from '../components/ExplodedControls'
 import { EXPLODED_ID } from '../diagrams/exploded'
 import { can3d } from '../diagrams/render'
 import { isOverlayId, OVERLAY_IDS } from '../diagrams/overlay'
 import { wgs84ToUtmk } from '../lib/proj'
-import { terrainAround, type TerrainGrid } from '../lib/terrain'
-import { compositeGrid, fineHalfFor, fineTerrainCached } from '../lib/terrainFine'
 import { upsertDrafts } from '../model/applyCollection'
 import { FB_STATUS_LABEL, feedbackForPanel } from '../model/feedback'
 import { appendSpeedSnapshot } from '../model/applyMove'
@@ -152,6 +153,14 @@ export default function DiagramStep({ project, update, config, keys, onGoData, o
   const half = modelHalf !== null && halfOptions.includes(modelHalf) ? modelHalf : (halfOptions.find((h) => h >= 300) ?? halfOptions[halfOptions.length - 1])
   const sideLabel = (h: number) => (h * 2 >= 1000 ? `${(h * 2) / 1000}km` : `${h * 2}m`)
 
+  const modelMeta = {
+    title: project.brief.projectName || '대지',
+    address: project.site.address?.road || project.site.address?.parcel || project.site.parcels[0]?.addr || '',
+    collected: collectedDate(project),
+  }
+  const modelBase = (project.brief.projectName || '대지').replace(/[\\/:*?"<>|\s]+/g, '_').slice(0, 30)
+  const [workbench, setWorkbench] = useState(false)
+
   const exportModel = async (kind: '3dm' | 'dxf') => {
     if (!data || modelBusy || !half) return
     setModelBusy(kind)
@@ -159,21 +168,10 @@ export default function DiagramStep({ project, update, config, keys, onGoData, o
     setModelStep('지형·건물·도로 준비')
     try {
       await new Promise((r) => setTimeout(r, 30))
-      const { buildSiteModel } = await import('../export/siteModel')
-      // 수치지도를 올렸으면 대지 주변 2m 지형 + 그 밖 10m를 섞은 격자 (범위가 크면 칸을 키움)
-      let grid: TerrainGrid | null | undefined
-      if (data.ngii) {
-        const fine = fineTerrainCached(data.ngii, data.center, fineHalfFor(data.R))
-        const base = await terrainAround(data.center[0], data.center[1], data.R).catch(() => null)
-        grid = compositeGrid(base, fine, data.center, half + 20, half <= 300 ? 2 : half <= 600 ? 4 : 5)
-      }
-      const m = await buildSiteModel(data, half, grid !== undefined ? { grid } : {})
-      const meta = {
-        title: project.brief.projectName || '대지',
-        address: project.site.address?.road || project.site.address?.parcel || project.site.parcels[0]?.addr || '',
-        collected: collectedDate(project),
-      }
-      const name = `${(project.brief.projectName || '대지').replace(/[\\/:*?"<>|\s]+/g, '_').slice(0, 30)}_${kind === '3dm' ? '3D' : '평면'}_${sideLabel(half)}`
+      const { buildModelFor } = await import('../export/modelBuild')
+      const m = await buildModelFor(data, half)
+      const meta = modelMeta
+      const name = `${modelBase}_${kind === '3dm' ? '3D' : '평면'}_${sideLabel(half)}`
       if (kind === '3dm') {
         const { siteModelTo3dm } = await import('../export/to3dm')
         const bytes = await siteModelTo3dm(m, meta, setModelStep)
@@ -502,7 +500,10 @@ export default function DiagramStep({ project, update, config, keys, onGoData, o
               </button>
             ))}
           </div>
-          <button type="button" className="btn small primary" disabled={!!modelBusy} onClick={() => void exportModel('3dm')}>
+          <button type="button" className="btn small primary" onClick={() => setWorkbench(true)}>
+            모형 작업대 열기 (3D 미리보기)
+          </button>
+          <button type="button" className="btn small" disabled={!!modelBusy} onClick={() => void exportModel('3dm')}>
             {modelBusy === '3dm' ? `만드는 중… ${modelStep}` : '라이노 .3dm'}
           </button>
           <button type="button" className="btn small" disabled={!!modelBusy} onClick={() => void exportModel('dxf')}>
@@ -732,6 +733,11 @@ export default function DiagramStep({ project, update, config, keys, onGoData, o
           onSvg={() => downloadSvg(viewDef)}
           onPng={() => void downloadPng(viewDef)}
         />
+      )}
+      {workbench && data && (
+        <Suspense fallback={<div className="workbench workbench-loading">모형 작업대 불러오는 중…</div>}>
+          <ModelWorkbench data={data} baseName={modelBase} meta={modelMeta} halfOptions={halfOptions} initialHalf={half} onClose={() => setWorkbench(false)} />
+        </Suspense>
       )}
     </div>
   )

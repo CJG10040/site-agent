@@ -745,3 +745,47 @@ export function modelNotes(m: SiteModel, meta: { title: string; address: string;
     ['수집일', meta.collected],
   ]
 }
+
+// ───────────────────────── 차선 (3dm·미리보기 공통) ─────────────────────────
+
+/** 선을 옆으로 d만큼 (겹선 차선) — 꼭짓점마다 앞뒤 방향의 평균 법선 */
+export function offsetLine(pts: XY[], d: number): XY[] {
+  return pts.map((p, i) => {
+    const a = pts[Math.max(0, i - 1)]
+    const b = pts[Math.min(pts.length - 1, i + 1)]
+    const L = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1
+    return [p[0] - ((b[1] - a[1]) / L) * d, p[1] + ((b[0] - a[0]) / L) * d] as XY
+  })
+}
+
+/** 점선 차선: 칠한 길이 on, 빈 길이 off (도로교통 규격 어림 3m·5m) */
+export function dashesOf(pts: XY[], on = 3, off = 5): XY[][] {
+  const out: XY[][] = []
+  let cur: XY[] = []
+  let pos = 0
+  const period = on + off
+  for (let i = 0; i + 1 < pts.length; i++) {
+    const [x0, y0] = pts[i]
+    const [x1, y1] = pts[i + 1]
+    const L = Math.hypot(x1 - x0, y1 - y0)
+    let t = 0
+    while (t < L) {
+      const phase = pos % period
+      const drawing = phase < on
+      const step = Math.min(L - t, drawing ? on - phase : period - phase)
+      const a: XY = [x0 + ((x1 - x0) * t) / L, y0 + ((y1 - y0) * t) / L]
+      const b: XY = [x0 + ((x1 - x0) * (t + step)) / L, y0 + ((y1 - y0) * (t + step)) / L]
+      if (drawing) {
+        if (!cur.length) cur.push(a)
+        cur.push(b)
+      } else if (cur.length) {
+        out.push(cur)
+        cur = []
+      }
+      t += step
+      pos += step
+    }
+  }
+  if (cur.length > 1) out.push(cur)
+  return out
+}
