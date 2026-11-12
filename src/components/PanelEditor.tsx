@@ -6,7 +6,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { featuresAt, type DiagramData, type HitCandidate } from '../diagrams/data'
 import { makeFrame, MAP_CX, MAP_CY, MAP_R } from '../diagrams/frame'
-import type { PanelDef } from '../diagrams/panels'
+import { ORDERED_PANELS, type PanelDef } from '../diagrams/panels'
 import type { CachedPanel } from '../diagrams/useDiagrams'
 import { editsOf, labelEditsFor, newEditId } from '../model/edits'
 import { nowIso } from '../model/project'
@@ -42,10 +42,15 @@ export default function PanelEditor({ project, update, def, panel, data, setting
   const edits = editsOf(project)
   const labelEdits = labelEditsFor(project, def.id)
   const mapPanel = !panel.out.noFrame && !panel.out.empty && def.id !== 'synth'
+  const in3d = !!settings.view3d?.includes(def.id)
   const frame = useMemo(() => {
-    const R = def.frameR ? def.frameR(data) : data.R
+    // 겹쳐 보기는 아래 도판의 틀
+    const borrow = def.frameFrom?.(settings)
+    const fd = borrow ? (ORDERED_PANELS.find((p) => p.id === borrow) ?? def) : def
+    const R = fd.frameR ? fd.frameR(data) : data.R
     return makeFrame(data.center[0], data.center[1], R, settings.frame)
-  }, [def, data, settings.frame])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [def, data, settings.frame, settings.overlays])
   const viewH = Number(panel.svg.match(/viewBox="0 0 [\d.]+ ([\d.]+)"/)?.[1] ?? 1300)
   const viewW = Number(panel.svg.match(/viewBox="0 0 ([\d.]+) /)?.[1] ?? 1000)
 
@@ -163,7 +168,7 @@ export default function PanelEditor({ project, update, def, panel, data, setting
             <button type="button" role="radio" aria-checked={mode === 'view'} className={mode === 'view' ? 'on' : ''} onClick={() => setMode('view')}>
               보기
             </button>
-            <button type="button" role="radio" aria-checked={mode === 'hide'} className={mode === 'hide' ? 'on' : ''} disabled={!mapPanel} title={mapPanel ? '' : '지도 도판에서만'} onClick={() => setMode('hide')}>
+            <button type="button" role="radio" aria-checked={mode === 'hide'} className={mode === 'hide' ? 'on' : ''} disabled={!mapPanel} title={mapPanel ? '' : in3d ? '3D에서는 평면으로 바꾼 뒤 빼세요' : '지도 도판에서만'} onClick={() => setMode('hide')}>
               자료 빼기
             </button>
             <button type="button" role="radio" aria-checked={mode === 'label'} className={mode === 'label' ? 'on' : ''} onClick={() => setMode('label')}>

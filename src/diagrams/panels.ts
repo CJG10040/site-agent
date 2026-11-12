@@ -6,7 +6,7 @@ import { area, booleanPointInPolygon, feature, featureCollection, intersect, poi
 import type { Position } from 'geojson'
 import { geometryToAreaDistanceM, lineToAreaDistanceM, overlapsSite, pointToAreaDistanceM, radiusCircle, type Areal } from '../lib/geo'
 import { wgs84ToUtmk } from '../lib/proj'
-import { sunAt, sunPathFeatures, SUN_DAYS } from '../lib/sun'
+import { sunAt, sunAtDate, sunPathFeatures, SUN_DAYS } from '../lib/sun'
 import { contourInterval, contourLines, rangeText, SLOPE_BINS, type TerrainAnalysis } from '../lib/terrainSite'
 import type { DiagramSettings } from '../model/types'
 import { ALL_LAYERS } from '../sources/vworldLayers'
@@ -22,6 +22,7 @@ import { arealRings, pointInRings, pointToRingsDist, toXY } from '../lib/xy'
 import { ENV_PANELS } from './panelsEnv'
 import { LAW_PANEL } from './panelsLaw'
 import { OVERLAY_PANELS } from './overlay'
+import type { Cam3d, Projector, View3dOpts } from './view3d'
 import { LIFE_PANELS } from './panelsLife'
 import { MOVE_PANELS } from './panelsMove'
 import { SECTION_PANELS } from './panelsSection'
@@ -57,6 +58,8 @@ export interface PanelDef {
   frameR?: (d: DiagramData, extra?: { synth?: SynthCtx | null }) => number
   /** 다른 도판의 틀을 빌림 (겹쳐 보기: 아래 도판 id) */
   frameFrom?: (st: DiagramSettings) => string | null
+  /** 3D로 볼 때: 건물 매스 색·뺄 레이어·덧그림 (14-E) */
+  three?: (c: PanelCtx) => View3dOpts
   render: (c: PanelCtx) => PanelOutput | Promise<PanelOutput>
 }
 
@@ -404,6 +407,7 @@ export const PANELS: PanelDef[] = [
     title: '건물 (피겨-그라운드)',
     group: '주변 현황',
     needs: "공간정보에서 '주변 건물'을 수집하세요.",
+    three: (c) => ({ massColor: () => c.pal.ink }),
     render: (c) => {
       const bs = c.d.buildings
       if (!bs.length) return { layers: [], legend: [], summary: [], caption: '', empty: '건물 자료가 없습니다' }
@@ -426,6 +430,7 @@ export const PANELS: PanelDef[] = [
     title: '건축물 용도',
     group: '주변 현황',
     needs: "공간정보에서 '주변 건물'을 수집하세요.",
+    three: (c) => ({ massColor: (b) => useColor(c.pal, useClass(b.use)) }),
     render: (c) => {
       const bs = c.d.buildings
       if (!bs.length) return { layers: [], legend: [], summary: [], caption: '', empty: '건물 자료가 없습니다' }
@@ -499,6 +504,10 @@ export const PANELS: PanelDef[] = [
     title: '건축물 높이 (층수)',
     group: '주변 현황',
     needs: "공간정보에서 '주변 건물'을 수집하세요.",
+    three: (c) => {
+      const colors = steps(c.pal, FLOOR_BINS.length)
+      return { massColor: (b) => (b.floors === null ? c.pal.unknown : colors[Math.max(0, FLOOR_BINS.findIndex((x) => x.test(b.floors!)))]) }
+    },
     render: (c) => {
       const bs = c.d.buildings
       if (!bs.length) return { layers: [], legend: [], summary: [], caption: '', empty: '건물 자료가 없습니다' }
@@ -530,6 +539,10 @@ export const PANELS: PanelDef[] = [
     title: '고층',
     group: '주변 현황',
     needs: "공간정보에서 '주변 건물'을 수집하세요.",
+    three: (c) => {
+      const hot = themeColor(c.pal, { default: '#2f6fd6', cvd: '#0072b2', mono: '#2a2a2a' }, c.pal.cat[3])
+      return { massColor: (b) => (b.floors === null ? mix(c.pal.paper, c.pal.unknown, 0.5) : b.floors >= c.st.highFloors ? hot : mix(c.pal.paper, c.pal.base, 0.9)) }
+    },
     render: (c) => {
       const th = c.st.highFloors
       const bs = c.d.buildings
@@ -560,6 +573,10 @@ export const PANELS: PanelDef[] = [
     title: '저층',
     group: '주변 현황',
     needs: "공간정보에서 '주변 건물'을 수집하세요.",
+    three: (c) => {
+      const hot = themeColor(c.pal, { default: '#d9822b', cvd: '#e69f00', mono: '#4a4a4a' }, c.pal.cat[1])
+      return { massColor: (b) => (b.floors === null ? mix(c.pal.paper, c.pal.unknown, 0.5) : b.floors <= c.st.lowFloors ? hot : mix(c.pal.paper, c.pal.base, 0.9)) }
+    },
     render: (c) => {
       const th = c.st.lowFloors
       const bs = c.d.buildings
@@ -772,6 +789,7 @@ export const PANELS: PanelDef[] = [
     title: '태양 궤적·그림자',
     group: '환경',
     needs: '대지를 정하면 그려집니다.',
+    three: (c) => ({ drop: /^태양_궤적$/, extra: (pr) => sunDome3d(c, pr), cam: (cam) => sunCam(c.d.center[1], cam) }),
     render: (c) => {
       const day = SUN_DAYS.find((x) => x.key === c.st.sunDay) ?? SUN_DAYS[2]
       const hour = c.st.sunHour
@@ -1110,6 +1128,65 @@ function terrainCaption(t: TerrainAnalysis, extra = ''): string {
 
 const signed = (v: number) => `${v > 0 ? '+' : ''}${fmt(v, 0)}`
 
+
+/**
+ * 태양 궤적 면(천구 북극 쪽으로 위도만큼 기운 면)이 보는 방향과 거의 나란하면 궤적이 한 줄로 보인다.
+ * 그럴 때는 이 도판만 북쪽(북서·북동)에서 보게 돌린다.
+ */
+function sunCam(lat: number, cam: Cam3d): { cam: Cam3d; note: string } | null {
+  const open = (az: number) => {
+    const A = (az * Math.PI) / 180
+    const T = (cam.tilt * Math.PI) / 180
+    const L = (lat * Math.PI) / 180
+    // 보는 방향(보는 사람 → 대지) · 궤적 면의 법선(북쪽 위)
+    return Math.abs(-Math.cos(A) * Math.cos(T) * Math.cos(L) - Math.sin(T) * Math.sin(L))
+  }
+  if (open(cam.az) >= 0.45) return null
+  const az = Math.sin((cam.az * Math.PI) / 180) >= 0 ? 45 : 315
+  return { cam: { ...cam, az }, note: `태양 궤적이 한 줄로 겹쳐 보이지 않게 이 도판만 ${az === 45 ? '북동' : '북서'}쪽에서 봄` }
+}
+
+/** 14-E 3D 태양 궤적: 대지 위 하늘 반구에 하지·춘추분·동지 궤적, 1시간 점, 지금 고른 시각의 해 */
+function sunDome3d(c: PanelCtx, pr: Projector): string {
+  const [lon, lat] = c.d.center
+  const cols = sunPathColors(c.pal)
+  const Rd = MAP_R * 0.78
+  const zOf = (alt: number) => ((Rd / c.f.s) * Math.sin((alt * Math.PI) / 180)) / pr.cam.vex
+  const at = (alt: number, az: number): [number, number] => {
+    const r = Rd * Math.cos((alt * Math.PI) / 180)
+    const a = (az * Math.PI) / 180
+    return pr.P(MAP_CX + r * Math.sin(a), MAP_CY - r * Math.cos(a), zOf(alt))
+  }
+  let svg = ''
+  // 지평선 원 (바닥)
+  const ring = Array.from({ length: 73 }, (_, i) => at(0, i * 5))
+  svg += `<path d="${ring.map(([x, y], i) => `${i ? 'L' : 'M'}${x.toFixed(1)} ${y.toFixed(1)}`).join('')}" fill="none" stroke="${c.pal.subtle}" stroke-width="1" stroke-dasharray="4 6"/>`
+  for (const d of SUN_DAYS) {
+    const col = cols[d.key]
+    const pts: [number, number][] = []
+    const dots: string[] = []
+    for (let m = 4 * 60; m <= 21 * 60; m += 10) {
+      const s0 = sunAtDate(lon, lat, d.month, d.day, m / 60)
+      if (s0.altitude <= 0) continue
+      const p = at(s0.altitude, s0.azimuth)
+      pts.push(p)
+      if (m % 60 === 0) {
+        dots.push(`<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="3" fill="${col}"/>`)
+        if (d.key === c.st.sunDay && (m / 60) % 3 === 0)
+          dots.push(`<text x="${p[0].toFixed(1)}" y="${(p[1] - 9).toFixed(1)}" font-size="13" text-anchor="middle" fill="${col}" stroke="${c.pal.paper}" stroke-width="3" paint-order="stroke">${m / 60}시</text>`)
+      }
+    }
+    if (pts.length > 1) svg += `<path d="${pts.map(([x, y], i) => `${i ? 'L' : 'M'}${x.toFixed(1)} ${y.toFixed(1)}`).join('')}" fill="none" stroke="${col}" stroke-width="2.6" stroke-linecap="round"/>` + dots.join('')
+  }
+  // 지금 고른 날·시각의 해와 대지까지 선
+  const now = sunAt(lon, lat, c.st.sunDay, c.st.sunHour)
+  if (now.altitude > 0) {
+    const sp = at(now.altitude, now.azimuth)
+    const [ox, oy] = pr.P(...c.f.pt(lon, lat))
+    svg += `<path d="M${ox.toFixed(1)} ${oy.toFixed(1)}L${sp[0].toFixed(1)} ${sp[1].toFixed(1)}" stroke="${cols[c.st.sunDay]}" stroke-width="1.3" stroke-dasharray="5 4"/><circle cx="${sp[0].toFixed(1)}" cy="${sp[1].toFixed(1)}" r="9" fill="${cols[c.st.sunDay]}" stroke="${c.pal.paper}" stroke-width="2"/>`
+  }
+  return svg
+}
 
 export const TERRAIN_PANELS: PanelDef[] = [
   {

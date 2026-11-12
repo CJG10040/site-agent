@@ -11,6 +11,7 @@ import { editsOf } from '../model/edits'
 import { DXF_LAYERS, siteModelToDxf } from '../export/toDxf'
 import StylePanel from '../components/StylePanel'
 import OverlayControls from '../components/OverlayControls'
+import { can3d } from '../diagrams/render'
 import { isOverlayId, OVERLAY_IDS } from '../diagrams/overlay'
 import { wgs84ToUtmk } from '../lib/proj'
 import { terrainAround, type TerrainGrid } from '../lib/terrain'
@@ -94,6 +95,14 @@ export default function DiagramStep({ project, update, config, keys, onGoData, o
       cur.settings = { ...DEFAULT_SETTINGS, ...cur.settings, ...patch }
       d.diagrams = cur
     })
+
+  const toggle3d = (id: string, on: boolean) => {
+    const cur = new Set(settings.view3d ?? [])
+    if (on) cur.add(id)
+    else cur.delete(id)
+    setSettings({ view3d: cur.size ? [...cur] : undefined })
+  }
+  const cam = { az: settings.cam3d?.az ?? 225, tilt: settings.cam3d?.tilt ?? 45, vex: settings.cam3d?.vex ?? 1 }
 
   const patchNote = (id: string, patch: Partial<PanelNote>) =>
     update((d) => {
@@ -452,6 +461,18 @@ export default function DiagramStep({ project, update, config, keys, onGoData, o
           ]}
           onChange={(v) => setSettings({ terrainShade: v === 'on' })}
         />
+        {(settings.view3d?.length ?? 0) > 0 && (
+          <>
+            <Seg
+              label="3D 보는 방향"
+              value={cam.az}
+              options={[0, 45, 90, 135, 180, 225, 270, 315].map((a) => ({ v: a, label: ['북', '북동', '동', '남동', '남', '남서', '서', '북서'][a / 45] }))}
+              onChange={(v) => setSettings({ cam3d: { ...settings.cam3d, az: v } })}
+            />
+            <Seg label="3D 기울기" value={cam.tilt} options={[30, 45, 60].map((t) => ({ v: t, label: `${t}°` }))} onChange={(v) => setSettings({ cam3d: { ...settings.cam3d, tilt: v } })} />
+            <Seg label="3D 높이" value={cam.vex} options={[1, 1.5, 2, 3].map((x) => ({ v: x, label: `×${x}` }))} onChange={(v) => setSettings({ cam3d: { ...settings.cam3d, vex: v } })} />
+          </>
+        )}
         <Seg label="PNG 크기" value={settings.pngWidth} options={[{ v: 2000, label: '2000px' }, { v: 4000, label: '4000px' }]} onChange={(v) => setSettings({ pngWidth: v })} />
         <div className="diagram-export">
           <button type="button" className="btn small" disabled={!!exporting || busy || !ready.length} onClick={() => void downloadAll('svg')}>
@@ -653,6 +674,23 @@ export default function DiagramStep({ project, update, config, keys, onGoData, o
                               리포트에 넣기
                             </label>
                             <span className="spacer" />
+                            {can3d(def.id) && (
+                              <div className="segmented small view3d-toggle" role="radiogroup" aria-label={`${def.title} 보기`}>
+                                {(
+                                  [
+                                    [false, '평면'],
+                                    [true, '3D'],
+                                  ] as const
+                                ).map(([v, l]) => {
+                                  const on = !!settings.view3d?.includes(def.id) === v
+                                  return (
+                                    <button key={l} type="button" role="radio" aria-checked={on} className={on ? 'on' : ''} onClick={() => toggle3d(def.id, v)}>
+                                      {l}
+                                    </button>
+                                  )
+                                })}
+                              </div>
+                            )}
                             <button type="button" className="btn small ghost" disabled={!p} onClick={() => downloadSvg(def)}>
                               SVG
                             </button>

@@ -328,6 +328,10 @@ export interface DiagramSettings {
   terrainShade: boolean
   /** 두 주제 겹쳐 보기 칸 (14-D, 비면 null) */
   overlays?: (OverlaySpec | null)[]
+  /** 3D로 볼 도판 id (14-E, 도판마다 평면/3D) */
+  view3d?: string[]
+  /** 3D 보는 방향(°, 보는 사람이 선 방위)·내려다보는 각(°)·높이 과장 */
+  cam3d?: { az?: number; tilt?: number; vex?: number }
 }
 
 /** 도판 하나의 결론 */

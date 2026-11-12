@@ -44,8 +44,13 @@ function cachePut(p: CachedPanel) {
   }
 }
 
-/** 도판마다 영향을 주는 설정만 골라 열쇠로 */
+/** 도판마다 영향을 주는 설정만 골라 열쇠로 (3D면 보는 방향도) */
 function settingsKey(id: string, s: DiagramSettings): string {
+  const c = s.view3d?.includes(id) ? s.cam3d ?? {} : null
+  return flatKey(id, s) + (c ? `|3d:${c.az ?? ''},${c.tilt ?? ''},${c.vex ?? ''}` : '')
+}
+
+function flatKey(id: string, s: DiagramSettings): string {
   const common = `${s.frame}|${paletteKey(s, id)}|${s.background}|${s.siteMark}`
   if (id === 'high') return `${common}|${s.highFloors}`
   if (id === 'low') return `${common}|${s.lowFloors}`

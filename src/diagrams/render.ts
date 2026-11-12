@@ -8,7 +8,13 @@ import { makeFrame } from './frame'
 import { paletteFor } from './palette'
 import type { TerrainAnalysis } from '../lib/terrainSite'
 import { ORDERED_PANELS, panelNumber, type PanelCtx, type PanelDef } from './panels'
-import type { SynthCtx } from './synth'
+import { NOT_MAP_PANELS, type SynthCtx } from './synth'
+import { is3d, to3d } from './view3d'
+
+/** 3D로 볼 수 있는 도판 (단면·그래프·하늘 그림·바람장미는 제외, 종합 다이어그램은 됨) */
+export function can3d(id: string): boolean {
+  return id === 'synth' || !NOT_MAP_PANELS.has(id)
+}
 
 export const DEFAULT_SETTINGS: DiagramSettings = {
   frame: 'circle',
@@ -67,8 +73,8 @@ export async function renderPanel(
   const frame = makeFrame(data.center[0], data.center[1], R, settings.frame)
   const pal = paletteFor(settings, def.id)
   let out: PanelOutput
+  const ctx: PanelCtx = { d: data, f: frame, pal, st: settings, vworldKey, date, t: terrain, synth: extra.synth ?? null }
   try {
-    const ctx: PanelCtx = { d: data, f: frame, pal, st: settings, vworldKey, date, t: terrain, synth: extra.synth ?? null }
     // 종합 도판은 다른 도판의 그림을 같은 틀로 다시 그려 바탕에 깔 수 있다
     ctx.basePanel = async (id) => {
       const bd = ORDERED_PANELS.find((p) => p.id === id && p.id !== def.id)
@@ -84,6 +90,14 @@ export async function renderPanel(
   const note = editNote(data.hidden?.applied ?? 0, labels.length)
   if (note && !out.empty) out = { ...out, caption: out.caption ? `${out.caption} · ${note}` : note }
   const site = siteMarkSvg(frame, frame.path(data.boundary, false), data.center, settings, pal)
+  // 14-E: 이 도판을 3D로 (지도 도판만)
+  if (is3d(settings, def.id) && can3d(def.id) && !out.empty && !out.noFrame) {
+    try {
+      out = to3d(out, ctx, site, `clip-${def.id}`, def.three?.(ctx))
+    } catch (e) {
+      out = { ...out, caption: `${out.caption} · 3D로 그리지 못함: ${e instanceof Error ? e.message : String(e)}` }
+    }
+  }
   const svg = applyLabelEdits(
     composePanel(
       { id: def.id, number: panelNumber(def.id), title: def.title, subtitle: `반경 ${R.toLocaleString('ko-KR')}m · ${date} 수집` },
