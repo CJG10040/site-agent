@@ -31,6 +31,8 @@ const WANTS: Want[] = [
   { match: /^B001/, key: 'bldg', kinds: ['polygon'], props: (r) => ({ name: r['명칭'] ?? '', kind: r['종류'] ?? '', use: r['용도'] ?? '', floors: num(r['층수']), note: r['주기'] ?? '' }) },
   { match: /^A001/, key: 'road', kinds: ['polygon'], props: () => ({}) },
   { match: /^A003/, key: 'walk', kinds: ['polygon'], props: (r) => ({ width: num(r['폭']), material: r['재질'] ?? '' }) },
+  // 1:1,000 보도는 선(보도 가운데) + 폭 — 도로경계에서 폭의 절반쯤 안쪽 (2026-11-13 확인: 거리/폭 중앙값 0.69) → 3D에서 폭만큼 넓혀 15cm 올림
+  { match: /^A003/, key: 'walkline', kinds: ['line'], props: (r) => ({ width: num(r['폭']), material: r['재질'] ?? '' }) },
   {
     match: /^F001/,
     key: 'contour',
@@ -244,18 +246,19 @@ export function readNgi1000(file: string, ngi: Uint8Array, nda: Uint8Array | nul
   }
   const out: NgiiSheet = { code, year, file, epsg, scale: 1000, boundsLL, counts: {}, features: {} }
   for (const [name, recs] of g.layers) {
-    const want = WANTS.find((w) => w.match.test(name))
-    if (!want) continue
-    const at = attrs.get(name)
-    const list: Feat[] = (out.features[want.key] ??= [])
-    for (const r of recs) {
-      if (!want.kinds.includes(r.kind)) continue
-      if (!near(r.parts, want.terrain ? TERRAIN_MARGIN : SITE_MARGIN)) continue
-      const props = want.props(at?.get(r.id) ?? {})
-      if (!props) continue
-      const geometry = toGeom(r, toLonLat)
-      if (!geometry) continue
-      list.push({ type: 'Feature', geometry, properties: { ...props, sheet: code } })
+    // 한 레이어에 규칙이 여럿일 수 있음 (보도: 면 → walk, 선 → walkline)
+    for (const want of WANTS.filter((w) => w.match.test(name))) {
+      const at = attrs.get(name)
+      const list: Feat[] = (out.features[want.key] ??= [])
+      for (const r of recs) {
+        if (!want.kinds.includes(r.kind)) continue
+        if (!near(r.parts, want.terrain ? TERRAIN_MARGIN : SITE_MARGIN)) continue
+        const props = want.props(at?.get(r.id) ?? {})
+        if (!props) continue
+        const geometry = toGeom(r, toLonLat)
+        if (!geometry) continue
+        list.push({ type: 'Feature', geometry, properties: { ...props, sheet: code } })
+      }
     }
   }
   for (const k of NGII_KEYS) if (out.features[k]?.length) out.counts[k] = out.features[k]!.length

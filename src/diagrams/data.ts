@@ -124,6 +124,8 @@ export interface NgiiData {
   /** 도로경계 면 (인도 포함 도로 전체) */
   roads: Areal[]
   walks: Areal[]
+  /** 1:1,000 보도 중심선 + 폭(m) */
+  walkLines: { geom: Lines; width: number | null }[]
   contours: { geom: Lines; z: number; major: boolean }[]
   spots: { lon: number; lat: number; z: number; benchmark?: string }[]
   /** 옹벽·석축·제방: '상단' 선은 그린 방향의 오른쪽이 낮은 쪽 */
@@ -434,6 +436,7 @@ export function buildDiagramData(project: Project): DiagramData | null {
       minor: [],
       roads: nfeats('ngii:road').filter((f) => isAreal(f.geometry)).map((f) => f.geometry as Areal),
       walks: nfeats('ngii:walk').filter((f) => isAreal(f.geometry)).map((f) => f.geometry as Areal),
+      walkLines: lines('ngii:walkline').map((f) => ({ geom: f.geometry as Lines, width: num(f.properties.width) })),
       contours: lines('ngii:contour').map((f) => ({ geom: f.geometry as Lines, z: Number(f.properties.z), major: !!f.properties.major })),
       spots: nfeats('ngii:spot')
         .filter((f) => f.geometry?.type === 'Point')

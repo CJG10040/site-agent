@@ -10,8 +10,11 @@
 // 차선 종류 3자리(type/linetype): 첫째 색(1 황색·2 백색·3 청색), 둘째 1 단선·2 겹선, 셋째 1 실선·2 점선.
 //   유스퀘어 주변 자료의 kind(의미)와 맞춰 확인: 503 차선 = 212(백색 단선 점선), 501 중앙선 = 111(황색 실선), 504 버스전용 = 312·311(청색),
 //   530 정지선 = 211(백색 실선), 515 주정차금지 = 111 / 121(황색 겹선 = 절대금지).
-// 노면표시 화살표(2026-11-13): 도형은 화살표 크기의 사각형뿐이라 진행 방향을 주행경로링크(a2_link·nt2_link, 꼭짓점 순서 = 진행 방향)에서 구해
-//   az(북에서 시계, 도)로 담는다 — 링크 id(linkid)가 있으면 그 링크, 없으면 3m 안 가장 가까운 링크.
+// 노면표시 화살표(2026-11-13): 도형은 화살표 크기의 사각형뿐이라 진행 방향을 따로 구해 az(북에서 시계, 도)로 담는다.
+//   C-ITS 형식은 표시마다 링크 id(linkid)가 있어 그 주행경로링크(a2_link, 꼭짓점 순서 = 진행 방향)의 방향.
+//   2026 형식(rm2)은 링크 id가 없고 nt2_link의 꼭짓점 순서·direction 값이 진행 방향과 맞지 않음(중앙선 기준과 34:35) →
+//   '우측통행: 중앙선(종류 501)이 진행 방향의 왼쪽'으로 정함 — 화살표 긴 축과 나란한 가장 가까운 중앙선(40m 안).
+//   이 규칙은 C-ITS 링크 방향과 98.8% 맞음(1,494:18). 중앙선도 없으면 3m 안 가장 가까운 링크.
 //   종류(도로교통법 시행규칙 별표6 번호 + 끝자리): 537x 진행방향(5371 직진·5372 좌회전·5373 우회전·5374 유턴), 538x 직진+좌·우회전, 539x 유턴(5392 좌회전+유턴),
 //   543x 차로변경, 544 오르막경사면, 529 횡단보도예고, 524 정차금지지대. 좌·우는 중앙선(황색)에 붙은 차로인지로 확인(5372 115:16, 5373 13:115).
 // 신호등·표지판 높이(2026-11-13 자료로 확인, 공식 코드표는 찾지 못함): 점·판의 Z에서 지주 밑(없으면 가까운 차선 높이)을 빼 '땅 위 높이'로 담는다.
@@ -37,6 +40,8 @@ export const HD_LABEL: Record<HdKey, string> = {
   bump: '과속방지턱',
 }
 export const hdLayer = (k: HdKey | 'files') => `hd:${k}`
+/** 읽기 방식 판 (2 = 2026-11-13: 신호등·표지판·지주·방호시설·과속방지턱, 화살표 방향) */
+export const HD_READER_V = 2
 
 const MARGIN = 80
 
@@ -193,11 +198,46 @@ export function readHdZip(name: string, data: Uint8Array, center: [number, numbe
     return az
   }
 
+  /** 화살표 긴 축(axis)과 나란한 가장 가까운 중앙선 → 그 선이 왼쪽에 오는 진행 방향 (북에서 시계, 도) */
+  const centers: number[][][] = []
+  const centerDir = (x: number, y: number, axis: [number, number]): number | null => {
+    let best = 40
+    let az: number | null = null
+    for (const l of centers)
+      for (let i = 0; i + 1 < l.length; i++) {
+        const [ax, ay] = l[i]
+        const [bx, by] = l[i + 1]
+        if ((x < ax - best && x < bx - best) || (x > ax + best && x > bx + best) || (y < ay - best && y < by - best) || (y > ay + best && y > by + best)) continue
+        const dx = bx - ax
+        const dy = by - ay
+        const L = Math.hypot(dx, dy)
+        if (L < 0.01 || Math.abs((dx * axis[0] + dy * axis[1]) / L) < 0.85) continue
+        const t = Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / (L * L)))
+        const fx = ax + t * dx
+        const fy = ay + t * dy
+        const d = Math.hypot(x - fx, y - fy)
+        if (d < best && d > 0.3) {
+          best = d
+          // 진행 방향 g = ±(dx, dy): 중앙선(점 → 발)이 왼쪽 = g × w > 0
+          const s = dx * (fy - y) - dy * (fx - x) > 0 ? 1 : -1
+          az = (Math.atan2(dx * s, dy * s) * 180) / Math.PI
+        }
+      }
+    return az
+  }
+
   // ── 땅 높이(차선·도로 경계 꼭짓점 Z, 5m 칸)와 지주(id → 밑 높이·위치)
   const ground = new Map<string, number[]>()
   const cell = (x: number, y: number) => `${Math.floor(x / 5)},${Math.floor(y / 5)}`
   const posts = new Map<string, { x: number; y: number; z: number }>()
   for (const L of layers) {
+    // 중앙선 (노면표시 진행 방향용)
+    if (L.want.key === 'lane')
+      L.shapes.forEach((s, i) => {
+        const r = L.recs[i]
+        if (!s || !r || (r.kind || r.linekind) !== '501') return
+        for (const part of s.parts) centers.push(part.map(([x, y]) => L.toUtmk(x, y)))
+      })
     if (L.want.key === 'lane' || L.want.key === 'border')
       L.shapes.forEach((s) => {
         if (!s?.z) return
@@ -250,13 +290,26 @@ export function readHdZip(name: string, data: Uint8Array, center: [number, numbe
       seen.add(`${key}:${id}`)
       const props: Record<string, unknown> = { ...L.want.props(rec), id }
       let geometry = toGeometry(s, L.toLonLat)
-      if (key === 'mark' && linkList.length) {
-        // 화살표 진행 방향
-        const pts = s.parts[0] ?? []
-        if (pts.length) {
-          const [ux, uy] = L.toUtmk(pts.reduce((a, q) => a + q[0], 0) / pts.length, pts.reduce((a, q) => a + q[1], 0) / pts.length)
+      if (key === 'mark') {
+        // 화살표 진행 방향: 자기 링크 → 중앙선 규칙 → 가까운 링크
+        const pts = (s.parts[0] ?? []).map(([x, y]) => L.toUtmk(x, y))
+        if (pts.length > 2) {
+          const ux = pts.reduce((a, q) => a + q[0], 0) / pts.length
+          const uy = pts.reduce((a, q) => a + q[1], 0) / pts.length
+          // 긴 축 = 가장 긴 변
+          let axis: [number, number] = [1, 0]
+          let longest = 0
+          for (let k = 0; k + 1 < pts.length; k++) {
+            const dx = pts[k + 1][0] - pts[k][0]
+            const dy = pts[k + 1][1] - pts[k][1]
+            const len = Math.hypot(dx, dy)
+            if (len > longest) {
+              longest = len
+              axis = [dx / len, dy / len]
+            }
+          }
           const own = rec.linkid ? links.get(rec.linkid) : undefined
-          const az = (own && dirOn([own], ux, uy, 15)) ?? dirOn(linkList, ux, uy, 3)
+          const az = (own ? dirOn([own], ux, uy, 15) : null) ?? centerDir(ux, uy, axis) ?? dirOn(linkList, ux, uy, 3)
           if (az !== null) props.az = Math.round(az * 10) / 10
         }
       }

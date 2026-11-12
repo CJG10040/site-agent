@@ -5,7 +5,7 @@ import { buildDiagramData, inNgii } from '../diagrams/data'
 import { centroidOf } from '../diagrams/frame'
 import { sheetBounds } from '../lib/mapSheet'
 import { arealRings, localProj, lineToRingsDist, pointInRings, pointToRingsDist, toXY } from '../lib/xy'
-import { NGII_KEYS, ngiiLayer, type NgiiSheet } from '../sources/ngiiMap'
+import { NGII_KEYS, NGII_READER_V, ngiiLayer, type NgiiSheet } from '../sources/ngiiMap'
 import { upsertDrafts, type DraftFact } from './applyCollection'
 import { apiSource } from './applyNearby'
 import { nextNumber, nowIso, siteKey } from './project'
@@ -57,7 +57,7 @@ export function applyNgiiSheets(project: Project, sheets: NgiiSheet[], radiusM: 
                 ],
               }
             : null,
-          properties: { code: s.code, year: s.year, file: s.file, epsg: s.epsg, scale: s.scale ?? 5000, counts: s.counts, radiusM, uploadedAt: t, bounds: b, siteKey: siteKey(project.site) },
+          properties: { code: s.code, year: s.year, file: s.file, epsg: s.epsg, scale: s.scale ?? 5000, counts: s.counts, radiusM, uploadedAt: t, bounds: b, siteKey: siteKey(project.site), v: NGII_READER_V },
         }
       }),
     ],

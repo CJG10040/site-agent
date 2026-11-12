@@ -1,6 +1,6 @@
 // 15-F 정밀도로지도를 올렸을 때: 원자료 보관(겹치는 id는 한 번만), 출처 기록. 다시 수집해도(같은 대지면) 남긴다.
 
-import { HD_KEYS, hdLayer, type HdSet } from '../sources/hdMap'
+import { HD_KEYS, HD_READER_V, hdLayer, type HdSet } from '../sources/hdMap'
 import { apiSource } from './applyNearby'
 import { nextNumber, nowIso, siteKey } from './project'
 import type { Project } from './types'
@@ -17,16 +17,18 @@ export function applyHdSets(project: Project, sets: HdSet[], radiusM: number): v
   for (const k of HD_KEYS) {
     const id = hdLayer(k)
     const prev = next[id]?.features ?? []
-    const have = new Set(prev.map((f) => String(f.properties.id)))
-    const add = sets.flatMap((s) => s.features[k] ?? []).filter((f) => !have.has(String(f.properties.id)))
-    if (prev.length + add.length) next[id] = { dataset_id: id, retrieved_at: t, features: [...prev, ...add] }
+    // 같은 id는 새로 읽은 것으로 바꿈 (다시 올리기 = 새 읽기 방식 반영)
+    const add = sets.flatMap((s) => s.features[k] ?? [])
+    const addIds = new Set(add.map((f) => String(f.properties.id)))
+    const keep = prev.filter((f) => !addIds.has(String(f.properties.id)))
+    if (keep.length + add.length) next[id] = { dataset_id: id, retrieved_at: t, features: [...keep, ...add] }
   }
   const fid = hdLayer('files')
   const files = (next[fid]?.features ?? []).filter((f) => !sets.some((s) => s.file === f.properties.file))
   next[fid] = {
     dataset_id: fid,
     retrieved_at: t,
-    features: [...files, ...sets.map((s) => ({ type: 'Feature' as const, geometry: null, properties: { file: s.file, sections: s.sections, counts: s.counts, radiusM, uploadedAt: t, siteKey: siteKey(project.site) } }))],
+    features: [...files, ...sets.map((s) => ({ type: 'Feature' as const, geometry: null, properties: { file: s.file, sections: s.sections, counts: s.counts, radiusM, uploadedAt: t, siteKey: siteKey(project.site), v: HD_READER_V } }))],
   }
   project.collected = next
   const all = next[fid].features.map((f) => f.properties)

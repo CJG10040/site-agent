@@ -70,7 +70,7 @@ export function roadDirs(lines: XY[][]): RoadDirs {
 // ───────────────────────── 다각형 자르기 ─────────────────────────
 
 /** n·p ≥ c 쪽만 남김 (서덜랜드–호지먼, 볼록한 띠로 자를 때) */
-function clipHalf(pts: XY[], n: XY, c: number): XY[] {
+export function clipHalf(pts: XY[], n: XY, c: number): XY[] {
   const out: XY[] = []
   for (let i = 0; i < pts.length; i++) {
     const a = pts[i]
@@ -99,7 +99,7 @@ function band(o: XY[], a: XY, s0: number, s1: number): XY[] | null {
 }
 
 /** 가장 작은 경계 상자의 축 (변 방향 중 넓이가 가장 작은 것): u = 긴 쪽 */
-function mainAxes(o: XY[]): { u: XY; v: XY; lenU: number; lenV: number } {
+export function mainAxes(o: XY[]): { u: XY; v: XY; lenU: number; lenV: number } {
   let best = { u: [1, 0] as XY, v: [0, 1] as XY, lenU: 0, lenV: 0, area: Infinity }
   for (let i = 0; i < o.length; i++) {
     const e = unit([o[(i + 1) % o.length][0] - o[i][0], o[(i + 1) % o.length][1] - o[i][1]])
@@ -122,7 +122,7 @@ function mainAxes(o: XY[]): { u: XY; v: XY; lenU: number; lenV: number } {
   return best
 }
 
-const span = (o: XY[], a: XY) => {
+export const span = (o: XY[], a: XY) => {
   let s0 = Infinity
   let s1 = -Infinity
   for (const q of o) {

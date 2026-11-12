@@ -489,6 +489,12 @@ export async function siteModelTo3dm(m: SiteModel, meta: ExportMeta, onStep?: (s
       '교통섬',
       Math.min(DRAPE_EDGE, 3),
     )
+    // 교통섬 가장자리 연석 (윗면에 짙은 띠 — 멀리서도 섬이 보이게)
+    if (m.safety.some((s) => s.kind === 'island')) {
+      const mb = newMesh()
+      for (const s of m.safety) if (s.kind === 'island') for (const r of [s.poly.outer, ...s.poly.holes]) addRibbon(mb, r, 0.3, R + H + 0.01, true)
+      addMeshObj(mb, 'island', '교통섬 연석', {}, [150, 147, 140])
+    }
     {
       const mb = newMesh()
       addDraped(mb, m.hatch, R + 0.03, 3)

@@ -171,6 +171,11 @@ export function buildPreview(m: SiteModel): PreviewParts {
     COLORS.island,
     '교통섬',
   )
+  {
+    const rim: number[] = []
+    for (const s of m.safety) if (s.kind === 'island') for (const r of [s.poly.outer, ...s.poly.holes]) ribbonTris(r, 0.3, R + H + 0.01, rim, true)
+    addMesh(rim, '#96938c', { polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }, '교통섬 연석')
+  }
   layer(m.zebra.length ? m.zebra : m.crosswalks, COLORS.crosswalk, R + 0.03, '횡단보도 줄무늬', 3)
   layer(m.marks, COLORS.mark, R + 0.04, '노면표시', Math.min(edge, 3))
   layer(m.arrows, COLORS.mark, R + 0.04, '노면표시 화살표', 3)

@@ -12,7 +12,7 @@ import { bldHeight, inNgii, type DiagramData } from '../diagrams/data'
 import type { Areal } from '../lib/geo'
 import { wgs84To5186, wgs84ToUtmk } from '../lib/proj'
 import { terrainAround, type TerrainGrid } from '../lib/terrain'
-import { hatchStripes, markGlyph, roadDirs, zebraStripes } from './streetDetail'
+import { densifyLine, hatchStripes, markGlyph, ribbon, roadDirs, zebraStripes } from './streetDetail'
 
 export type XY = [number, number]
 
@@ -625,7 +625,32 @@ export async function buildSiteModel(d: DiagramData, half: number, opts: { grid?
 
   const linesOfGeom = (g: { type: string; coordinates: unknown }) =>
     (g.type === 'LineString' ? [g.coordinates as Position[]] : (g.coordinates as Position[][])).map((c) => c.map(f))
-  const walks = n ? clipPolys(n.walks.flatMap((g) => polysOf(g, f)), half) : []
+  // 보도: 면(1:5,000) + 1:1,000 보도 중심선을 폭만큼 넓힌 띠를 합침
+  const walkStrips: Poly[] = []
+  if (n)
+    for (const w of n.walkLines) {
+      const width = w.width && w.width > 0.5 && w.width < 15 ? w.width : 2
+      for (const l of linesOfGeom(w.geom).flatMap((q) => clipLine(q, half + 5))) {
+        const d = densifyLine(l, 3)
+        if (d.length < 2) continue
+        const { left, right } = ribbon(d, width)
+        const p = toPoly([[...left, ...[...right].reverse()]])
+        if (p) walkStrips.push(p)
+      }
+    }
+  let walkMerged: Poly[] = walkStrips
+  if (walkStrips.length > 1)
+    try {
+      const close = (r: XY[]) => [...r, r[0]]
+      const u = union(featureCollection(walkStrips.map((p) => turfPolygon([close(p.outer), ...p.holes.map(close)]))))
+      if (u) {
+        const g = u.geometry
+        walkMerged = (g.type === 'Polygon' ? [g.coordinates] : g.coordinates).map((q) => toPoly(q.map((r) => r.map(([x, y]) => [x, y] as XY)))).filter((p): p is Poly => !!p)
+      }
+    } catch {
+      // 합치기에 실패하면 띠 그대로
+    }
+  const walks = n ? clipPolys([...n.walks.flatMap((g) => polysOf(g, f)), ...walkMerged], half) : []
   const minor = n
     ? n.minor.flatMap((g) => polysOf(g, f)).filter((p) => {
         const o = p.outer

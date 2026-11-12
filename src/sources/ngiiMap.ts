@@ -8,12 +8,15 @@ import { unzipSync } from 'fflate'
 import type { Geometry, Position } from 'geojson'
 import { beltProjection, utmkToWgs84, wgs84ToUtmk } from '../lib/proj'
 
-export type NgiiKey = 'bldg' | 'road' | 'walk' | 'contour' | 'spot' | 'wall' | 'cutfill' | 'center' | 'crosswalk' | 'safety' | 'stop' | 'tree' | 'fence' | 'lamp' | 'water'
-export const NGII_KEYS: NgiiKey[] = ['bldg', 'road', 'walk', 'contour', 'spot', 'wall', 'cutfill', 'center', 'crosswalk', 'safety', 'stop', 'tree', 'fence', 'lamp', 'water']
+export type NgiiKey = 'bldg' | 'road' | 'walk' | 'walkline' | 'contour' | 'spot' | 'wall' | 'cutfill' | 'center' | 'crosswalk' | 'safety' | 'stop' | 'tree' | 'fence' | 'lamp' | 'water'
+export const NGII_KEYS: NgiiKey[] = ['bldg', 'road', 'walk', 'walkline', 'contour', 'spot', 'wall', 'cutfill', 'center', 'crosswalk', 'safety', 'stop', 'tree', 'fence', 'lamp', 'water']
+/** 읽기 방식이 바뀌면 올린 때의 판을 올림 — ⑩에서 '다시 올리면 더 들어감' 안내 (3 = 2026-11-13: 안전지대·보도 중심선) */
+export const NGII_READER_V = 3
 export const NGII_LABEL: Record<NgiiKey, string> = {
   bldg: '건물',
   road: '도로경계 면',
   walk: '인도',
+  walkline: '보도 (중심선·폭)',
   contour: '등고선',
   spot: '표고점·기준점',
   wall: '옹벽·석축·제방',

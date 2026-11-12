@@ -65,8 +65,8 @@ export default function NgiiUpload({ project, update, config }: Props) {
     const sheets: NgiiSheet[] = []
     const hdSets: HdSet[] = []
     const problems: string[] = []
-    // 이미 올린 정밀도로지도 물체 (레이어마다 id가 따로라 '레이어:id'로)
-    const seenHd = new Set<string>(HD_KEYS.flatMap((k) => (project.collected[hdLayer(k)]?.features ?? []).map((f) => `${k}:${String(f.properties.id)}`)))
+    // 이번에 올리는 ZIP들 사이에서만 겹침을 뺌 (같은 파일을 다시 올리면 새로 읽은 것으로 바꿈 — 읽기 방식이 나아졌을 때)
+    const seenHd = new Set<string>()
     // 1:1,000 NGI·NDA 짝 (낱개 파일 + ZIP 안)
     const ngiPairs = new Map<string, { ngi?: Uint8Array; nda?: Uint8Array; name: string }>()
     const addPart = (path: string, bytes: Uint8Array) => {
