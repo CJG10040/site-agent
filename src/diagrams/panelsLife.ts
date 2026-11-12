@@ -12,7 +12,7 @@ import type { DiagramData, Pt } from './data'
 import { MAP_CX, MAP_CY, MAP_R } from './frame'
 import { groupOf, iconSvg, poiGroups } from './icons'
 import { netView, projOf, walkshed, walkToPoint, WALK_SPEED } from './move'
-import { mix } from './palette'
+import { isStock, mix } from './palette'
 import type { PanelCtx, PanelDef } from './panels'
 
 const fmt = (n: number, digits = 0) => n.toLocaleString('ko-KR', { maximumFractionDigits: digits })
@@ -89,9 +89,10 @@ function timeOf(st: Pt): StoreTime {
 }
 
 function timeColors(c: PanelCtx): Record<StoreTime | 'mixed', string> {
-  if (c.pal.id === 'mono') return { day: '#d6d6d6', allday: '#8f8f8f', night: '#2b2b2b', mixed: '#b5b5b5' }
-  if (c.pal.id === 'cvd') return { day: '#f0e442', allday: '#e69f00', night: '#0072b2', mixed: '#bdbdbd' }
-  return { day: '#f2c94c', allday: '#e8743b', night: '#4b3591', mixed: '#c9c3d6' }
+  if (c.pal.kind === 'mono') return { day: mix(c.pal.paper, c.pal.ink, 0.18), allday: mix(c.pal.paper, c.pal.ink, 0.5), night: mix(c.pal.paper, c.pal.ink, 0.88), mixed: mix(c.pal.paper, c.pal.ink, 0.32) }
+  if (isStock(c.pal, 'cvd')) return { day: '#f0e442', allday: '#e69f00', night: '#0072b2', mixed: '#bdbdbd' }
+  if (isStock(c.pal, 'default')) return { day: '#f2c94c', allday: '#e8743b', night: '#4b3591', mixed: '#c9c3d6' }
+  return { day: c.pal.cat[0], allday: c.pal.cat[1], night: c.pal.cat[5], mixed: c.pal.unknown }
 }
 
 function near100(c: PanelCtx, st: Pt): boolean {
@@ -126,11 +127,11 @@ const storesTimePanel: PanelDef = {
       .map((b) => c.f.path(b.geom, false))
       .join('')
     let fills = ''
-    for (const [color, ds] of byColor) fills += `<path d="${ds.join('')}" fill="${color}" stroke="#ffffff" stroke-width="0.6"/>`
+    for (const [color, ds] of byColor) fills += `<path d="${ds.join('')}" fill="${color}" stroke="${c.pal.paper}" stroke-width="0.6"/>`
     const dots = loose
       .map((st) => {
         const [x, y] = c.f.pt(st.lon, st.lat)
-        return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="2.6" fill="${col[timeOf(st)]}" stroke="#ffffff" stroke-width="0.8"/>`
+        return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="2.6" fill="${col[timeOf(st)]}" stroke="${c.pal.paper}" stroke-width="0.8"/>`
       })
       .join('')
     const share = (list: Pt[]) => {
@@ -203,8 +204,8 @@ const storesComparePanel: PanelDef = {
     const rows = [...new Set([...allC.keys(), ...nearC.keys()])].slice(0, 13)
     rows.sort((a, b) => ((nearC.get(b) ?? 0) / Math.max(1, nearN) + (allC.get(b) ?? 0) / allN) - ((nearC.get(a) ?? 0) / Math.max(1, nearN) + (allC.get(a) ?? 0) / allN))
     const maxShare = Math.max(...rows.map((k) => Math.max((allC.get(k) ?? 0) / allN, nearN ? (nearC.get(k) ?? 0) / nearN : 0)), 0.01)
-    const nearColor = c.pal.id === 'mono' ? '#222222' : c.pal.accent
-    const allColor = mix('#ffffff', c.pal.ink, 0.35)
+    const nearColor = c.pal.kind === 'mono' ? c.pal.ink : c.pal.accent
+    const allColor = mix(c.pal.paper, c.pal.ink, 0.35)
     const X0 = 300
     const X1 = 800
     const top = 110
@@ -335,7 +336,7 @@ const poiMapPanel: PanelDef = {
       const anchor = px >= MAP_CX ? 'start' : 'end'
       const text = `${x.p.label ?? x.p.kind} ${minText(x.min)}${out ? ' (도판 밖)' : ''}`
       const ly = place(lx, py + 5, text.length * 13, anchor)
-      labels += `<text x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" font-size="14" font-weight="700" text-anchor="${anchor}" fill="${g.color}" stroke="#ffffff" stroke-width="4" paint-order="stroke">${esc(text)}</text>`
+      labels += `<text x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" font-size="14" font-weight="700" text-anchor="${anchor}" fill="${g.color}" stroke="${c.pal.paper}" stroke-width="4" paint-order="stroke">${esc(text)}</text>`
       if (out) labels += iconSvg(x.p.kind, px, py, 11, g.color)
     }
     let icons = ''
@@ -344,7 +345,7 @@ const poiMapPanel: PanelDef = {
       const g = groupOf(groups, x.p.kind)
       if (!g) continue
       const [px, py] = c.f.pt(x.p.lon, x.p.lat)
-      icons += iconSvg(x.p.kind, px, py, 7.5, mix('#ffffff', g.color, 0.75))
+      icons += iconSvg(x.p.kind, px, py, 7.5, mix(c.pal.paper, g.color, 0.75))
     }
     for (const x of near.values()) {
       if (!c.f.inside(x.p.lon, x.p.lat)) continue
@@ -363,8 +364,8 @@ const poiMapPanel: PanelDef = {
     const legend: LegendItem[] = groups.map((g) => ({ color: g.color, label: `${g.label} (${g.codes.map((k) => list.find((x) => x.p.kind === k)?.p.label ?? '').filter(Boolean).join('·') || '자료 없음'})`, shape: 'dot' as const }))
     return {
       layers: [
-        { id: '바탕_건물', svg: base ? `<path d="${base}" fill="${mix('#ffffff', c.pal.base, 0.6)}"/>` : '' },
-        { id: '바탕_도로', svg: roads ? `<path d="${roads}" fill="none" stroke="${mix('#ffffff', c.pal.ink, 0.15)}" stroke-width="1"/>` : '' },
+        { id: '바탕_건물', svg: base ? `<path d="${base}" fill="${mix(c.pal.paper, c.pal.base, 0.6)}"/>` : '' },
+        { id: '바탕_도로', svg: roads ? `<path d="${roads}" fill="none" stroke="${mix(c.pal.paper, c.pal.ink, 0.15)}" stroke-width="1"/>` : '' },
         { id: '가장_가까운_곳_선', svg: lines },
         { id: '생활_시설', svg: icons },
         { id: '걸어서_몇_분', svg: labels, noClip: true },
@@ -404,7 +405,7 @@ const poiReachPanel: PanelDef = {
       const y = top + i * rowH
       const cy = y + rowH / 2
       if (r.g.id !== prevGroup) {
-        svg += `<line x1="50" y1="${y}" x2="950" y2="${y}" stroke="${mix('#ffffff', c.pal.ink, 0.15)}" stroke-width="1"/>`
+        svg += `<line x1="50" y1="${y}" x2="950" y2="${y}" stroke="${mix(c.pal.paper, c.pal.ink, 0.15)}" stroke-width="1"/>`
         svg += `<text x="56" y="${(y + 18).toFixed(1)}" font-size="12" font-weight="700" fill="${r.g.color}">${esc(r.g.label)}</text>`
         prevGroup = r.g.id
       }
@@ -425,7 +426,7 @@ const poiReachPanel: PanelDef = {
       const nn = near.get(r.code)
       svg += `<text x="${NEAREST_X}" y="${(cy + 6).toFixed(1)}" font-size="17" font-weight="700" text-anchor="end" fill="${nn && nn.min <= 15 ? c.pal.ink : c.pal.subtle}">${nn ? minText(nn.min) : '–'}</text>`
     })
-    svg += `<line x1="50" y1="${top + rows.length * rowH}" x2="950" y2="${top + rows.length * rowH}" stroke="${mix('#ffffff', c.pal.ink, 0.15)}" stroke-width="1"/>`
+    svg += `<line x1="50" y1="${top + rows.length * rowH}" x2="950" y2="${top + rows.length * rowH}" stroke="${mix(c.pal.paper, c.pal.ink, 0.15)}" stroke-width="1"/>`
     const in10 = rows.filter((r) => (near.get(r.code)?.min ?? Infinity) <= 10).map((r) => r.label)
     const far = rows.filter((r) => (near.get(r.code)?.min ?? Infinity) > 15).map((r) => r.label)
     const byNet = list.some((x) => x.byNet)

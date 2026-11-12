@@ -14,7 +14,7 @@ import { aerialImage } from './aerial'
 import { esc, type PanelLayer, type PanelOutput } from './compose'
 import { bldHeight, bldSourceText, type Bld, type DiagramData, type Pt } from './data'
 import { centroidOf, dir8, MAP_CX, MAP_CY, MAP_R, type Frame } from './frame'
-import { mix, shades, steps, zoningColor, type Palette } from './palette'
+import { isStock, mix, monoShades, steps, sunPathColors, themeColor, zoningColor, type Palette } from './palette'
 import { projOf } from './move'
 import { arealRings, pointInRings, pointToRingsDist, toXY } from '../lib/xy'
 import { ENV_PANELS } from './panelsEnv'
@@ -109,15 +109,15 @@ function baseBuildings(c: PanelCtx, color = c.pal.base): PanelLayer {
   return { id: '바탕_건물', svg: d ? `<path d="${d}" fill="${color}"/>` : '' }
 }
 
-function baseRoads(c: PanelCtx, color = mix('#ffffff', c.pal.ink, 0.18)): PanelLayer {
+function baseRoads(c: PanelCtx, color = mix(c.pal.paper, c.pal.ink, 0.18)): PanelLayer {
   const d = c.d.roads.map((r) => c.f.path(r.geom)).join('')
   return { id: '바탕_도로', svg: d ? `<path d="${d}" fill="none" stroke="${color}" stroke-width="1" stroke-linecap="round"/>` : '' }
 }
 
 function ptSvg(c: PanelCtx, p: { lon: number; lat: number }, r: number, fill: string, shape: 'dot' | 'square' = 'dot'): string {
   const [x, y] = c.f.pt(p.lon, p.lat)
-  if (shape === 'square') return `<rect x="${(x - r).toFixed(1)}" y="${(y - r).toFixed(1)}" width="${(r * 2).toFixed(1)}" height="${(r * 2).toFixed(1)}" fill="${fill}" stroke="#ffffff" stroke-width="1.2"/>`
-  return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${r}" fill="${fill}" stroke="#ffffff" stroke-width="1.2"/>`
+  if (shape === 'square') return `<rect x="${(x - r).toFixed(1)}" y="${(y - r).toFixed(1)}" width="${(r * 2).toFixed(1)}" height="${(r * 2).toFixed(1)}" fill="${fill}" stroke="${c.pal.paper}" stroke-width="1.2"/>`
+  return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${r}" fill="${fill}" stroke="${c.pal.paper}" stroke-width="1.2"/>`
 }
 
 function where(c: PanelCtx, lon: number, lat: number): string {
@@ -156,9 +156,9 @@ function useClass(code: string): string {
 
 function useColor(pal: Palette, id: string): string {
   if (id === 'unknown') return pal.unknown
-  if (id === 'other') return pal.id === 'default' ? '#7a8b99' : catColor(pal, 6)
+  if (id === 'other') return isStock(pal, 'default') ? '#7a8b99' : catColor(pal, 6)
   const i = USE_CLASSES.findIndex((u) => u.id === id)
-  return pal.id === 'default' ? USE_CLASSES[i].color : catColor(pal, i)
+  return isStock(pal, 'default') ? USE_CLASSES[i].color : catColor(pal, i)
 }
 
 // ───────────────────────── 층수 ─────────────────────────
@@ -259,7 +259,7 @@ export const PANELS: PanelDef[] = [
       if (!c.d.zoning.length) return { layers: [], legend: [], summary: [], caption: '', empty: '용도지역 자료가 없습니다' }
       const names = [...new Set(c.d.zoning.map((z) => z.name))]
       const styles: Record<string, { fill: string; stroke: string; width: number; label: string }> = {}
-      for (const n of names) styles[n] = { fill: zoningColor(n, c.pal), stroke: '#ffffff', width: 1.5, label: n }
+      for (const n of names) styles[n] = { fill: zoningColor(n, c.pal), stroke: c.pal.paper, width: 1.5, label: n }
       const circle = radiusCircle(c.d.center, c.f.R)
       const areaBy = new Map<string, number>()
       for (const z of c.d.zoning) {
@@ -317,7 +317,7 @@ export const PANELS: PanelDef[] = [
       if (!items.length) return { layers: [baseBuildings(c)], legend: [], summary: ['반경 안에 도시계획시설 자료 없음'], caption: '', empty: '도시계획시설 자료가 없습니다' }
       const layers = [...new Set(items.map((x) => x.layer))]
       const styles: Record<string, { fill: string; stroke: string; width: number; opacity: number; label: string }> = {}
-      layers.forEach((l, i) => (styles[l] = { fill: catColor(c.pal, i), stroke: '#ffffff', width: 1, opacity: 0.8, label: layerLabel(l).replace('도시계획시설', '').replace(/[()]/g, '') }))
+      layers.forEach((l, i) => (styles[l] = { fill: catColor(c.pal, i), stroke: c.pal.paper, width: 1, opacity: 0.8, label: layerLabel(l).replace('도시계획시설', '').replace(/[()]/g, '') }))
       const near = items
         .map((x) => ({ x, d: geometryToAreaDistanceM(x.geom, c.d.boundary) ?? Infinity }))
         .sort((a, b) => a.d - b.d)
@@ -374,8 +374,8 @@ export const PANELS: PanelDef[] = [
         { label: '3,000㎡ 이상', max: Infinity },
       ]
       const colors = steps(c.pal, bins.length)
-      const styles: Record<string, { fill: string; stroke: string; width: number; label: string }> = { infra: { fill: mix('#ffffff', c.pal.unknown, 0.6), stroke: '#ffffff', width: 0.6, label: '도로·하천 등' } }
-      bins.forEach((b, i) => (styles[`b${i}`] = { fill: colors[i], stroke: '#ffffff', width: 0.6, label: b.label }))
+      const styles: Record<string, { fill: string; stroke: string; width: number; label: string }> = { infra: { fill: mix(c.pal.paper, c.pal.unknown, 0.6), stroke: c.pal.paper, width: 0.6, label: '도로·하천 등' } }
+      bins.forEach((b, i) => (styles[`b${i}`] = { fill: colors[i], stroke: c.pal.paper, width: 0.6, label: b.label }))
       const isInfra = (j: string) => ['도', '천', '구', '제', '철', '유'].includes(j)
       const items = ps.map((p) => ({ d: c.f.path(p.geom, false), key: isInfra(p.jimok) ? 'infra' : `b${bins.findIndex((b) => p.area < b.max)}` }))
       const lots = ps.filter((p) => !isInfra(p.jimok) && inFrame(c, p.geom))
@@ -528,8 +528,8 @@ export const PANELS: PanelDef[] = [
       const th = c.st.highFloors
       const bs = c.d.buildings
       if (!bs.length) return { layers: [], legend: [], summary: [], caption: '', empty: '건물 자료가 없습니다' }
-      const hot = c.pal.id === 'default' ? '#2f6fd6' : c.pal.id === 'cvd' ? '#0072b2' : '#2a2a2a'
-      const styles = { hi: { fill: hot, label: `${th}층 이상` }, lo: { fill: c.pal.base, label: `${th}층 미만` }, unknown: { fill: mix('#ffffff', c.pal.unknown, 0.5), label: '미상' } }
+      const hot = themeColor(c.pal, { default: '#2f6fd6', cvd: '#0072b2', mono: '#2a2a2a' }, c.pal.cat[3])
+      const styles = { hi: { fill: hot, label: `${th}층 이상` }, lo: { fill: c.pal.base, label: `${th}층 미만` }, unknown: { fill: mix(c.pal.paper, c.pal.unknown, 0.5), label: '미상' } }
       const keyOf = (b: Bld) => (b.floors === null ? 'unknown' : b.floors >= th ? 'hi' : 'lo')
       const inside = bs.filter((b) => inFrame(c, b.geom))
       const highs = inside.filter((b) => b.floors !== null && b.floors >= th)
@@ -558,8 +558,8 @@ export const PANELS: PanelDef[] = [
       const th = c.st.lowFloors
       const bs = c.d.buildings
       if (!bs.length) return { layers: [], legend: [], summary: [], caption: '', empty: '건물 자료가 없습니다' }
-      const hot = c.pal.id === 'default' ? '#d9822b' : c.pal.id === 'cvd' ? '#e69f00' : '#4a4a4a'
-      const styles = { lo: { fill: hot, label: `${th}층 이하` }, hi: { fill: c.pal.base, label: `${th}층 초과` }, unknown: { fill: mix('#ffffff', c.pal.unknown, 0.5), label: '미상' } }
+      const hot = themeColor(c.pal, { default: '#d9822b', cvd: '#e69f00', mono: '#4a4a4a' }, c.pal.cat[1])
+      const styles = { lo: { fill: hot, label: `${th}층 이하` }, hi: { fill: c.pal.base, label: `${th}층 초과` }, unknown: { fill: mix(c.pal.paper, c.pal.unknown, 0.5), label: '미상' } }
       const keyOf = (b: Bld) => (b.floors === null ? 'unknown' : b.floors <= th ? 'lo' : 'hi')
       const inside = bs.filter((b) => inFrame(c, b.geom) && b.floors !== null)
       const lows = inside.filter((b) => b.floors! <= th)
@@ -676,7 +676,7 @@ export const PANELS: PanelDef[] = [
         { label: '대로 (25~40m)', min: 25 },
         { label: '광로 (40m 이상)', min: 40 },
       ]
-      const colors = shades(c.pal.ink, bins.length)
+      const colors = monoShades(c.pal, bins.length)
       const keyOf = (w: number | null) => (w === null ? -1 : bins.filter((b) => w >= b.min).length - 1)
       const sorted = [...rs].sort((a, b) => (a.width ?? 0) - (b.width ?? 0))
       const lines = sorted
@@ -700,17 +700,17 @@ export const PANELS: PanelDef[] = [
       const count = bins.map((_, i) => rs.filter((r) => keyOf(r.width) === i).length)
       // 수치지도를 올렸으면 실제 도로 면(인도 포함)을 바탕에 옅게
       const areaSvg = c.d.ngii?.roads.length
-        ? `<path d="${c.d.ngii.roads.map((g) => c.f.path(g)).join('')}" fill="${mix('#ffffff', c.pal.ink, 0.14)}" stroke="none"/>`
+        ? `<path d="${c.d.ngii.roads.map((g) => c.f.path(g)).join('')}" fill="${mix(c.pal.paper, c.pal.ink, 0.14)}" stroke="none"/>`
         : ''
       return {
         layers: [
-          baseBuildings(c, mix('#ffffff', c.pal.base, 0.6)),
+          baseBuildings(c, mix(c.pal.paper, c.pal.base, 0.6)),
           ...(areaSvg ? [{ id: '도로_면_수치지도', svg: areaSvg }] : []),
           { id: '도로', svg: lines },
         ],
         legend: [
           ...bins.map((b, i) => ({ color: colors[i], label: b.label, shape: 'line' as const })),
-          ...(areaSvg ? [{ color: mix('#ffffff', c.pal.ink, 0.14), label: '도로 면 (수치지도, 인도 포함)' }] : []),
+          ...(areaSvg ? [{ color: mix(c.pal.paper, c.pal.ink, 0.14), label: '도로 면 (수치지도, 인도 포함)' }] : []),
         ],
         summary: [
           adjText.length ? `대지에 접한 길의 폭: ${adjText.map((w) => `${w}m`).join(', ')} (도로중심선 기준)` : '대지 경계에 바로 붙은 도로중심선을 찾지 못함 (골목·사유 통로일 수 있어 현장 확인)',
@@ -729,8 +729,8 @@ export const PANELS: PanelDef[] = [
       const st = c.d.stations
       const sp = c.d.stops
       if (!st.length && !sp.length) return { layers: [baseBuildings(c)], legend: [], summary: [], caption: '', empty: '정류소·역 자료가 없습니다' }
-      const stationColor = c.pal.id === 'mono' ? '#111111' : catColor(c.pal, 3)
-      const stopColor = c.pal.id === 'mono' ? '#777777' : catColor(c.pal, 0)
+      const stationColor = c.pal.kind === 'mono' ? c.pal.ink : catColor(c.pal, 3)
+      const stopColor = c.pal.kind === 'mono' ? mix(c.pal.paper, c.pal.ink, 0.55) : catColor(c.pal, 0)
       const near = (list: Pt[]) => list.map((p) => ({ p, d: c.f.polar(p.lon, p.lat).d })).sort((a, b) => a.d - b.d)
       const ns = near(st)
       const nb = near(sp)
@@ -739,7 +739,7 @@ export const PANELS: PanelDef[] = [
         .slice(0, 3)
         .map((x) => {
           const [px, py] = c.f.pt(x.p.lon, x.p.lat)
-          return `<text x="${(px + 14).toFixed(1)}" y="${(py + 5).toFixed(1)}" font-size="16" font-weight="700" fill="${c.pal.ink}" stroke="#ffffff" stroke-width="4" paint-order="stroke">${esc(x.p.name.replace(/\s.*$/, ''))}</text>`
+          return `<text x="${(px + 14).toFixed(1)}" y="${(py + 5).toFixed(1)}" font-size="16" font-weight="700" fill="${c.pal.ink}" stroke="${c.pal.paper}" stroke-width="4" paint-order="stroke">${esc(x.p.name.replace(/\s.*$/, ''))}</text>`
         })
         .join('')
       return {
@@ -770,12 +770,7 @@ export const PANELS: PanelDef[] = [
       const day = SUN_DAYS.find((x) => x.key === c.st.sunDay) ?? SUN_DAYS[2]
       const hour = c.st.sunHour
       const sun = sunAt(c.d.center[0], c.d.center[1], c.st.sunDay, hour)
-      const pathColors =
-        c.pal.id === 'mono'
-          ? { summer: '#222222', equinox: '#666666', winter: '#999999' }
-          : c.pal.id === 'cvd'
-            ? { summer: '#d55e00', equinox: '#e69f00', winter: '#0072b2' }
-            : { summer: '#e8590c', equinox: '#e0a100', winter: '#1c7ed6' }
+      const pathColors = sunPathColors(c.pal)
       const sunPaths = sunPathFeatures(c.d.center[0], c.d.center[1], c.f.R * 0.92)
       let pathSvg = ''
       for (const sf of sunPaths) {
@@ -786,7 +781,7 @@ export const PANELS: PanelDef[] = [
           const [x, y] = c.f.pt(sf.geometry.coordinates[0], sf.geometry.coordinates[1])
           const col = pathColors[sf.properties.day as 'summer']
           pathSvg += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3.5" fill="${col}"/>`
-          if (sf.properties.label) pathSvg += `<text x="${x.toFixed(1)}" y="${(y - 9).toFixed(1)}" font-size="13" text-anchor="middle" fill="${col}" stroke="#ffffff" stroke-width="3" paint-order="stroke">${esc(String(sf.properties.label))}</text>`
+          if (sf.properties.label) pathSvg += `<text x="${x.toFixed(1)}" y="${(y - 9).toFixed(1)}" font-size="13" text-anchor="middle" fill="${col}" stroke="${c.pal.paper}" stroke-width="3" paint-order="stroke">${esc(String(sf.properties.label))}</text>`
         }
       }
       const layers: PanelLayer[] = [baseBuildings(c, c.pal.base)]
@@ -831,7 +826,7 @@ export const PANELS: PanelDef[] = [
           { color: pathColors.summer, label: '하지 궤적', shape: 'line' },
           { color: pathColors.equinox, label: '춘·추분 궤적', shape: 'line' },
           { color: pathColors.winter, label: '동지 궤적', shape: 'line' },
-          { color: mix('#ffffff', c.pal.ink, 0.28), label: `그림자 (${day.label} ${hour}시)` },
+          { color: mix(c.pal.paper, c.pal.ink, 0.28), label: `그림자 (${day.label} ${hour}시)` },
         ],
         summary,
         caption: `태양 위치는 SunCalc 계산(한국 표준시) · 바깥 원이 지평선, 중심에 가까울수록 높은 태양 · 그림자는 건물 높이(실측 높이 또는 층수×용도별 층고)로 그린 어림값이며 지형·나무는 반영하지 않음`,
@@ -850,8 +845,8 @@ export const PANELS: PanelDef[] = [
       const labels = ['5천 미만', '5천~1만', '1만~2만', '2만~3만', '3만 이상']
       const colors = steps(c.pal, labels.length)
       const keyOf = (v: number | null) => (v === null ? 'unknown' : `b${bins.filter((b) => v >= b).length}`)
-      const styles: Record<string, { fill: string; stroke: string; width: number; label: string }> = { unknown: { fill: c.pal.unknown, stroke: '#ffffff', width: 1, label: '값 가려짐' } }
-      labels.forEach((l, i) => (styles[`b${i}`] = { fill: colors[i], stroke: '#ffffff', width: 1, label: l }))
+      const styles: Record<string, { fill: string; stroke: string; width: number; label: string }> = { unknown: { fill: c.pal.unknown, stroke: c.pal.paper, width: 1, label: '값 가려짐' } }
+      labels.forEach((l, i) => (styles[`b${i}`] = { fill: colors[i], stroke: c.pal.paper, width: 1, label: l }))
       const siteArea = sa.find((s) => {
         try {
           return booleanPointInPolygon(point(c.d.center), feature(s.geom))
@@ -883,7 +878,7 @@ export const PANELS: PanelDef[] = [
       for (const st of ss) counts.set(st.kind, (counts.get(st.kind) ?? 0) + 1)
       const kinds = [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([k]) => k)
       const top = kinds.slice(0, 7)
-      const other = mix('#ffffff', c.pal.ink, 0.45)
+      const other = mix(c.pal.paper, c.pal.ink, 0.45)
       const colorOf = (k: string) => (top.includes(k) ? catColor(c.pal, top.indexOf(k)) : other)
       // 상가를 건물에 담는다: 건물 안이면 그 건물, 아니면 8m 안 가장 가까운 건물
       const p = projOf(c.d)
@@ -950,7 +945,7 @@ export const PANELS: PanelDef[] = [
         .map((x) => c.f.path(x.b.geom, false))
         .join('')
       let shops = ''
-      for (const [col, ds] of byColor) shops += `<path d="${ds.join('')}" fill="${col}" stroke="#ffffff" stroke-width="0.6"/>`
+      for (const [col, ds] of byColor) shops += `<path d="${ds.join('')}" fill="${col}" stroke="${c.pal.paper}" stroke-width="0.6"/>`
       const near = ss.filter((st) => pointToAreaDistanceM([st.lon, st.lat], c.d.boundary) <= 50)
       const domTop = [...domCount.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3)
       return {
@@ -978,11 +973,15 @@ export const PANELS: PanelDef[] = [
     render: (c) => {
       const os = c.d.observations
       if (!os.length) return { layers: [baseBuildings(c)], legend: [], summary: [], caption: '', empty: '위치가 있는 현장 관찰이 없습니다' }
-      const colors = { normal: c.pal.ink, differ: c.pal.id === 'mono' ? '#666666' : '#c92a2a', discovery: c.pal.id === 'mono' ? '#999999' : '#0c8599' }
+      const colors = {
+        normal: c.pal.ink,
+        differ: c.pal.kind === 'mono' ? mix(c.pal.paper, c.pal.ink, 0.6) : c.pal.custom || !['default', 'cvd'].includes(c.pal.id) ? c.pal.cat[2] : '#c92a2a',
+        discovery: c.pal.kind === 'mono' ? mix(c.pal.paper, c.pal.ink, 0.4) : c.pal.custom || !['default', 'cvd'].includes(c.pal.id) ? c.pal.cat[4] : '#0c8599',
+      }
       const marks = os
         .map((o) => {
           const [x, y] = c.f.pt(o.lon, o.lat)
-          return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="13" fill="${colors[o.kind as 'normal']}" stroke="#ffffff" stroke-width="2"/><text x="${x.toFixed(1)}" y="${(y + 5).toFixed(1)}" font-size="13" font-weight="700" text-anchor="middle" fill="#ffffff">${esc(o.label ?? '')}</text>`
+          return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="13" fill="${colors[o.kind as 'normal']}" stroke="${c.pal.paper}" stroke-width="2"/><text x="${x.toFixed(1)}" y="${(y + 5).toFixed(1)}" font-size="13" font-weight="700" text-anchor="middle" fill="${c.pal.paper}">${esc(o.label ?? '')}</text>`
         })
         .join('')
       const far = Math.max(...os.map((o) => c.f.polar(o.lon, o.lat).d))
@@ -1127,7 +1126,7 @@ export const TERRAIN_PANELS: PanelDef[] = [
       // 수치지도 옹벽·석축·제방 (상단 선)
       const walls = (c.d.ngii?.walls ?? []).filter((w) => w.top && c.f.inside(...(centroidOf(w.geom) ?? [0, 0])))
       const wallSvg = walls.length
-        ? `<path d="${walls.map((w) => c.f.path(w.geom, false)).join('')}" fill="none" stroke="#1d1d1b" stroke-width="2.2" stroke-linecap="round"/>`
+        ? `<path d="${walls.map((w) => c.f.path(w.geom, false)).join('')}" fill="none" stroke="${c.pal.ink}" stroke-width="2.2" stroke-linecap="round"/>`
         : ''
       return {
         layers: [
@@ -1139,7 +1138,7 @@ export const TERRAIN_PANELS: PanelDef[] = [
         legendTitle: '대지 중심 = 0m',
         legend: [
           ...Array.from({ length: nb }, (_, i) => ({ color: colors[i], label: `${signed(start + i * bandStep)} ~ ${signed(start + (i + 1) * bandStep)}m` })),
-          ...(wallSvg ? [{ color: '#1d1d1b', label: '옹벽·석축·제방 (수치지도)', shape: 'line' as const }] : []),
+          ...(wallSvg ? [{ color: c.pal.ink, label: '옹벽·석축·제방 (수치지도)', shape: 'line' as const }] : []),
         ],
         summary: [
           `대지 중심을 0m로 하면 반경 안 높이는 ${signed(lo)} ~ ${signed(hi)}m (기복 약 ${fmt(relief, 0)}m)`,

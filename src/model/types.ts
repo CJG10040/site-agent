@@ -236,12 +236,39 @@ export interface ProjectEdits {
 // ───────────────────────── Phase 7 도판 ─────────────────────────
 
 export type FrameShape = 'circle' | 'square'
-export type PaletteId = 'default' | 'cvd' | 'mono'
+export type PaletteId = 'default' | 'cvd' | 'mono' | 'paperSage' | 'paperNavy' | 'concrete' | 'brick' | 'wood' | 'metal' | 'night' | 'navy' | 'vividRed' | 'vividTeal'
 export type SiteMark = 'outline' | 'fill' | 'dot'
+
+/** 학생이 고친 색 (빈 칸 = 묶음 색 그대로). 줄 색은 자리별, 빈 문자열 = 그대로 */
+export interface PaletteEdit {
+  paper?: string
+  ink?: string
+  subtle?: string
+  base?: string
+  unknown?: string
+  water?: string
+  green?: string
+  accent?: string
+  seq?: string[]
+  cat?: string[]
+  div?: string[]
+}
+
+/** 도판 하나만 다른 색 (2026-11-12 사용자 결정: 보드 전체 + 도판별 덮어쓰기) */
+export interface PanelStyle {
+  /** 다른 묶음 (없으면 보드 전체 묶음 + 전체 고친 색 위에 colors) */
+  palette?: PaletteId
+  colors?: PaletteEdit
+}
 
 export interface DiagramSettings {
   frame: FrameShape
   palette: PaletteId
+  /** 보드 전체 묶음에서 학생이 고친 색 */
+  colors?: PaletteEdit
+  /** 도판별 덮어쓰기 (도판 id → 묶음·색) */
+  panelStyles?: Record<string, PanelStyle>
+  /** white = 묶음의 종이색으로 칠함 / none = 투명 */
   background: 'white' | 'none'
   siteMark: SiteMark
   /** 고층 도판: 이 층수 이상 */

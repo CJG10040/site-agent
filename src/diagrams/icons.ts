@@ -25,7 +25,7 @@ const GROUP_COLORS: Record<string, string[]> = {
 }
 
 export function poiGroups(pal: Palette): PoiGroup[] {
-  const cs = GROUP_COLORS[pal.id] ?? GROUP_COLORS.default
+  const cs = pal.custom || !GROUP_COLORS[pal.id] ? [pal.cat[3], pal.cat[0], pal.cat[2], pal.cat[4], pal.cat[5], pal.cat[6]] : GROUP_COLORS[pal.id]
   return GROUPS.map((g, i) => ({ ...g, color: cs[i] }))
 }
 

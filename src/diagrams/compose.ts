@@ -72,9 +72,9 @@ function swatch(item: LegendItem, x: number, y: number, pal: Palette): string {
   const c = esc(item.color)
   switch (item.shape) {
     case 'dot':
-      return `<circle cx="${x + 9}" cy="${y + 9}" r="7" fill="${c}" stroke="#ffffff" stroke-width="1.5"/>`
+      return `<circle cx="${x + 9}" cy="${y + 9}" r="7" fill="${c}" stroke="${pal.paper}" stroke-width="1.5"/>`
     case 'square':
-      return `<rect x="${x + 2}" y="${y + 2}" width="14" height="14" fill="${c}" stroke="#ffffff" stroke-width="1.5"/>`
+      return `<rect x="${x + 2}" y="${y + 2}" width="14" height="14" fill="${c}" stroke="${pal.paper}" stroke-width="1.5"/>`
     case 'line':
       return `<line x1="${x}" y1="${y + 9}" x2="${x + 22}" y2="${y + 9}" stroke="${c}" stroke-width="4" stroke-linecap="round"/>`
     case 'outline':
@@ -94,14 +94,14 @@ export interface ComposeMeta {
 export function siteMarkSvg(frame: Frame, boundaryPath: string, center: [number, number], settings: DiagramSettings, pal: Palette): string {
   const [cx, cy] = frame.pt(center[0], center[1])
   if (settings.siteMark === 'dot') {
-    return `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="9" fill="${pal.accent}" stroke="#ffffff" stroke-width="2.5"/>`
+    return `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="9" fill="${pal.accent}" stroke="${pal.paper}" stroke-width="2.5"/>`
   }
   if (settings.siteMark === 'fill') {
     return `<path d="${boundaryPath}" fill="${pal.accent}" fill-opacity="0.85" stroke="${pal.accent}" stroke-width="2" stroke-linejoin="round"/>`
   }
   // 대지가 너무 작게 보이면 점을 함께
   const tiny = boundaryPath.length < 400 && frame.R >= 800
-  return `<path d="${boundaryPath}" fill="none" stroke="#ffffff" stroke-width="6" stroke-linejoin="round"/><path d="${boundaryPath}" fill="${pal.accent}" fill-opacity="0.12" stroke="${pal.accent}" stroke-width="3" stroke-linejoin="round"/>${
+  return `<path d="${boundaryPath}" fill="none" stroke="${pal.paper}" stroke-width="6" stroke-linejoin="round"/><path d="${boundaryPath}" fill="${pal.accent}" fill-opacity="0.12" stroke="${pal.accent}" stroke-width="3" stroke-linejoin="round"/>${
     tiny ? `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="5" fill="${pal.accent}"/>` : ''
   }`
 }
@@ -148,7 +148,7 @@ export function composePanel(meta: ComposeMeta, out: PanelOutput, frame: Frame, 
     .join('')
   const nf = !!out.noFrame
 
-  const bg = settings.background === 'white' ? `<rect id="바탕색" width="${SHEET_W}" height="${height}" fill="#ffffff"/>` : ''
+  const bg = settings.background === 'white' ? `<rect id="바탕색" width="${SHEET_W}" height="${height}" fill="${pal.paper}"/>` : ''
   const emptyNote = out.empty
     ? `<text x="${MAP_CX}" y="${MAP_CY}" font-size="22" text-anchor="middle" fill="${pal.subtle}">${esc(out.empty)}</text>`
     : ''
@@ -162,8 +162,8 @@ export function composePanel(meta: ComposeMeta, out: PanelOutput, frame: Frame, 
     nf
       ? ''
       : frame.shape === 'circle'
-        ? `<circle id="틀_바탕" cx="${MAP_CX}" cy="${MAP_CY}" r="${MAP_R}" fill="#ffffff"/>`
-        : `<rect id="틀_바탕" x="${MAP_CX - MAP_R}" y="${MAP_CY - MAP_R}" width="${MAP_R * 2}" height="${MAP_R * 2}" fill="#ffffff"/>`,
+        ? `<circle id="틀_바탕" cx="${MAP_CX}" cy="${MAP_CY}" r="${MAP_R}" fill="${pal.paper}"/>`
+        : `<rect id="틀_바탕" x="${MAP_CX - MAP_R}" y="${MAP_CY - MAP_R}" width="${MAP_R * 2}" height="${MAP_R * 2}" fill="${pal.paper}"/>`,
     layers,
     out.hideBase || nf ? '' : `<g id="대지" clip-path="url(#${clipId})">${siteSvg}</g>`,
     nf

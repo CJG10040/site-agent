@@ -10,7 +10,7 @@ import type { LegendItem, PanelLayer, PanelOutput } from './compose'
 import { MAP_CX, MAP_CY, MAP_R } from './frame'
 import { HEIGHT_SHORT, type DiagramData } from './data'
 import { siteRingsXY } from './move'
-import { mix, shades, steps } from './palette'
+import { heatColors, isStock, mix, monoShades, steps, sunPathColors } from './palette'
 import type { PanelCtx, PanelDef } from './panels'
 
 const fmt = (n: number, digits = 0) => n.toLocaleString('ko-KR', { maximumFractionDigits: digits })
@@ -86,7 +86,7 @@ function gridContour(c: PanelCtx, g: UnpackedGrid, level: number): string {
   return d
 }
 
-function buildingsLayer(c: PanelCtx, color = mix('#ffffff', c.pal.ink, 0.42)): PanelLayer {
+function buildingsLayer(c: PanelCtx, color = mix(c.pal.paper, c.pal.ink, 0.42)): PanelLayer {
   const d = c.d.buildings
     .filter((b) => !b.onSite && !b.underground)
     .map((b) => c.f.path(b.geom, false))
@@ -158,9 +158,9 @@ function sunPanel(scope: 'site' | 'wide'): PanelDef {
       const bins = SUN_BINS.filter((b, i) => i === 0 || b < (day.key === 'winter' ? 10 : day.key === 'equinox' ? 12.5 : 15))
       // 해가 적을수록 어둡게, 많을수록 밝은 노랑
       const sunColors =
-        c.pal.id === 'mono'
-          ? shades('#111111', bins.length).reverse()
-          : c.pal.id === 'cvd'
+        c.pal.kind === 'mono'
+          ? monoShades(c.pal, bins.length).reverse()
+          : isStock(c.pal, 'cvd')
             ? [...steps(c.pal, bins.length)].reverse()
             : sunRamp(bins.length)
       const keyOf = (h: number) => bins.filter((b) => h >= b).length - 1
@@ -174,8 +174,8 @@ function sunPanel(scope: 'site' | 'wide'): PanelDef {
         layers.push({
           id: '참고선',
           svg:
-            (t4 ? `<path d="${t4}" fill="none" stroke="#ffffff" stroke-width="3.2"/><path d="${t4}" fill="none" stroke="${c.pal.ink}" stroke-width="1.6" stroke-dasharray="6 4"/>` : '') +
-            (c2 ? `<path d="${c2}" fill="none" stroke="#ffffff" stroke-width="3.6"/><path d="${c2}" fill="none" stroke="${c.pal.accent}" stroke-width="2"/>` : ''),
+            (t4 ? `<path d="${t4}" fill="none" stroke="${c.pal.paper}" stroke-width="3.2"/><path d="${t4}" fill="none" stroke="${c.pal.ink}" stroke-width="1.6" stroke-dasharray="6 4"/>` : '') +
+            (c2 ? `<path d="${c2}" fill="none" stroke="${c.pal.paper}" stroke-width="3.6"/><path d="${c2}" fill="none" stroke="${c.pal.accent}" stroke-width="2"/>` : ''),
         })
         legend.push({ color: c.pal.accent, label: '안쪽: 09~15시 연속 2시간 이상', shape: 'line' }, { color: c.pal.ink, label: '안쪽: 08~16시 합계 4시간 이상', shape: 'line' })
       }
@@ -241,8 +241,8 @@ const skyDomePanel: PanelDef = {
       const a = (az * Math.PI) / 180
       return [MAP_CX + r * Math.sin(a), MAP_CY - r * Math.cos(a)]
     }
-    const skyColor = c.pal.id === 'mono' ? '#f2f2f2' : '#e4f0fb'
-    const blockColor = mix('#ffffff', c.pal.ink, 0.55)
+    const skyColor = c.pal.kind === 'mono' ? mix(c.pal.paper, c.pal.ink, 0.06) : isStock(c.pal, 'default') || isStock(c.pal, 'cvd') ? '#e4f0fb' : mix(c.pal.paper, c.pal.water, 0.3)
+    const blockColor = mix(c.pal.paper, c.pal.ink, 0.55)
     // 가린 부분: 바깥 원(지평선 0°)과 가림선 사이
     let obstr = ''
     for (let a = 0; a < 360; a++) {
@@ -258,7 +258,8 @@ const skyDomePanel: PanelDef = {
     let grid = ''
     for (const alt of [30, 60]) grid += `<circle cx="${MAP_CX}" cy="${MAP_CY}" r="${((Rd * (90 - alt)) / 90).toFixed(1)}" fill="none" stroke="${c.pal.subtle}" stroke-width="0.8" stroke-dasharray="3 5"/>`
     grid += `<text x="${MAP_CX + 4}" y="${(MAP_CY - (Rd * 60) / 90 - 4).toFixed(1)}" font-size="13" fill="${c.pal.subtle}">30°</text><text x="${MAP_CX + 4}" y="${(MAP_CY - (Rd * 30) / 90 - 4).toFixed(1)}" font-size="13" fill="${c.pal.subtle}">60°</text>`
-    const pathColors = c.pal.id === 'mono' ? ['#222222', '#666666', '#999999'] : c.pal.id === 'cvd' ? ['#d55e00', '#e69f00', '#0072b2'] : ['#d6455d', '#e8a33b', '#3d7dca']
+    const sp = sunPathColors(c.pal)
+    const pathColors = isStock(c.pal, 'default') ? ['#d6455d', '#e8a33b', '#3d7dca'] : [sp.summer, sp.equinox, sp.winter]
     let sun = ''
     SUN_DAYS.forEach((day, i) => {
       // sunPathFeatures는 지도용이라 각도만 다시 계산
@@ -273,7 +274,7 @@ const skyDomePanel: PanelDef = {
         if (s.altitude <= 0) continue
         const [x, y] = pt(s.azimuth, s.altitude)
         sun += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3.5" fill="${pathColors[i]}"/>`
-        if (i === 1) sun += `<text x="${(x + 6).toFixed(1)}" y="${(y - 6).toFixed(1)}" font-size="13" fill="${c.pal.ink}" stroke="#ffffff" stroke-width="3" paint-order="stroke">${h}시</text>`
+        if (i === 1) sun += `<text x="${(x + 6).toFixed(1)}" y="${(y - 6).toFixed(1)}" font-size="13" fill="${c.pal.ink}" stroke="${c.pal.paper}" stroke-width="3" paint-order="stroke">${h}시</text>`
       }
     })
     const labels = ['북', '동', '남', '서']
@@ -325,7 +326,7 @@ const viewPanel: PanelDef = {
     const e = envOf(c)
     if (!e) return emptyOut('환경 계산 결과가 없습니다')
     const g = unpackGrid(e.coarse.view)
-    const colors = c.pal.id === 'mono' ? shades('#111111', VIEW_HEIGHTS.length).reverse() : [...steps(c.pal, VIEW_HEIGHTS.length + 1)].reverse().slice(0, VIEW_HEIGHTS.length)
+    const colors = c.pal.kind === 'mono' ? monoShades(c.pal, VIEW_HEIGHTS.length).reverse() : [...steps(c.pal, VIEW_HEIGHTS.length + 1)].reverse().slice(0, VIEW_HEIGHTS.length)
     const keyOf = (v: number) => VIEW_HEIGHTS.findIndex((h) => v <= h)
     const planH = Math.max(1, c.st.planFloors) * FLOOR_M
     const line = gridContour(c, g, planH)
@@ -421,7 +422,7 @@ function windPanel(season: '여름' | '겨울'): PanelDef {
       if (!w) return emptyOut(`${season} 바람 자료가 없어 계산하지 못했습니다 ('기후·바람' 필요)`)
       if (!w.stable) return emptyOut('계산이 불안정해 결과를 내지 못했습니다')
       const g = unpackGrid(w.ratio)
-      const colors = c.pal.id === 'mono' ? shades('#111111', 5) : c.pal.id === 'cvd' ? ['#2a788e', '#7fb3c8', '#e8e8e8', '#e6a54a', '#b35806'] : ['#3d6fb0', '#9cc0e3', '#efeee9', '#eea65a', '#c4442d']
+      const colors = c.pal.kind === 'mono' ? monoShades(c.pal, 5) : c.pal.div
       const keyOf = (v: number) => WIND_BINS.filter((b) => v >= b).length - 1
       const toGrid = (x: number, y: number): XY => [x * w.d[0] + y * w.d[1], x * w.l[0] + y * w.l[1]]
       // 바람 방향 화살표 (바람이 오는 쪽 가장자리에서 들어오게)
@@ -456,7 +457,7 @@ function windPanel(season: '여름' | '겨울'): PanelDef {
           if (Math.abs(x) < 120 && Math.abs(y) < 120 && nearRings(x, y, site, 30)) near.push(v)
         }
       return {
-        layers: [{ id: '바람_속도비', svg: gridImage(c, g, (v) => colors[keyOf(v)], toGrid) }, buildingsLayer(c, mix('#ffffff', c.pal.ink, 0.6)), { id: '바람_방향', svg: arrows }],
+        layers: [{ id: '바람_속도비', svg: gridImage(c, g, (v) => colors[keyOf(v)], toGrid) }, buildingsLayer(c, mix(c.pal.paper, c.pal.ink, 0.6)), { id: '바람_방향', svg: arrows }],
         legend: WIND_BINS.map((_, i) => ({ color: colors[i], label: WIND_LABELS[i] })),
         legendTitle: `보행 높이(지면 위 약 2m)에서 ${season}에 가장 잦은 ${windName(w.fromAz)}풍 대비 속도`,
         summary: [
@@ -522,7 +523,7 @@ const heatPanel: PanelDef = {
       hi = Math.ceil(q(0.99) / step) * step
     }
     const n = Math.max(1, Math.round((hi - lo) / step))
-    const colors = c.pal.id === 'mono' ? shades('#111111', n) : c.pal.id === 'cvd' ? steps(c.pal, n) : heatRamp(n)
+    const colors = heatColors(c.pal, n, heatRamp)
     const keyOf = (v: number) => Math.max(0, Math.min(n - 1, Math.floor((v - lo) / step)))
     const site = siteRingsXY(c.d)
     const near: number[] = []
@@ -544,7 +545,7 @@ const heatPanel: PanelDef = {
       return { color: colors[i], label: `${label} (${heatCategory(a + step / 2)})` }
     })
     return {
-      layers: [{ id: '체감_더위', svg: gridImage(c, g, (v) => colors[keyOf(v)]) }, buildingsLayer(c, mix('#ffffff', c.pal.ink, 0.6))],
+      layers: [{ id: '체감_더위', svg: gridImage(c, g, (v) => colors[keyOf(v)]) }, buildingsLayer(c, mix(c.pal.paper, c.pal.ink, 0.6))],
       legend,
       legendTitle: `체감 더위 UTCI · ${t.label} (기온 ${fmt(t.ta, 1)}℃, 습도 ${fmt(t.rh)}%, 관측 풍속 ${fmt(t.ws, 1)}m/s) · 괄호는 공식 단계`,
       summary: [

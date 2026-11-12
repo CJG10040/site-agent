@@ -2,7 +2,6 @@ import { useMemo, useState } from 'react'
 import type { PanelOutput } from '../diagrams/compose'
 import { svgBlob, svgToPng, zipBlob } from '../diagrams/export'
 import { siteOverview } from '../diagrams/overview'
-import { PALETTES } from '../diagrams/palette'
 import { ORDERED_PANELS, PANEL_GROUP_ORDER, panelNumber, type PanelDef } from '../diagrams/panels'
 import { buildPanelPrompt, parsePanelAnswer } from '../diagrams/prompt'
 import { collectedDate, DEFAULT_SETTINGS, panelFileName } from '../diagrams/render'
@@ -10,6 +9,7 @@ import { useDiagrams } from '../diagrams/useDiagrams'
 import PanelEditor from '../components/PanelEditor'
 import { editsOf } from '../model/edits'
 import { DXF_LAYERS, siteModelToDxf } from '../export/toDxf'
+import StylePanel from '../components/StylePanel'
 import { wgs84ToUtmk } from '../lib/proj'
 import { terrainAround, type TerrainGrid } from '../lib/terrain'
 import { compositeGrid, fineHalfFor, fineTerrainCached } from '../lib/terrainFine'
@@ -328,10 +328,11 @@ export default function DiagramStep({ project, update, config, keys, onGoData, o
         </section>
       )}
 
+      <StylePanel settings={settings} setSettings={setSettings} />
+
       <section className="diagram-settings">
         <Seg label="틀" value={settings.frame} options={[{ v: 'circle', label: '원형' }, { v: 'square', label: '사각형' }]} onChange={(v) => setSettings({ frame: v })} />
-        <Seg label="색" value={settings.palette} options={PALETTES.map((p) => ({ v: p.id, label: p.label }))} onChange={(v) => setSettings({ palette: v })} />
-        <Seg label="바탕" value={settings.background} options={[{ v: 'white', label: '흰색' }, { v: 'none', label: '투명' }]} onChange={(v) => setSettings({ background: v })} />
+        <Seg label="바탕" value={settings.background} options={[{ v: 'white', label: '종이색 칠함' }, { v: 'none', label: '투명' }]} onChange={(v) => setSettings({ background: v })} />
         <Seg
           label="대지 표시"
           value={settings.siteMark}

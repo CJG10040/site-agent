@@ -10,6 +10,7 @@ import type { DiagramSettings, Project } from '../model/types'
 import { buildDiagramData, type DiagramData } from './data'
 import { synthCtxOf } from './synth'
 import { svgBlob } from './export'
+import { paletteKey } from './palette'
 import { ORDERED_PANELS } from './panels'
 import { collectedDate, renderPanel, settingsOf, type RenderedPanel } from './render'
 
@@ -44,7 +45,7 @@ function cachePut(p: CachedPanel) {
 
 /** 도판마다 영향을 주는 설정만 골라 열쇠로 */
 function settingsKey(id: string, s: DiagramSettings): string {
-  const common = `${s.frame}|${s.palette}|${s.background}|${s.siteMark}`
+  const common = `${s.frame}|${paletteKey(s, id)}|${s.background}|${s.siteMark}`
   if (id === 'high') return `${common}|${s.highFloors}`
   if (id === 'low') return `${common}|${s.lowFloors}`
   if (id === 'sun') return `${common}|${s.sunDay}|${s.sunHour}`

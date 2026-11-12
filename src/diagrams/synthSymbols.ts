@@ -311,9 +311,9 @@ function dashOf(it: SynthItem, W: number): string {
 
 // ───────────────────────── 기호 하나 ─────────────────────────
 
-function itemBody(it: SynthItem, f: Frame, cards: Record<string, SynthCard>, sel: boolean, hit: boolean): string {
+function itemBody(it: SynthItem, f: Frame, cards: Record<string, SynthCard>, sel: boolean, hit: boolean, ink: string): string {
   const sym = symOf(it)
-  const color = TONES[it.tone]?.color ?? TONES.neutral.color
+  const color = it.tone === 'neutral' ? ink : (TONES[it.tone]?.color ?? ink)
   const W = wOf(it)
   const px = clean(it.pts.map(([lo, la]) => f.pt(lo, la)))
   const def = SYMS[sym]
@@ -611,7 +611,8 @@ function itemBody(it: SynthItem, f: Frame, cards: Record<string, SynthCard>, sel
 const LAYER: Record<SymGroup, number> = { 면: 0, 선: 1, 흐름: 2, 점: 3, 글: 4 }
 
 /** 기호들 (편집 화면과 완성 도판이 함께 씀) — 기호마다 data-id */
-export function synthItemsSvg(items: SynthItem[], f: Frame, cards: Record<string, SynthCard>, selectedId: string | null = null, hit = false): string {
+/** ink = 조건(먹색) 기호 색 — 어두운 바탕이면 묶음의 글자색 */
+export function synthItemsSvg(items: SynthItem[], f: Frame, cards: Record<string, SynthCard>, selectedId: string | null = null, hit = false, ink: string = TONES.neutral.color): string {
   const order = (it: SynthItem) => {
     const sym = symOf(it)
     return sym === 'note' ? 5 : sym === 'card' ? 4 : LAYER[SYMS[sym].group]
@@ -620,7 +621,7 @@ export function synthItemsSvg(items: SynthItem[], f: Frame, cards: Record<string
     .map((it, i) => ({ it, i, o: order(it) }))
     .sort((a, b) => a.o - b.o || a.i - b.i)
     .map(({ it }) => {
-      const body = itemBody(it, f, cards, it.id === selectedId, hit)
+      const body = itemBody(it, f, cards, it.id === selectedId, hit, ink)
       // 조건(먹색)은 조금 옅게
       return body ? `<g data-id="${esc(it.id)}"${it.tone === 'neutral' && it.kind !== 'note' ? ' opacity="0.9"' : ''}>${body}</g>` : ''
     })

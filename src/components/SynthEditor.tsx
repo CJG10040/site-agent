@@ -6,6 +6,7 @@ import { FONT } from '../diagrams/compose'
 import { svgBlob, svgToPng } from '../diagrams/export'
 import { makeFrame } from '../diagrams/frame'
 import { ORDERED_PANELS, panelNumber } from '../diagrams/panels'
+import { paletteFor, paletteKey } from '../diagrams/palette'
 import { collectedDate, panelFileName, renderPanel } from '../diagrams/render'
 import { CARD_TYPE_LABEL, evidenceOf, evidenceText, hasEvidence, needsEvidence, NOT_MAP_PANELS, SYNTH_DEFAULT, SYNTH_PANEL, synthCtxOf, synthItemsSvg, TONES } from '../diagrams/synth'
 import { BUFFER_WIDTHS, DASH_LABEL, DIRECTION_TONES, SYM_GROUPS, SYM_ORDER, symGlyph, symOf, SYMS, VIEW_SPREADS, WEIGHT_LABEL } from '../diagrams/synthSymbols'
@@ -87,7 +88,9 @@ export default function SynthEditor({ project, update, config }: Props) {
   }
 
   // ── 바탕 그림 (기호 없이)
-  const baseKey = `${state.base}|${R}|${settings.frame}|${settings.palette}|${settings.background}|${project.collectedAt ?? ''}`
+  const synthPal = paletteFor(settings, 'synth')
+  const synthInk = synthPal.dark ? synthPal.ink : TONES.neutral.color
+  const baseKey = `${state.base}|${R}|${settings.frame}|${paletteKey(settings, 'synth')}|${settings.background}|${project.collectedAt ?? ''}`
   useEffect(() => {
     if (!data) return
     let alive = true
@@ -361,7 +364,7 @@ export default function SynthEditor({ project, update, config }: Props) {
               onPointerUp={onUp}
               onDoubleClick={() => multi && finishDraft()}
             >
-              <g dangerouslySetInnerHTML={{ __html: synthItemsSvg(items, frame, synth.cards, selectedId, true) }} />
+              <g dangerouslySetInnerHTML={{ __html: synthItemsSvg(items, frame, synth.cards, selectedId, true, synthInk) }} />
               {draftPx.length > 0 && (
                 <polyline
                   points={[...draftPx, ...(geo === 'area' && draftPx.length > 2 ? [draftPx[0]] : [])].map(([x, y]) => `${x},${y}`).join(' ')}

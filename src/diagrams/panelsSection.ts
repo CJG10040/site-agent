@@ -68,7 +68,7 @@ function groundSampler(c: PanelCtx): (x: number, y: number) => number {
 
 /** 높이 글: +1.2 / −0.4 / ±0 */
 const sgn = (z: number) => `${z >= 0.05 ? '+' : z <= -0.05 ? '−' : '±'}${fmt(Math.abs(z), 1)}`
-const HALO = 'stroke="#ffffff" stroke-width="4" paint-order="stroke" stroke-linejoin="round"'
+const halo = (c: PanelCtx) => `stroke="${c.pal.paper}" stroke-width="4" paint-order="stroke" stroke-linejoin="round"`
 
 function sectionPanel(which: 'A' | 'B'): PanelDef {
   return {
@@ -149,9 +149,9 @@ function sectionPanel(which: 'A' | 'B'): PanelDef {
       const px = (s: number) => X0 + (s + L) * sx
       const py = (z: number) => BASE - (z - zMin) * sy
       const gz = (s: number) => ground(s * u[0], s * u[1])
-      const cutColor = mix('#ffffff', c.pal.ink, 0.72)
-      const beyondColor = mix('#ffffff', c.pal.ink, 0.22)
-      const groundFill = mix('#ffffff', c.pal.ink, 0.1)
+      const cutColor = mix(c.pal.paper, c.pal.ink, 0.72)
+      const beyondColor = mix(c.pal.paper, c.pal.ink, 0.22)
+      const groundFill = mix(c.pal.paper, c.pal.ink, 0.1)
       const baseOf = (k: Cut) => Math.min(gz(k.s0), gz(k.s1), gz((k.s0 + k.s1) / 2))
       // 그리기
       const rect = (k: Cut, color: string, extra = '') => {
@@ -217,7 +217,7 @@ function sectionPanel(which: 'A' | 'B'): PanelDef {
           const t = `${top ? '높은 곳' : '낮은 곳'} ${sgn(q.z)}m`
           const ty = Y + (top ? -15 : 27)
           boxes.push({ x0: X - textW(t, 12) / 2, x1: X + textW(t, 12) / 2, y0: ty - 12, y1: ty + 3 })
-          notes += `<path d="M${X.toFixed(1)} ${(Y + (top ? -3 : 3)).toFixed(1)}l-5 ${top ? -8 : 8}h10z" fill="${c.pal.subtle}"/><text x="${X.toFixed(1)}" y="${(Y + (top ? -15 : 27)).toFixed(1)}" font-size="12" text-anchor="middle" fill="${c.pal.subtle}" ${HALO}>${top ? '높은 곳' : '낮은 곳'} ${sgn(q.z)}m</text>`
+          notes += `<path d="M${X.toFixed(1)} ${(Y + (top ? -3 : 3)).toFixed(1)}l-5 ${top ? -8 : 8}h10z" fill="${c.pal.subtle}"/><text x="${X.toFixed(1)}" y="${(Y + (top ? -15 : 27)).toFixed(1)}" font-size="12" text-anchor="middle" fill="${c.pal.subtle}" ${halo(c)}>${top ? '높은 곳' : '낮은 곳'} ${sgn(q.z)}m</text>`
         }
       }
       // 대지 양옆 첫 건물(단면에 잘린 것): 대지 경계에서 거리 치수
@@ -234,7 +234,7 @@ function sectionPanel(which: 'A' | 'B'): PanelDef {
         return (
           `<g stroke="${c.pal.ink}" stroke-width="1"><line x1="${x0.toFixed(1)}" y1="${y.toFixed(1)}" x2="${x1.toFixed(1)}" y2="${y.toFixed(1)}"/>` +
           `<line x1="${x0.toFixed(1)}" y1="${(y - 5).toFixed(1)}" x2="${x0.toFixed(1)}" y2="${(y + 5).toFixed(1)}"/><line x1="${x1.toFixed(1)}" y1="${(y - 5).toFixed(1)}" x2="${x1.toFixed(1)}" y2="${(y + 5).toFixed(1)}"/></g>` +
-          `<text x="${((x0 + x1) / 2).toFixed(1)}" y="${(y - 5).toFixed(1)}" font-size="12" text-anchor="middle" fill="${c.pal.ink}" ${HALO}>${fmt(gap)}m</text>`
+          `<text x="${((x0 + x1) / 2).toFixed(1)}" y="${(y - 5).toFixed(1)}" font-size="12" text-anchor="middle" fill="${c.pal.ink}" ${halo(c)}>${fmt(gap)}m</text>`
         )
       }
       if (leftAdj) notes += dim(leftAdj.s1, sMinSite)
@@ -260,7 +260,7 @@ function sectionPanel(which: 'A' | 'B'): PanelDef {
           boxes.push(bx)
           placed = true
           if (tryN || Math.abs(cx - bc) > 2) notes += `<line x1="${cx.toFixed(1)}" y1="${(y + 3).toFixed(1)}" x2="${bc.toFixed(1)}" y2="${(topY - 2).toFixed(1)}" stroke="${c.pal.subtle}" stroke-width="0.8"/>`
-          notes += `<text x="${cx.toFixed(1)}" y="${y.toFixed(1)}" font-size="12.5" font-weight="${k === leftAdj || k === rightAdj ? 700 : 500}" text-anchor="middle" fill="${c.pal.ink}" ${HALO}>${text}</text>`
+          notes += `<text x="${cx.toFixed(1)}" y="${y.toFixed(1)}" font-size="12.5" font-weight="${k === leftAdj || k === rightAdj ? 700 : 500}" text-anchor="middle" fill="${c.pal.ink}" ${halo(c)}>${text}</text>`
         }
         if (placed) nLabels++
       }
@@ -284,14 +284,14 @@ function sectionPanel(which: 'A' | 'B'): PanelDef {
       const ms = MR / L
       const mp = ([x, y]: XY) => [MCX + x * ms, MCY - y * ms]
       const mpath = (rings: XY[][]) => rings.map((r) => r.map((q, i) => { const [a, b] = mp(q); return `${i ? 'L' : 'M'}${a.toFixed(1)} ${b.toFixed(1)}` }).join('') + 'Z').join('')
-      let mini = `<circle cx="${MCX}" cy="${MCY}" r="${MR}" fill="#ffffff" stroke="${c.pal.subtle}" stroke-width="1"/>`
+      let mini = `<circle cx="${MCX}" cy="${MCY}" r="${MR}" fill="${c.pal.paper}" stroke="${c.pal.subtle}" stroke-width="1"/>`
       const bpaths = d.buildings
         .filter((b) => !b.underground)
         .map((b) => arealRings(p, b.geom))
         .filter((rs) => (rs[0] ?? []).some(([x, y]) => Math.hypot(x, y) < L * 1.5))
         .map((rs) => mpath(rs))
         .join('')
-      mini += `<clipPath id="sec-${which}-clip"><circle cx="${MCX}" cy="${MCY}" r="${MR}"/></clipPath><g clip-path="url(#sec-${which}-clip)"><path d="${bpaths}" fill="${mix('#ffffff', c.pal.ink, 0.25)}"/><path d="${mpath(siteRings)}" fill="${c.pal.accent}"/></g>`
+      mini += `<clipPath id="sec-${which}-clip"><circle cx="${MCX}" cy="${MCY}" r="${MR}"/></clipPath><g clip-path="url(#sec-${which}-clip)"><path d="${bpaths}" fill="${mix(c.pal.paper, c.pal.ink, 0.25)}"/><path d="${mpath(siteRings)}" fill="${c.pal.accent}"/></g>`
       const other: XY = which === 'A' ? [Math.sin(((rot + 90) * Math.PI) / 180), Math.cos(((rot + 90) * Math.PI) / 180)] : [Math.sin(((rot + 180) * Math.PI) / 180), Math.cos(((rot + 180) * Math.PI) / 180)]
       const seg = (v: XY, color: string, w: number, dash = '') => {
         const [a1, b1] = mp([-v[0] * L, -v[1] * L])

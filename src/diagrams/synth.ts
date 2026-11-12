@@ -114,10 +114,10 @@ export function summaryLine(it: SynthItem, cards: Record<string, SynthCard>): st
 function plainBase(c: PanelCtx): PanelLayer[] {
   const b = c.d.buildings.map((x) => c.f.path(x.geom, false)).join('')
   const r = c.d.roads.map((x) => c.f.path(x.geom)).join('')
-  const areas = c.d.ngii?.roads.length ? `<path d="${c.d.ngii.roads.map((g) => c.f.path(g)).join('')}" fill="${mix('#ffffff', c.pal.ink, 0.07)}"/>` : ''
+  const areas = c.d.ngii?.roads.length ? `<path d="${c.d.ngii.roads.map((g) => c.f.path(g)).join('')}" fill="${mix(c.pal.paper, c.pal.ink, 0.07)}"/>` : ''
   return [
-    { id: '바탕_도로', svg: `${areas}${r ? `<path d="${r}" fill="none" stroke="${mix('#ffffff', c.pal.ink, 0.2)}" stroke-width="1" stroke-linecap="round"/>` : ''}` },
-    { id: '바탕_건물', svg: b ? `<path d="${b}" fill="${mix('#ffffff', c.pal.ink, 0.16)}"/>` : '' },
+    { id: '바탕_도로', svg: `${areas}${r ? `<path d="${r}" fill="none" stroke="${mix(c.pal.paper, c.pal.ink, 0.2)}" stroke-width="1" stroke-linecap="round"/>` : ''}` },
+    { id: '바탕_건물', svg: b ? `<path d="${b}" fill="${mix(c.pal.paper, c.pal.ink, 0.16)}"/>` : '' },
   ]
 }
 
@@ -149,8 +149,9 @@ export const SYNTH_PANEL: PanelDef = {
     if (s.baseOnly) return { layers: base, legend: [], summary: [], caption: '' }
     // 범례: 색(방향 / 조건 먹색) → 기호 모양(먹색으로) → 굵기
     const used = TONE_ORDER.filter((t) => items.some((i) => i.tone === t))
-    const legend: LegendItem[] = used.map((t) => ({ color: TONES[t].color, label: t === 'neutral' ? '조건 (방향 없음, 먹색)' : TONES[t].label }))
-    const ink = TONES.neutral.color
+    // 어두운 바탕에서는 먹색 대신 묶음의 글자색
+    const ink = c.pal.dark ? c.pal.ink : TONES.neutral.color
+    const legend: LegendItem[] = used.map((t) => ({ color: t === 'neutral' ? ink : TONES[t].color, label: t === 'neutral' ? '조건 (방향 없음, 먹색)' : TONES[t].label }))
     const syms = new Set(items.map(symOf))
     for (const sym of SYM_ORDER) if (syms.has(sym) && sym !== 'note' && sym !== 'card') legend.push({ color: ink, label: SYMS[sym].label, glyph: symGlyph(sym, ink) })
     const weights = new Set(items.filter((i) => SYMS[symOf(i)].weighted).map((i) => i.weight ?? 2))
@@ -161,7 +162,7 @@ export const SYNTH_PANEL: PanelDef = {
     const judged = items.filter(needsEvidence)
     const nEv = { total: judged.length, linked: judged.filter((i) => hasEvidence(evidenceOf(i, s.cards))).length }
     return {
-      layers: [...base, { id: '종합_기호', svg: synthItemsSvg(items, c.f, s.cards) }],
+      layers: [...base, { id: '종합_기호', svg: synthItemsSvg(items, c.f, s.cards, null, false, ink) }],
       legendTitle: hasCond && hasDir ? '먹색 = 대지의 조건 · 색 = 설계 방향' : hasDir ? '색 = 설계 방향' : '먹색 = 대지의 조건',
       legend,
       summary: summaryOf(items, s.cards, c.panelLabel),

@@ -5,7 +5,7 @@ import type { DiagramSettings, LabelEdit, Project } from '../model/types'
 import { composePanel, siteMarkSvg, type PanelOutput } from './compose'
 import type { DiagramData } from './data'
 import { makeFrame } from './frame'
-import { paletteOf } from './palette'
+import { paletteFor } from './palette'
 import type { TerrainAnalysis } from '../lib/terrainSite'
 import { ORDERED_PANELS, panelNumber, type PanelCtx, type PanelDef } from './panels'
 import type { SynthCtx } from './synth'
@@ -59,7 +59,7 @@ export async function renderPanel(
 ): Promise<RenderedPanel> {
   const R = def.frameR ? def.frameR(data, extra) : data.R
   const frame = makeFrame(data.center[0], data.center[1], R, settings.frame)
-  const pal = paletteOf(settings.palette)
+  const pal = paletteFor(settings, def.id)
   let out: PanelOutput
   try {
     const ctx: PanelCtx = { d: data, f: frame, pal, st: settings, vworldKey, date, t: terrain, synth: extra.synth ?? null }

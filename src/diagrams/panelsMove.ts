@@ -12,7 +12,7 @@ import { esc, type LegendItem, type PanelLayer, type PanelOutput } from './compo
 import { MAP_CX, MAP_CY, MAP_R } from './frame'
 import { blockView, encView, linkSpeeds, netView, projOf, siteRingsXY, topShare, walkAt, walkshed, walkToPoint, WALK_BANDS, WALK_SPEED } from './move'
 import type { DiagramData } from './data'
-import { mix, shades, steps } from './palette'
+import { mix, monoShades, speedColors, steps } from './palette'
 import type { PanelCtx, PanelDef } from './panels'
 
 const fmt = (n: number, digits = 0) => n.toLocaleString('ko-KR', { maximumFractionDigits: digits })
@@ -38,7 +38,7 @@ function xyPath(c: PanelCtx, coords: XY[], close = false): string {
 
 function faintBuildings(c: PanelCtx, t = 0.55): PanelLayer {
   const d = c.d.buildings.map((b) => c.f.path(b.geom, false)).join('')
-  return { id: '바탕_건물', svg: d ? `<path d="${d}" fill="${mix('#ffffff', c.pal.base, t)}"/>` : '' }
+  return { id: '바탕_건물', svg: d ? `<path d="${d}" fill="${mix(c.pal.paper, c.pal.base, t)}"/>` : '' }
 }
 
 function strokes(id: string, items: { d: string; color: string; width: number; opacity?: number }[]): PanelLayer {
@@ -134,7 +134,7 @@ function choicePanel(scale: 'walk' | 'wide'): PanelDef {
         for (let i = 1; i < RANK_BINS.length; i++) if (x >= cut[i]) k = i
         return k
       }
-      const colors = c.pal.id === 'mono' ? shades('#111111', RANK_BINS.length) : steps(c.pal, RANK_BINS.length + 1).slice(1)
+      const colors = c.pal.kind === 'mono' ? monoShades(c.pal, RANK_BINS.length) : steps(c.pal, RANK_BINS.length + 1).slice(1)
       const widths = [1.2, 2, 3, 4.5, 6.5]
       const items: { d: string; color: string; width: number }[] = []
       const frameM = c.f.R + 100
@@ -210,7 +210,7 @@ export const MOVE_PANELS: PanelDef[] = [
         else byKey.set(k, [d])
       }
       let fill = ''
-      for (const [k, ds] of byKey) fill += `<g id="${esc(bins[k].label)}"><path d="${ds.join('')}" fill="${colors[k]}" stroke="#ffffff" stroke-width="1.2"/></g>`
+      for (const [k, ds] of byKey) fill += `<g id="${esc(bins[k].label)}"><path d="${ds.join('')}" fill="${colors[k]}" stroke="${c.pal.paper}" stroke-width="1.2"/></g>`
       const roadD = v.net.edges
         .filter((e) => Math.hypot(...e.coords[0]) <= c.f.R + 150)
         .map((e) => xyPath(c, e.coords))
@@ -220,7 +220,7 @@ export const MOVE_PANELS: PanelDef[] = [
       return {
         layers: [
           { id: '가구', svg: fill },
-          { id: '도로중심선', svg: `<path d="${roadD}" fill="none" stroke="${mix('#ffffff', c.pal.ink, 0.35)}" stroke-width="0.8"/>` },
+          { id: '도로중심선', svg: `<path d="${roadD}" fill="none" stroke="${mix(c.pal.paper, c.pal.ink, 0.35)}" stroke-width="0.8"/>` },
           { id: '대지가_속한_가구', svg: siteOutline },
         ],
         legend: [...bins.map((x, i) => ({ color: colors[i], label: x.label })), ...(b.site ? [{ color: c.pal.ink, label: '대지가 속한 가구', shape: 'outline' as const }] : [])],
@@ -242,7 +242,7 @@ export const MOVE_PANELS: PanelDef[] = [
     render: (c): PanelOutput => {
       const e = encView(c.d)
       if (!e || !e.samples.length) return { layers: [faintBuildings(c)], legend: [], summary: [], caption: '', empty: '도로중심선·건물 자료가 없습니다' }
-      const colors = c.pal.id === 'mono' ? shades('#111111', ENC_CLASSES.length).reverse() : [...steps(c.pal, ENC_CLASSES.length + 1)].reverse().slice(0, ENC_CLASSES.length)
+      const colors = c.pal.kind === 'mono' ? monoShades(c.pal, ENC_CLASSES.length).reverse() : [...steps(c.pal, ENC_CLASSES.length + 1)].reverse().slice(0, ENC_CLASSES.length)
       const items = e.samples.map((s) => ({
         d: xyPath(c, sliceLine(e.roads[s.road], s.s - STEP / 2, s.s + STEP / 2)),
         color: s.cls < 0 ? c.pal.unknown : colors[s.cls],
@@ -281,7 +281,7 @@ export const MOVE_PANELS: PanelDef[] = [
       const w = walkshed(c.d)
       if (!v || !w) return { layers: [], legend: [], summary: [], caption: '', empty: '길의 연결 계산 결과가 없습니다' }
       const lim = WALK_BANDS.map((m) => m * WALK_SPEED)
-      const colors = c.pal.id === 'mono' ? ['#333333', '#777777', '#b0b0b0'] : steps(c.pal, 4).slice(1).reverse()
+      const colors = c.pal.kind === 'mono' ? [...monoShades(c.pal, 3)].reverse() : steps(c.pal, 4).slice(1).reverse()
       const halo: { d: string; color: string; width: number; opacity?: number }[] = []
       const core: { d: string; color: string; width: number }[] = []
       const base: { d: string; color: string; width: number }[] = []
@@ -289,7 +289,7 @@ export const MOVE_PANELS: PanelDef[] = [
       v.net.edges.forEach((e, i) => {
         const mid = e.coords[Math.floor(e.coords.length / 2)]
         if (Math.hypot(mid[0], mid[1]) > frameM) return
-        base.push({ d: xyPath(c, e.coords), color: mix('#ffffff', c.pal.ink, 0.22), width: 0.8 })
+        base.push({ d: xyPath(c, e.coords), color: mix(c.pal.paper, c.pal.ink, 0.22), width: 0.8 })
         // 걷는 거리는 길 위에서 직선적으로 변하므로, 시간 경계가 바뀌는 자리에서만 자른다
         const da = w.dist[e.a]
         const db = w.dist[e.b]
@@ -317,14 +317,14 @@ export const MOVE_PANELS: PanelDef[] = [
         .filter((x) => x.m !== null && x.m <= lim[2])
         .map((x) => {
           const [px, py] = c.f.pt(x.pt.lon, x.pt.lat)
-          return `<rect x="${(px - 3.5).toFixed(1)}" y="${(py - 3.5).toFixed(1)}" width="7" height="7" fill="${c.pal.ink}" stroke="#ffffff" stroke-width="1"/>`
+          return `<rect x="${(px - 3.5).toFixed(1)}" y="${(py - 3.5).toFixed(1)}" width="7" height="7" fill="${c.pal.ink}" stroke="${c.pal.paper}" stroke-width="1"/>`
         })
         .join('')
       const stSvg = st
         .filter((x) => c.f.inside(x.pt.lon, x.pt.lat))
         .map((x) => {
           const [px, py] = c.f.pt(x.pt.lon, x.pt.lat)
-          return `<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="8" fill="${c.pal.ink}" stroke="#ffffff" stroke-width="2"/><text x="${(px + 12).toFixed(1)}" y="${(py + 5).toFixed(1)}" font-size="15" font-weight="700" fill="${c.pal.ink}" stroke="#ffffff" stroke-width="4" paint-order="stroke">${esc(x.pt.name.replace(/\s.*$/, ''))}</text>`
+          return `<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="8" fill="${c.pal.ink}" stroke="${c.pal.paper}" stroke-width="2"/><text x="${(px + 12).toFixed(1)}" y="${(py + 5).toFixed(1)}" font-size="15" font-weight="700" fill="${c.pal.ink}" stroke="${c.pal.paper}" stroke-width="4" paint-order="stroke">${esc(x.pt.name.replace(/\s.*$/, ''))}</text>`
         })
         .join('')
       const ring = (m: number) => `<circle cx="${MAP_CX}" cy="${MAP_CY}" r="${(m * c.f.s).toFixed(1)}" fill="none" stroke="${c.pal.subtle}" stroke-width="1" stroke-dasharray="4 6"/>`
@@ -366,7 +366,7 @@ export const MOVE_PANELS: PanelDef[] = [
       if (!c.d.links.length) return { layers: [faintBuildings(c)], legend: [], summary: [], caption: '', empty: '표준노드링크(도로망) 도형이 없어 그릴 수 없습니다' }
       const idx = c.st.speedSnap >= 0 && c.st.speedSnap < snaps.length ? c.st.speedSnap : snaps.length - 1
       const snap = snaps[idx]
-      const colors = c.pal.id === 'mono' ? ['#111111', '#555555', '#8a8a8a', '#b5b5b5', '#d9d9d9'] : c.pal.id === 'cvd' ? ['#d55e00', '#e69f00', '#f0e442', '#56b4e9', '#0072b2'] : ['#d7301f', '#f2862e', '#f2c94c', '#8cc084', '#3a8f5c']
+      const colors = speedColors(c.pal)
       const items: { d: string; color: string; width: number }[] = []
       let lenAll = 0
       let lenJam = 0
@@ -410,18 +410,18 @@ export const MOVE_PANELS: PanelDef[] = [
       if (!snaps.length) return { layers: [faintBuildings(c)], legend: [], summary: [], caption: '', empty: '받은 속도 장면이 없습니다' }
       const idx = c.st.speedSnap >= 0 && c.st.speedSnap < snaps.length ? c.st.speedSnap : snaps.length - 1
       const snap = snaps[idx]
-      const colors = c.pal.id === 'mono' ? ['#d9d9d9', '#b5b5b5', '#8a8a8a', '#555555', '#111111'] : c.pal.id === 'cvd' ? ['#0072b2', '#56b4e9', '#f0e442', '#e69f00', '#d55e00'] : ['#3a8f5c', '#8cc084', '#f2c94c', '#f2862e', '#d7301f']
+      const colors = [...speedColors(c.pal)].reverse()
       // 바탕: 실제 폭으로 그린 도로 면
       const roadBase = c.d.roads
         .map((r) => ({ d: c.f.path(r.geom), w: Math.max(1.5, (r.width ?? 4) * c.f.s) }))
-        .map((x) => `<path d="${x.d}" fill="none" stroke="${mix('#ffffff', c.pal.ink, 0.12)}" stroke-width="${x.w.toFixed(1)}" stroke-linecap="round" stroke-linejoin="round"/>`)
+        .map((x) => `<path d="${x.d}" fill="none" stroke="${mix(c.pal.paper, c.pal.ink, 0.12)}" stroke-width="${x.w.toFixed(1)}" stroke-linecap="round" stroke-linejoin="round"/>`)
         .join('')
       const items: { d: string; color: string; width: number }[] = []
       for (const l of c.d.links) {
         const val = l.id ? snap.speeds[l.id] : undefined
         for (const ls of linePositions(l.geom)) {
           const pts = ls.map(([lon, lat]) => c.f.pt(lon, lat))
-          items.push({ d: offsetPath(pts, 4), color: val === undefined ? mix('#ffffff', c.pal.ink, 0.42) : colors[pedBin(val)], width: val === undefined ? 1.6 : 5 })
+          items.push({ d: offsetPath(pts, 4), color: val === undefined ? mix(c.pal.paper, c.pal.ink, 0.42) : colors[pedBin(val)], width: val === undefined ? 1.6 : 5 })
         }
       }
       const v = linkSpeeds(c.d, snap)
@@ -435,7 +435,7 @@ export const MOVE_PANELS: PanelDef[] = [
       }
       return {
         layers: [{ id: '도로_면', svg: roadBase }, faintBuildings(c, 0.5), strokes('차량_속도', items)],
-        legend: [...PED_BINS.map((b, i) => ({ color: colors[i], label: b.label, shape: 'line' as const })), { color: mix('#ffffff', c.pal.ink, 0.42), label: '속도 자료 없음', shape: 'line' as const }],
+        legend: [...PED_BINS.map((b, i) => ({ color: colors[i], label: b.label, shape: 'line' as const })), { color: mix(c.pal.paper, c.pal.ink, 0.42), label: '속도 자료 없음', shape: 'line' as const }],
         legendTitle: `${snapshotLabel(snap)} (${timeBand(snap)}) · 차가 실제로 달리는 속도 — 느릴수록 걷기 편함`,
         summary: [
           adj.size
@@ -467,7 +467,7 @@ export const MOVE_PANELS: PanelDef[] = [
       const r0 = 46
       const R1 = MAP_R - 70
       const rad = (share: number) => r0 + (share / top) * (R1 - r0)
-      const colors = c.pal.id === 'mono' ? shades('#111111', WIND_BINS.length) : steps(c.pal, WIND_BINS.length + 1).slice(1)
+      const colors = c.pal.kind === 'mono' ? monoShades(c.pal, WIND_BINS.length) : steps(c.pal, WIND_BINS.length + 1).slice(1)
       const wedge = (dirI: number, a: number, b: number) => {
         const th0 = ((dirI * 22.5 - 9) * Math.PI) / 180
         const th1 = ((dirI * 22.5 + 9) * Math.PI) / 180
@@ -482,7 +482,7 @@ export const MOVE_PANELS: PanelDef[] = [
           const upto = below + row[k] / t.hours
           if (row[k] > 0) d += wedge(i, rad(below), rad(upto))
         })
-        petals += `<g id="${esc(`${WIND_BINS[k]}ms_이상`)}"><path d="${d}" fill="${colors[k]}" fill-opacity="0.9" stroke="#ffffff" stroke-width="0.8"/></g>`
+        petals += `<g id="${esc(`${WIND_BINS[k]}ms_이상`)}"><path d="${d}" fill="${colors[k]}" fill-opacity="0.9" stroke="${c.pal.paper}" stroke-width="0.8"/></g>`
       })
       let grid = ''
       let gridText = ''
@@ -490,9 +490,9 @@ export const MOVE_PANELS: PanelDef[] = [
         grid += `<circle cx="${MAP_CX}" cy="${MAP_CY}" r="${rad(g).toFixed(1)}" fill="none" stroke="${c.pal.subtle}" stroke-width="0.8" stroke-dasharray="3 5"/>`
         // 꽃잎이 적은 남남동 쪽(157.5°)에 눈금 글자
         const th = (157.5 * Math.PI) / 180
-        gridText += `<text x="${(MAP_CX + rad(g) * Math.sin(th)).toFixed(1)}" y="${(MAP_CY - rad(g) * Math.cos(th) + 4).toFixed(1)}" font-size="13" text-anchor="middle" fill="${c.pal.ink}" stroke="#ffffff" stroke-width="3.5" paint-order="stroke">${Math.round(g * 100)}%</text>`
+        gridText += `<text x="${(MAP_CX + rad(g) * Math.sin(th)).toFixed(1)}" y="${(MAP_CY - rad(g) * Math.cos(th) + 4).toFixed(1)}" font-size="13" text-anchor="middle" fill="${c.pal.ink}" stroke="${c.pal.paper}" stroke-width="3.5" paint-order="stroke">${Math.round(g * 100)}%</text>`
       }
-      grid += `<circle cx="${MAP_CX}" cy="${MAP_CY}" r="${r0}" fill="#ffffff" fill-opacity="0.75" stroke="${c.pal.subtle}" stroke-width="0.8"/>`
+      grid += `<circle cx="${MAP_CX}" cy="${MAP_CY}" r="${r0}" fill="${c.pal.paper}" fill-opacity="0.75" stroke="${c.pal.subtle}" stroke-width="0.8"/>`
       const labels = DIR16.map((name, i) => {
         if (i % 2) return ''
         const th = (i * 22.5 * Math.PI) / 180
