@@ -101,13 +101,13 @@ const ICO: { v: number[][]; f: number[][] } = (() => {
 })()
 
 /** wasm 쪽 메모리 풀기 (타입 선언에는 없지만 embind 객체마다 있음) */
-function free(o: unknown) {
+export function free(o: unknown) {
   ;(o as { delete?: () => void } | null)?.delete?.()
 }
 
 let rhinoP: Promise<RhinoModule> | null = null
 
-function loadRhino(): Promise<RhinoModule> {
+export function loadRhino(): Promise<RhinoModule> {
   rhinoP ??= import('rhino3dm/rhino3dm.module.js').then((m) => (m.default as (o: object) => Promise<RhinoModule>)({ locateFile: () => wasmUrl }))
   return rhinoP
 }

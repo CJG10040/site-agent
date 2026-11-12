@@ -5,7 +5,7 @@ import type { Geometry, Polygon, MultiPolygon } from 'geojson'
 
 export const SCHEMA_VERSION = 1
 
-export type StepId = 'brief' | 'question' | 'site' | 'data' | 'facts' | 'diagrams' | 'observe' | 'interpret' | 'report'
+export type StepId = 'brief' | 'question' | 'site' | 'data' | 'facts' | 'diagrams' | 'observe' | 'interpret' | 'report' | 'model'
 
 /** F-02 과제 맥락 + 6.1 시작 입력 */
 export interface Brief {
@@ -159,6 +159,23 @@ export interface CollectedLayer {
   features: { type: 'Feature'; geometry: Geometry | null; properties: Record<string, unknown> }[]
 }
 
+/** 15-B 콘타 모형 도로 처리: 새김선 / 따로 자른 조각(얇은 재료) / 파내기(한 판 내려앉힘) */
+export type ContourRoadMode = 'engrave' | 'pieces' | 'cutout'
+
+/** 15-B 콘타 모형 설정 (2026-11-12 인터뷰: 기본 1:500, 우드락·폼보드 1~5mm, 재료 판 600×900) */
+export interface ContourSettings {
+  /** 축척 분모 (1:500 → 500) */
+  scale: number
+  /** 판 두께 (mm) — 등고 간격 = 두께 × 축척 */
+  thickness: number
+  /** 재료 판 가로·세로 (mm) */
+  sheetW: number
+  sheetH: number
+  /** 모형 가로·세로 (mm, 정사각). 0 = 재료 판에 들어가는 가장 큰 것 */
+  sizeMm: number
+  roads: ContourRoadMode
+}
+
 export interface Project {
   schema: number
   id: string
@@ -186,6 +203,10 @@ export interface Project {
   panelSummary?: string
   /** 리포트를 마지막으로 인쇄(PDF 저장)한 시각 */
   reportPrintedAt?: string
+  /** ⑩ 3D 모형에서 .3dm·DXF를 마지막으로 내려받은 때 */
+  modelExportedAt?: string
+  /** 15-B 콘타 모형 설정 (축척·판 두께·재료 판·크기·도로 처리) */
+  contour?: ContourSettings
   /** Phase 7 도판: 그리기 설정과 도판별 결론 */
   diagrams?: DiagramState
   /** Phase 12 종합 다이어그램 (⑧ 해석·가설에서 그림) */

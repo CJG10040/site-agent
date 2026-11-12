@@ -1,9 +1,35 @@
 // 모형 만들기 공통 (⑥ 바로 내려받기 · 15-A 작업대): 지형 격자 고르기 + 대지 모형 + 물체 수·예상 크기.
 
 import type { DiagramData } from '../diagrams/data'
+import { wgs84ToUtmk } from '../lib/proj'
 import { terrainAround, type TerrainGrid } from '../lib/terrain'
 import { compositeGrid, fineHalfFor, fineTerrainCached } from '../lib/terrainFine'
 import { buildSiteModel, ringArea, type Poly, type SiteModel } from './siteModel'
+
+/** 대지 경계 꼭짓점이 대지 중심에서 가장 먼 거리 (x·y 중 큰 쪽) — 내보낼 정사각형 범위의 최소값 */
+export function siteFarOf(d: Pick<DiagramData, 'center' | 'boundary'>): number {
+  const [X0, Y0] = wgs84ToUtmk(d.center[0], d.center[1])
+  const polys = (d.boundary.type === 'Polygon' ? [d.boundary.coordinates] : d.boundary.coordinates) as number[][][][]
+  let far = 0
+  for (const p of polys)
+    for (const [lo, la] of p[0]) {
+      const [x, y] = wgs84ToUtmk(lo, la)
+      far = Math.max(far, Math.abs(x - X0), Math.abs(y - Y0))
+    }
+  return far
+}
+
+/** 범위 후보 (정사각 반쪽, m): 대지가 다 들어가는 것만, 수집 반경까지 */
+export function halfOptionsFor(d: Pick<DiagramData, 'center' | 'boundary' | 'R'>): number[] {
+  const far = siteFarOf(d)
+  const opts = [...new Set([150, 300, 500, 1000, d.R])].filter((h) => h <= d.R && h >= far + 20).sort((a, b) => a - b)
+  return opts.length ? opts : [Math.max(d.R, Math.ceil(far + 20))]
+}
+
+/** 처음 고를 범위 (가로·세로 600m 안팎) */
+export function defaultHalf(opts: number[]): number {
+  return opts.find((h) => h >= 300) ?? opts[opts.length - 1]
+}
 
 /** 범위(정사각 반쪽)에 맞춘 지형 격자로 대지 모형을 만든다. 수치지도를 올렸으면 대지 주변 2m + 그 밖 10m를 섞은 격자 (범위가 크면 칸을 키움) */
 export async function buildModelFor(data: DiagramData, half: number): Promise<SiteModel> {

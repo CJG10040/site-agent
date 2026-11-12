@@ -17,6 +17,7 @@ import VersionSave from './components/VersionSave'
 import ObserveStep from './screens/ObserveStep'
 import QuestionStep from './screens/QuestionStep'
 import ReportStep from './screens/ReportStep'
+import ModelStep from './screens/ModelStep'
 import SiteStep from './screens/SiteStep'
 import { loadKeys, saveKeys, type ApiKeys } from './sources/keys'
 import { loadConfig, saveConfig, type BaseMap, type VWorldConfig } from './sources/vworld'
@@ -163,13 +164,14 @@ export default function App() {
                 )}
                 {step === 'facts' && <FactsStep project={project} update={update} onGoData={() => go('data')} />}
                 {step === 'diagrams' && (
-                  <DiagramStep project={project} update={update} config={config} keys={keys} onGoData={() => go('data')} onNext={() => go('observe')} />
+                  <DiagramStep project={project} update={update} config={config} keys={keys} onGoData={() => go('data')} onGoModel={() => go('model')} onNext={() => go('observe')} />
                 )}
                 {step === 'observe' && (
                   <ObserveStep project={project} update={update} config={config} baseMap={baseMap} onBaseMap={setBaseMap} onGoFacts={() => go('facts')} />
                 )}
                 {step === 'interpret' && <InterpretStep project={project} update={update} config={config} />}
                 {step === 'report' && <ReportStep project={project} update={update} config={config} />}
+                {step === 'model' && <ModelStep project={project} update={update} config={config} onGoData={() => go('data')} onGoSite={() => go('site')} />}
               </main>
             </div>
           )}

@@ -70,7 +70,8 @@ export function makeCard(project: Project, partial: Omit<Card, 'id' | 'created_a
   return { ...partial, id: nextCardId(project, partial.type), created_at: t, updated_at: t, history: [], edited: false }
 }
 
-export const STEPS: { id: StepId; label: string; phase: number }[] = [
+/** group이 바뀌는 곳에서 목차를 나눔 (2026-11-12 사용자 요청: 3D 모형을 따로) */
+export const STEPS: { id: StepId; label: string; phase: number; group?: string }[] = [
   { id: 'brief', label: '과제', phase: 1 },
   { id: 'question', label: '첫 질문', phase: 1 },
   { id: 'site', label: '대지', phase: 1 },
@@ -80,6 +81,7 @@ export const STEPS: { id: StepId; label: string; phase: number }[] = [
   { id: 'observe', label: '현장 관찰', phase: 3 },
   { id: 'interpret', label: '해석·가설', phase: 4 },
   { id: 'report', label: '리포트', phase: 5 },
+  { id: 'model', label: '3D 모형', phase: 7, group: '모형 만들기' },
 ]
 
 /** 대지 경계가 바뀌었는지 비교하기 위한 짧은 식별값 */
@@ -142,6 +144,12 @@ export function stepStatus(project: Project, step: StepId): { done: boolean; not
     }
     case 'report':
       return { done: !!project.reportPrintedAt, note: project.reportPrintedAt ? '인쇄함' : '' }
+    case 'model': {
+      const m1000 = (project.collected['ngii:sheets']?.features ?? []).some((f) => Number(f.properties.scale) === 1000)
+      const hd = (project.collected['hd:files']?.features.length ?? 0) > 0
+      const src = [m1000 ? '1:1,000' : '', hd ? '정밀도로' : ''].filter(Boolean).join('·')
+      return { done: !!project.modelExportedAt, note: project.modelExportedAt ? `내려받음${src ? ` · ${src}` : ''}` : src }
+    }
     default:
       return { done: false, note: '' }
   }

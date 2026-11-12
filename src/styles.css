@@ -4594,10 +4594,86 @@ dl {
   justify-content: center;
 }
 
-.contour-soon {
-  padding: 16px;
-  display: block;
+/* 15-B 콘타 모형 탭 */
+.num-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.num-field input {
+  width: 76px;
+  padding: 2px 6px;
+}
+
+.num-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+
+.segmented.wrap {
+  flex-wrap: wrap;
+}
+
+.contour-sheets {
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
+  padding: 8px 12px 16px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+  align-content: start;
+}
+
+.contour-sheet {
+  margin: 0;
+}
+
+.contour-sheet svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 70vh;
+}
+
+.contour-sheet-board {
+  fill: #fbfaf7;
+  stroke: #9a9a9a;
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.contour-sheet.oversize .contour-sheet-board {
+  stroke: var(--err);
+  stroke-dasharray: 6 4;
+}
+
+.contour-sheet figcaption {
+  margin-top: 4px;
+  color: var(--muted);
+}
+
+.laser-swatch {
+  display: inline-block;
+  width: 14px;
+  height: 0;
+  border-top: 2px solid;
+  vertical-align: middle;
+}
+
+.laser-swatch.outer {
+  border-color: #ff00ff;
+}
+
+.laser-swatch.inner {
+  border-color: #ff0000;
+}
+
+.laser-swatch.engrave {
+  border-color: #0000ff;
 }
 
 @media (max-width: 760px) {
@@ -4614,5 +4690,60 @@ dl {
 
   .model-preview {
     min-height: 360px;
+  }
+}
+
+/* 목차 나누기: '모형 만들기' (⑩ 3D 모형) */
+.stepper li.step-group-start {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.step-group {
+  display: block;
+  padding: 0 10px 4px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+
+/* ⑩ 3D 모형 화면 안의 작업대 (떠 있는 창이 아님) */
+.workbench.as-page {
+  position: relative;
+  inset: auto;
+  z-index: auto;
+  height: min(86vh, 980px);
+  min-height: 560px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  margin: 12px 0;
+}
+
+.model-sources ul {
+  margin: 4px 0 8px;
+  padding-left: 18px;
+}
+
+@media (max-width: 760px) {
+  .workbench.as-page {
+    height: auto;
+    min-height: 0;
+  }
+}
+
+@media (max-width: 760px) {
+  /* 목차가 가로로 놓일 때는 세로줄로만 나눔 */
+  .stepper li.step-group-start {
+    margin: 0 0 0 6px;
+    padding: 0 0 0 6px;
+    border-top: 0;
+    border-left: 1px solid var(--border);
+  }
+
+  .step-group {
+    display: none;
   }
 }

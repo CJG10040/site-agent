@@ -17,8 +17,11 @@ export default function Stepper({ project, current, onSelect }: Props) {
         {STEPS.map((s, i) => {
           const st = stepStatus(project, s.id)
           const later = s.phase > CURRENT_PHASE
+          // 목차 나누기: 앞 단계와 group이 다르면 제목 줄
+          const groupHead = s.group && s.group !== STEPS[i - 1]?.group ? s.group : null
           return (
-            <li key={s.id}>
+            <li key={s.id} className={groupHead ? 'step-group-start' : undefined}>
+              {groupHead && <span className="step-group">{groupHead}</span>}
               <button
                 type="button"
                 className={`step${current === s.id ? ' current' : ''}${st.done ? ' done' : ''}${later ? ' later' : ''}`}

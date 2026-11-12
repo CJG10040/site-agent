@@ -1,4 +1,4 @@
-// 15-A 콘타 모형 작업대 (2026-11-12 사용자 결정): ⑥에서 여는 전체 화면. 결과물 두 가지 — 렌더링 모델(실제 크기 .3dm) · 콘타 모형(15-B).
+// 15-A 콘타 모형 작업대 (2026-11-12 사용자 결정): ⑩ 3D 모형 화면 안(또는 떠 있는 창). 결과물 두 가지 — 렌더링 모델(실제 크기 .3dm) · 콘타 모형(15-B, ContourBench).
 // 범위를 고르면 모형을 만들어 돌려 볼 수 있는 3D로 보여 주고, 물체 수·예상 파일 크기·너무 크면 경고, 그다음 내려받기.
 // 이 화면과 3D 미리보기는 열 때만 불러온다.
 
@@ -8,6 +8,8 @@ import { buildModelFor, modelStats } from '../export/modelBuild'
 import type { SiteModel } from '../export/siteModel'
 import { siteModelToDxf } from '../export/toDxf'
 import { downloadBlob } from '../model/project'
+import type { ContourSettings } from '../model/types'
+import ContourBench from './ContourBench'
 
 const ModelPreview = lazy(() => import('./ModelPreview'))
 
@@ -19,7 +21,14 @@ interface Props {
   /** 범위 후보 (정사각 반쪽, m) */
   halfOptions: number[]
   initialHalf: number
-  onClose: () => void
+  /** 떠 있는 창이 아니라 ⑩ 3D 모형 화면 안에 (닫기·Esc 없음) */
+  asPage?: boolean
+  onClose?: () => void
+  /** 내려받았을 때 (단계 완료 표시) */
+  onExported?: () => void
+  /** 콘타 모형 설정 (프로젝트에 저장) */
+  contour?: ContourSettings
+  onContour?: (s: ContourSettings) => void
 }
 
 type Tab = 'render' | 'contour'
@@ -27,7 +36,7 @@ type Tab = 'render' | 'contour'
 const sideLabel = (h: number) => (h * 2 >= 1000 ? `${(h * 2) / 1000}km` : `${h * 2}m`)
 const fmt = (n: number, d = 0) => n.toLocaleString('ko-KR', { maximumFractionDigits: d })
 
-export default function ModelWorkbench({ data, baseName, meta, halfOptions, initialHalf, onClose }: Props) {
+export default function ModelWorkbench({ data, baseName, meta, halfOptions, initialHalf, asPage = false, onClose, onExported, contour, onContour }: Props) {
   const [tab, setTab] = useState<Tab>('render')
   const [half, setHalf] = useState(initialHalf)
   const [model, setModel] = useState<SiteModel | null>(null)
@@ -37,9 +46,10 @@ export default function ModelWorkbench({ data, baseName, meta, halfOptions, init
   const [busy, setBusy] = useState<string | null>(null)
   const [msg, setMsg] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
 
-  // Esc로 닫기, 열려 있는 동안 뒤 화면이 스크롤되지 않게
+  // Esc로 닫기, 열려 있는 동안 뒤 화면이 스크롤되지 않게 (떠 있는 창일 때만)
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && !busy && onClose()
+    if (asPage) return
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && !busy && onClose?.()
     window.addEventListener('keydown', onKey)
     const prev = document.body.style.overflow
     document.body.style.overflow = 'hidden'
@@ -47,7 +57,7 @@ export default function ModelWorkbench({ data, baseName, meta, halfOptions, init
       window.removeEventListener('keydown', onKey)
       document.body.style.overflow = prev
     }
-  }, [busy, onClose])
+  }, [busy, onClose, asPage])
 
   // 범위가 바뀌면 모형을 다시 만듦
   useEffect(() => {
@@ -83,6 +93,7 @@ export default function ModelWorkbench({ data, baseName, meta, halfOptions, init
       const t0 = performance.now()
       const bytes = await siteModelTo3dm(model, meta, (s) => setBusy(s))
       downloadBlob(`${name}.3dm`, new Blob([bytes as BlobPart], { type: 'application/octet-stream' }))
+      onExported?.()
       setMsg({ kind: 'ok', text: `라이노 파일을 내려받았습니다 — ${fmt(bytes.length / 1e6, 1)}MB, 만드는 데 ${fmt((performance.now() - t0) / 1000, 1)}초.` })
     } catch (e) {
       setMsg({ kind: 'error', text: `만들지 못했습니다: ${e instanceof Error ? e.message : String(e)}` })
@@ -93,13 +104,14 @@ export default function ModelWorkbench({ data, baseName, meta, halfOptions, init
   const downloadDxf = () => {
     if (!model) return
     downloadBlob(`${baseName}_평면_${sideLabel(half)}.dxf`, new Blob([siteModelToDxf(model, meta)], { type: 'application/dxf' }))
+    onExported?.()
     setMsg({ kind: 'ok', text: 'DXF(평면 밑그림)를 내려받았습니다.' })
   }
 
   return (
-    <div className="workbench" role="dialog" aria-modal="true" aria-label="모형 작업대">
+    <div className={`workbench${asPage ? ' as-page' : ''}`} {...(asPage ? { 'aria-label': '모형 작업대' } : { role: 'dialog', 'aria-modal': true, 'aria-label': '모형 작업대' })}>
       <header className="workbench-head">
-        <h2>모형 작업대</h2>
+        <h2>{asPage ? '작업대' : '모형 작업대'}</h2>
         <div className="segmented small" role="tablist" aria-label="결과물">
           {(
             [
@@ -112,9 +124,11 @@ export default function ModelWorkbench({ data, baseName, meta, halfOptions, init
             </button>
           ))}
         </div>
-        <button type="button" className="btn small" onClick={onClose} disabled={!!busy}>
-          닫기 (Esc)
-        </button>
+        {!asPage && (
+          <button type="button" className="btn small" onClick={onClose} disabled={!!busy}>
+            닫기 (Esc)
+          </button>
+        )}
       </header>
 
       {tab === 'render' ? (
@@ -194,17 +208,7 @@ export default function ModelWorkbench({ data, baseName, meta, halfOptions, init
           </main>
         </div>
       ) : (
-        <div className="workbench-body contour-soon">
-          <section>
-            <h3>콘타 모형 (다음 단계 15-B에서 만듭니다)</h3>
-            <ul className="small">
-              <li>축척 기본 1:500 (1:200·1:300·1:1000·1:2000·직접 입력), 판 두께 1·2·3·5mm (우드락·폼보드)</li>
-              <li>등고 간격 = 두께 × 축척 (예: 1:500 × 5mm = 2.5m), 층마다 닫힌 판</li>
-              <li>대지 경계·건물 자리 새김, 도로는 새김 / 따로 자른 조각 / 파내기 중 고르기</li>
-              <li>레이저 판 도면: 외곽 분홍 · 구멍 빨강 · 새김 파랑, 판 번호, 재료 판(기본 600×900mm) 위 배치, 라이노 .3dm</li>
-            </ul>
-          </section>
-        </div>
+        <ContourBench data={data} baseName={baseName} meta={meta} settings={contour} onSettings={onContour} onExported={onExported} />
       )}
     </div>
   )

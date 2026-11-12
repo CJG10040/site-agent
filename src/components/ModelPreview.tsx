@@ -2,10 +2,14 @@
 // 마우스 왼쪽 끌기 = 돌리기, 휠 = 확대, 오른쪽 끌기 = 옮기기 (휴대폰은 한 손가락·두 손가락).
 
 import { useEffect, useRef, useState } from 'react'
+import type { ContourPlan } from '../export/contour'
 import type { SiteModel } from '../export/siteModel'
 
 interface Props {
-  model: SiteModel
+  /** 렌더링 모델 (15-A) */
+  model?: SiteModel
+  /** 콘타 모형 (15-B) — 있으면 이것을 그림 */
+  plan?: ContourPlan
   /** 바탕색 */
   paper?: string
   onReady?: (info: { triangles: number; ms: number }) => void
@@ -13,7 +17,7 @@ interface Props {
 
 type View = 'sw' | 'top' | 'se' | 'n'
 
-export default function ModelPreview({ model, paper = '#f3f1ec', onReady }: Props) {
+export default function ModelPreview({ model, plan, paper = '#f3f1ec', onReady }: Props) {
   const ref = useRef<HTMLDivElement>(null)
   const setViewRef = useRef<((v: View) => void) | null>(null)
   const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading')
@@ -26,9 +30,16 @@ export default function ModelPreview({ model, paper = '#f3f1ec', onReady }: Prop
     void (async () => {
       try {
         const t0 = performance.now()
-        const [THREE, { OrbitControls }, { buildPreview }] = await Promise.all([import('three'), import('three/examples/jsm/controls/OrbitControls.js'), import('../export/previewScene')])
+        const [THREE, { OrbitControls }, parts] = await Promise.all([
+          import('three'),
+          import('three/examples/jsm/controls/OrbitControls.js'),
+          plan ? import('../export/contourScene').then((x) => x.buildContourPreview(plan)) : model ? import('../export/previewScene').then((x) => x.buildPreview(model)) : null,
+        ])
         const el = ref.current
-        if (!alive || !el) return
+        if (!alive || !el || !parts) {
+          parts?.dispose()
+          return
+        }
         const w = Math.max(200, el.clientWidth)
         const h = Math.max(200, el.clientHeight)
         const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true })
@@ -37,7 +48,7 @@ export default function ModelPreview({ model, paper = '#f3f1ec', onReady }: Prop
         el.appendChild(renderer.domElement)
         const scene = new THREE.Scene()
         scene.background = new THREE.Color(paper)
-        const half = model.half
+        const half = plan ? plan.half : (model?.half ?? 100)
         const camera = new THREE.PerspectiveCamera(35, w / h, Math.max(0.5, half / 400), half * 30)
         camera.up.set(0, 0, 1)
         const controls = new OrbitControls(camera, renderer.domElement)
@@ -45,7 +56,6 @@ export default function ModelPreview({ model, paper = '#f3f1ec', onReady }: Prop
         controls.dampingFactor = 0.12
         controls.maxPolarAngle = Math.PI / 2 - 0.03
         controls.screenSpacePanning = true
-        const parts = buildPreview(model)
         scene.add(parts.group)
         scene.add(new THREE.HemisphereLight(0xffffff, 0xb8b0a0, 1.6))
         const sun = new THREE.DirectionalLight(0xffffff, 1.8)
@@ -55,7 +65,8 @@ export default function ModelPreview({ model, paper = '#f3f1ec', onReady }: Prop
           // 세로로 긴 창이면 가로 화각이 좁으니 더 멀리서
           const d = (half * 2.4) / Math.min(1, camera.aspect)
           controls.target.set(0, 0, 0)
-          if (v === 'top') camera.position.set(0, -0.001, d * 1.05)
+          // 위에서: 정사각형 범위가 다 보이게 (세로 화각 35°)
+          if (v === 'top') camera.position.set(0, -0.001, d * 1.35)
           else if (v === 'se') camera.position.set(d * 0.6, -d * 0.7, d * 0.55)
           else if (v === 'n') camera.position.set(0, d * 0.9, d * 0.5)
           else camera.position.set(-d * 0.6, -d * 0.7, d * 0.55)
@@ -107,7 +118,7 @@ export default function ModelPreview({ model, paper = '#f3f1ec', onReady }: Prop
       cleanup()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [model, paper])
+  }, [model, plan, paper])
 
   return (
     <div className="model-preview-wrap">

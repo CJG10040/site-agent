@@ -1,24 +1,20 @@
-import { lazy, Suspense, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import type { PanelOutput } from '../diagrams/compose'
 import { svgBlob, svgToPng, zipBlob } from '../diagrams/export'
 import { siteOverview } from '../diagrams/overview'
 import { ORDERED_PANELS, PANEL_GROUP_ORDER, panelNumber, type PanelDef } from '../diagrams/panels'
 import { buildPanelPrompt, parsePanelAnswer } from '../diagrams/prompt'
-import { collectedDate, DEFAULT_SETTINGS, panelFileName } from '../diagrams/render'
+import { DEFAULT_SETTINGS, panelFileName } from '../diagrams/render'
 import { useDiagrams } from '../diagrams/useDiagrams'
 import PanelEditor from '../components/PanelEditor'
 import { editsOf } from '../model/edits'
-import { DXF_LAYERS, siteModelToDxf } from '../export/toDxf'
 import StylePanel from '../components/StylePanel'
 
-// 15-A 모형 작업대: 열 때만 불러옴 (3D 미리보기의 three.js도 그 안에서)
-const ModelWorkbench = lazy(() => import('../components/ModelWorkbench'))
 import OverlayControls from '../components/OverlayControls'
 import ExplodedControls from '../components/ExplodedControls'
 import { EXPLODED_ID } from '../diagrams/exploded'
 import { can3d } from '../diagrams/render'
 import { isOverlayId, OVERLAY_IDS } from '../diagrams/overlay'
-import { wgs84ToUtmk } from '../lib/proj'
 import { upsertDrafts } from '../model/applyCollection'
 import { FB_STATUS_LABEL, feedbackForPanel } from '../model/feedback'
 import { appendSpeedSnapshot } from '../model/applyMove'
@@ -36,20 +32,8 @@ interface Props {
   config: VWorldConfig
   keys: ApiKeys
   onGoData: () => void
+  onGoModel: () => void
   onNext: () => void
-}
-
-/** 대지 경계 꼭짓점이 원점(대지 중심)에서 가장 먼 거리 (x·y 중 큰 쪽, 내보낼 정사각형 범위의 최소값) */
-function siteFarM(d: { center: [number, number]; boundary: { type: string; coordinates: unknown } }): number {
-  const [X0, Y0] = wgs84ToUtmk(d.center[0], d.center[1])
-  const polys = (d.boundary.type === 'Polygon' ? [d.boundary.coordinates] : d.boundary.coordinates) as number[][][][]
-  let far = 0
-  for (const p of polys)
-    for (const [lo, la] of p[0]) {
-      const [x, y] = wgs84ToUtmk(lo, la)
-      far = Math.max(far, Math.abs(x - X0), Math.abs(y - Y0))
-    }
-  return far
 }
 
 const EMPTY_NOTE: PanelNote = { conclusion: '', suggestions: [], include: true, source: null, updatedAt: '' }
@@ -73,7 +57,7 @@ function Seg<T extends string | number>({ value, options, onChange, label }: { v
   )
 }
 
-export default function DiagramStep({ project, update, config, keys, onGoData, onNext }: Props) {
+export default function DiagramStep({ project, update, config, keys, onGoData, onGoModel, onNext }: Props) {
   const { data, settings, panels, busy, terrain } = useDiagrams(project, config.key)
   const [viewing, setViewing] = useState<string | null>(null)
   const edits = editsOf(project)
@@ -83,10 +67,6 @@ export default function DiagramStep({ project, update, config, keys, onGoData, o
   const [copied, setCopied] = useState<number | null>(null)
   const [exporting, setExporting] = useState<string | null>(null)
   const [speedBusy, setSpeedBusy] = useState(false)
-  const [modelBusy, setModelBusy] = useState<'3dm' | 'dxf' | null>(null)
-  const [modelStep, setModelStep] = useState('')
-  const [modelMsg, setModelMsg] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
-  const [modelHalf, setModelHalf] = useState<number | null>(null)
   // 처음 열 때 결론이 하나도 없으면 챗봇 상자를 펼쳐 둔다 (그 뒤로는 사용자가 연 대로)
   const [chatOpen, setChatOpen] = useState(() => !Object.values(project.diagrams?.panels ?? {}).some((n) => n.conclusion.trim()))
 
@@ -143,54 +123,6 @@ export default function DiagramStep({ project, update, config, keys, onGoData, o
     }
   }
 
-  // ── 3D 모형·CAD 밑그림: 범위(정사각형 반쪽)는 대지가 다 들어가는 것만
-  const siteFar = useMemo(() => (data ? siteFarM(data) : 0), [data])
-  const halfOptions = useMemo(() => {
-    if (!data) return []
-    const opts = [...new Set([150, 300, 500, 1000, data.R])].filter((h) => h <= data.R && h >= siteFar + 20).sort((a, b) => a - b)
-    return opts.length ? opts : [Math.max(data.R, Math.ceil(siteFar + 20))]
-  }, [data, siteFar])
-  const half = modelHalf !== null && halfOptions.includes(modelHalf) ? modelHalf : (halfOptions.find((h) => h >= 300) ?? halfOptions[halfOptions.length - 1])
-  const sideLabel = (h: number) => (h * 2 >= 1000 ? `${(h * 2) / 1000}km` : `${h * 2}m`)
-
-  const modelMeta = {
-    title: project.brief.projectName || '대지',
-    address: project.site.address?.road || project.site.address?.parcel || project.site.parcels[0]?.addr || '',
-    collected: collectedDate(project),
-  }
-  const modelBase = (project.brief.projectName || '대지').replace(/[\\/:*?"<>|\s]+/g, '_').slice(0, 30)
-  const [workbench, setWorkbench] = useState(false)
-
-  const exportModel = async (kind: '3dm' | 'dxf') => {
-    if (!data || modelBusy || !half) return
-    setModelBusy(kind)
-    setModelMsg(null)
-    setModelStep('지형·건물·도로 준비')
-    try {
-      await new Promise((r) => setTimeout(r, 30))
-      const { buildModelFor } = await import('../export/modelBuild')
-      const m = await buildModelFor(data, half)
-      const meta = modelMeta
-      const name = `${modelBase}_${kind === '3dm' ? '3D' : '평면'}_${sideLabel(half)}`
-      if (kind === '3dm') {
-        const { siteModelTo3dm } = await import('../export/to3dm')
-        const bytes = await siteModelTo3dm(m, meta, setModelStep)
-        downloadBlob(`${name}.3dm`, new Blob([bytes as BlobPart], { type: 'application/octet-stream' }))
-      } else {
-        downloadBlob(`${name}.dxf`, new Blob([siteModelToDxf(m, meta)], { type: 'application/dxf' }))
-      }
-      const unknown = m.buildings.filter((b) => b.top === null).length
-      setModelMsg({
-        kind: 'ok',
-        text: `${kind === '3dm' ? '라이노 파일을' : 'DXF를'} 내려받았습니다 — 가로·세로 ${sideLabel(half)}, 건물 ${m.buildings.length.toLocaleString('ko-KR')}동${unknown ? `(층수 모름 ${unknown}동은 발자국만)` : ''}, 등고선 ${m.contours.length}개(${m.contourStep}m 간격)${m.terrainSource === 'map' ? `, 지형 ${m.terrain?.cell ?? 2}m 칸·도로는 수치지도${m.walls.length ? `, 옹벽 등 ${m.walls.length}곳` : ''}` : m.terrainSource === 'terrarium' ? ', 지형은 대체 자료(약 30m)' : m.terrainSource ? '' : ', 지형 자료 없음'}.`,
-      })
-    } catch (e) {
-      setModelMsg({ kind: 'error', text: `만들지 못했습니다: ${e instanceof Error ? e.message : String(e)}` })
-    } finally {
-      setModelBusy(null)
-      setModelStep('')
-    }
-  }
 
   const ready = ORDERED_PANELS.filter((p) => panels[p.id] && !panels[p.id].out.empty)
   const written = ORDERED_PANELS.filter((p) => noteOf(project, p.id).conclusion.trim()).length
@@ -485,52 +417,13 @@ export default function DiagramStep({ project, update, config, keys, onGoData, o
       </section>
 
       <section className="block export-3d">
-        <h3>3D 모형·CAD 밑그림 내보내기</h3>
-        <p className="muted small">
-          대지 중심 = 원점(단위 m, 위쪽 = 북), 높이 0 = 대지 중심 지면. 지형은 국토지리정보원 등고선으로 만든 <strong>10m 격자</strong>라 1m 안팎의 높낮이는 정확하지 않고,
-          건물 높이는 <strong>실측 높이가 있으면 그 값, 없으면 층수 × 용도별 층고</strong>(주거 3m·비주거 4m·공장·창고 5m) 어림입니다(층수 모르면 발자국만). 원점의 실제 좌표(EPSG:5179·5186·경위도)는 파일 안에 적어 둡니다.
+        <h3>3D 모형·CAD 밑그림</h3>
+        <p className="small">
+          라이노 .3dm·DXF 내려받기와 3D 미리보기는 목차의 <strong>⑩ 3D 모형</strong>으로 옮겼습니다 (모형 만들기를 분석 단계와 따로).{' '}
+          <button type="button" className="btn small" onClick={onGoModel}>
+            ⑩ 3D 모형 열기
+          </button>
         </p>
-        <div className="row">
-          <span className="label">범위 (가로·세로)</span>
-          <div className="segmented small" role="radiogroup" aria-label="내보낼 범위">
-            {halfOptions.map((h) => (
-              <button key={h} type="button" role="radio" aria-checked={half === h} className={half === h ? 'on' : ''} onClick={() => setModelHalf(h)}>
-                {sideLabel(h)}
-                {h === data.R ? ' (수집 반경)' : ''}
-              </button>
-            ))}
-          </div>
-          <button type="button" className="btn small primary" onClick={() => setWorkbench(true)}>
-            모형 작업대 열기 (3D 미리보기)
-          </button>
-          <button type="button" className="btn small" disabled={!!modelBusy} onClick={() => void exportModel('3dm')}>
-            {modelBusy === '3dm' ? `만드는 중… ${modelStep}` : '라이노 .3dm'}
-          </button>
-          <button type="button" className="btn small" disabled={!!modelBusy} onClick={() => void exportModel('dxf')}>
-            {modelBusy === 'dxf' ? `만드는 중… ${modelStep}` : 'DXF (평면 밑그림)'}
-          </button>
-        </div>
-        {modelMsg && <p className={`notice ${modelMsg.kind === 'error' ? 'error' : 'ok'}`}>{modelMsg.text}</p>}
-        <details>
-          <summary className="small">파일에 든 것</summary>
-          <p className="small">
-            <strong>.3dm</strong> (레이어 이름 한글): 지형 면(메시)·등고선·계곡선, 건물(대지 안·주변·층수 모름), 도로 면(도로중심선 폭)·도로중심선, 필지, 공원·녹지, 하천, 대지
-            경계. ④에서 1:1,000 수치지도·정밀도로지도를 올렸으면 가로수(수관·줄기)·정류장 쉘터·가로등·횡단보도·담장·가드레일·차선(색·겹선·점선)·노면표시·연석·보도 면까지 들어갑니다. 땅에 놓이는 선·면은 지형 높이를 따라 얹었고, 라이노의 지구 위치(Earth Anchor)에 원점 경위도·해발을 넣었습니다. 문서 사용자 텍스트에 좌표·자료 설명이 있습니다.
-          </p>
-          <p className="small">
-            <strong>DXF</strong> (AutoCAD R12, 레이어 이름 영문 — 한글이 깨지지 않게): 지형은 면 대신 등고선(선마다 높이 값), 나머지는 높이 0 평면 선입니다.
-          </p>
-          <table>
-            <tbody>
-              {DXF_LAYERS.map((l) => (
-                <tr key={l.name}>
-                  <td>{l.name}</td>
-                  <td>{l.label}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </details>
       </section>
 
       <details className="block chat-box" open={chatOpen} onToggle={(e) => setChatOpen(e.currentTarget.open)}>
@@ -733,11 +626,6 @@ export default function DiagramStep({ project, update, config, keys, onGoData, o
           onSvg={() => downloadSvg(viewDef)}
           onPng={() => void downloadPng(viewDef)}
         />
-      )}
-      {workbench && data && (
-        <Suspense fallback={<div className="workbench workbench-loading">모형 작업대 불러오는 중…</div>}>
-          <ModelWorkbench data={data} baseName={modelBase} meta={modelMeta} halfOptions={halfOptions} initialHalf={half} onClose={() => setWorkbench(false)} />
-        </Suspense>
       )}
     </div>
   )

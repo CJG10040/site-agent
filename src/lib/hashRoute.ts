@@ -7,7 +7,7 @@ import type { StepId } from '../model/types'
 
 export type Route = { name: 'home' } | { name: 'project'; id: string; step: StepId }
 
-const STEP_IDS: StepId[] = ['brief', 'question', 'site', 'data', 'facts', 'diagrams', 'observe', 'interpret', 'report']
+const STEP_IDS: StepId[] = ['brief', 'question', 'site', 'data', 'facts', 'diagrams', 'observe', 'interpret', 'report', 'model']
 
 export function parseHash(hash: string): Route {
   const parts = hash.replace(/^#\/?/, '').split('/').filter(Boolean)
