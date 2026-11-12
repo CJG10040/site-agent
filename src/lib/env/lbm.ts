@@ -25,6 +25,9 @@ export interface WindFlow {
   l: XY
   /** 들어오는 바람 대비 평균 속도 (건물 칸 NaN), 행 = 격자 y(왼쪽 방향), 열 = 격자 x(흐름 방향) */
   ratio: Float32Array
+  /** 평균 흐름 벡터 / 들어오는 속도 (흐름 방향 성분 vx, 왼쪽 성분 vy) — 흐름선용 (14-B) */
+  vx: Float32Array
+  vy: Float32Array
   steps: number
   stable: boolean
 }
@@ -67,6 +70,8 @@ export function lbmWind(
   for (let k = 0; k < N; k++) for (let q = 0; q < 9; q++) f[q * N + k] = solid[k] ? 0 : feq(q, 1, uIn, 0)
   const inlet = Array.from({ length: 9 }, (_, q) => feq(q, 1, uIn, 0))
   const sum = new Float64Array(N)
+  const sumX = new Float64Array(N)
+  const sumY = new Float64Array(N)
   let samples = 0
   let stable = true
   const om = 1 / tau
@@ -96,7 +101,11 @@ export function lbmWind(
         const eq = W[q] * rho * (1 + 3 * eu + 4.5 * eu * eu - usq)
         f[q * N + k] += om * (eq - f[q * N + k])
       }
-      if (step >= avgFrom && dm === 0) sum[k] += Math.hypot(ux, uy)
+      if (step >= avgFrom && dm === 0) {
+        sum[k] += Math.hypot(ux, uy)
+        sumX[k] += ux
+        sumY[k] += uy
+      }
     }
     if (step >= avgFrom) samples++
     // 흐름 (끌어오기) + 막힌 칸에서 되튐, 위아래는 이어 붙임
@@ -137,6 +146,13 @@ export function lbmWind(
   }
   const ratio = new Float32Array(N)
   // 건물 칸(막힌 칸·스며드는 칸)은 값 없음
-  for (let k = 0; k < N; k++) ratio[k] = solid[k] || damp[k] > 0 || !samples || !stable ? NaN : sum[k] / samples / uIn
-  return { fromAz, n, cell, d, l, ratio, steps, stable }
+  const vx = new Float32Array(N)
+  const vy = new Float32Array(N)
+  for (let k = 0; k < N; k++) {
+    const empty = solid[k] || damp[k] > 0 || !samples || !stable
+    ratio[k] = empty ? NaN : sum[k] / samples / uIn
+    vx[k] = empty ? NaN : sumX[k] / samples / uIn
+    vy[k] = empty ? NaN : sumY[k] / samples / uIn
+  }
+  return { fromAz, n, cell, d, l, ratio, vx, vy, steps, stable }
 }

@@ -2,7 +2,7 @@
 // 칸 자료는 env:result(압축)에서 풀어 캔버스로 칠한 뒤 그림으로 넣는다.
 
 import { contours } from 'd3-contour'
-import { rasterize, unpackGrid, type GridSpec, type UnpackedGrid } from '../lib/env/grid'
+import { rasterize, unpackGrid, type GridSpec, type PackedGrid as PackedGridLike, type UnpackedGrid } from '../lib/env/grid'
 import type { XY } from '../lib/network'
 import { sunAt, SUN_DAYS } from '../lib/sun'
 import { FLOOR_M, windName, windRadius, type EnvResult } from '../sources/env'
@@ -10,6 +10,7 @@ import type { LegendItem, PanelLayer, PanelOutput } from './compose'
 import { MAP_CX, MAP_CY, MAP_R } from './frame'
 import { HEIGHT_SHORT, type DiagramData } from './data'
 import { siteRingsXY } from './move'
+import { sampleGrid, streamlineSvg, traceStreamlines, type Pt } from './raster'
 import { heatColors, isStock, mix, monoShades, steps, sunPathColors } from './palette'
 import type { PanelCtx, PanelDef } from './panels'
 
@@ -43,15 +44,14 @@ function gridImage(c: PanelCtx, g: UnpackedGrid, color: (v: number) => string | 
   const img = ctx.createImageData(S, S)
   const cache = new Map<string, [number, number, number]>()
   const s = c.f.s
+  const smooth = c.st.fieldStyle !== 'cells'
   for (let py = 0; py < S; py++) {
     const yM = (MAP_CY - (py + MAP_CY - MAP_R + 0.5)) / s
     for (let px = 0; px < S; px++) {
       const xM = (px + MAP_CX - MAP_R + 0.5 - MAP_CX) / s
       const [gx, gy] = toGrid ? toGrid(xM, yM) : [xM, yM]
-      const col = Math.floor((gx - g.x0) / g.cell)
-      const row = Math.floor((g.y0 - gy) / g.cell)
-      if (col < 0 || row < 0 || col >= g.nx || row >= g.ny) continue
-      const v = g.at(row * g.nx + col)
+      // 14-B: 매끄럽게면 주변 칸을 이어 보간한 값으로 단계를 정함 (단계 경계가 칸 모양 대신 부드러운 곡선)
+      const v = sampleGrid(g, (gx - g.x0) / g.cell, (g.y0 - gy) / g.cell, smooth)
       if (!Number.isFinite(v)) continue
       const hex = color(v)
       if (!hex) continue
@@ -407,6 +407,26 @@ function windClipsSite(d: DiagramData): boolean {
   return siteFarOf(d) > windFrameR(d) - 5
 }
 
+/** 바람 흐름선 (도판 원 안, 평균 흐름 벡터를 따라감) */
+function windStreamlines(c: PanelCtx, px: PackedGridLike, py: PackedGridLike, d: XY, l: XY): string {
+  const gx = unpackGrid(px)
+  const gy = unpackGrid(py)
+  const R = c.f.R
+  // 미터(대지 중심 기준 동·북) → 격자(흐름 방향 s, 왼쪽 t) → 성분을 다시 동·북으로
+  const vel = (x: number, y: number): Pt | null => {
+    const s = x * d[0] + y * d[1]
+    const t = x * l[0] + y * l[1]
+    const fx = (s - gx.x0) / gx.cell
+    const fy = (gx.y0 - t) / gx.cell
+    const u = sampleGrid(gx, fx, fy, true)
+    const v = sampleGrid(gy, fx, fy, true)
+    if (!Number.isFinite(u) || !Number.isFinite(v)) return null
+    return [u * d[0] + v * l[0], u * d[1] + v * l[1]]
+  }
+  const lines = traceStreamlines(vel, R, { sep: R / 15, step: Math.max(1.5, R / 110) })
+  return streamlineSvg(lines, ([x, y]) => [MAP_CX + x * c.f.s, MAP_CY - y * c.f.s], c.pal.ink)
+}
+
 function windPanel(season: '여름' | '겨울'): PanelDef {
   return {
     id: season === '여름' ? 'windSummer' : 'windWinter',
@@ -437,6 +457,9 @@ function windPanel(season: '여름' | '겨울'): PanelDef {
         const y2 = cy + uy * 60
         arrows += `<path d="M${cx.toFixed(1)} ${cy.toFixed(1)}L${x2.toFixed(1)} ${y2.toFixed(1)}" stroke="${c.pal.ink}" stroke-width="3"/><path d="M${(x2 + ux * 10).toFixed(1)} ${(y2 + uy * 10).toFixed(1)}L${(x2 - uy * 8).toFixed(1)} ${(y2 + ux * 8).toFixed(1)}L${(x2 + uy * 8).toFixed(1)} ${(y2 - ux * 8).toFixed(1)}Z" fill="${c.pal.ink}"/>`
       }
+      // 14-B 흐름선: 평균 흐름 벡터가 있으면(새로 계산한 결과) 선으로, 없으면 들어오는 방향 화살표
+      const wantLines = c.st.windStyle !== 'arrows'
+      const lines = wantLines && w.vx && w.vy ? windStreamlines(c, w.vx, w.vy, w.d, w.l) : null
       // 대지 주변 30m 평균
       const site = siteRingsXY(c.d)
       const near: number[] = []
@@ -457,14 +480,19 @@ function windPanel(season: '여름' | '겨울'): PanelDef {
           if (Math.abs(x) < 120 && Math.abs(y) < 120 && nearRings(x, y, site, 30)) near.push(v)
         }
       return {
-        layers: [{ id: '바람_속도비', svg: gridImage(c, g, (v) => colors[keyOf(v)], toGrid) }, buildingsLayer(c, mix(c.pal.paper, c.pal.ink, 0.6)), { id: '바람_방향', svg: arrows }],
-        legend: WIND_BINS.map((_, i) => ({ color: colors[i], label: WIND_LABELS[i] })),
+        layers: [
+          { id: '바람_속도비', svg: gridImage(c, g, (v) => colors[keyOf(v)], toGrid) },
+          buildingsLayer(c, mix(c.pal.paper, c.pal.ink, 0.6)),
+          lines ? { id: '바람_흐름선', svg: lines } : { id: '바람_방향', svg: arrows },
+        ],
+        legend: [...WIND_BINS.map((_, i) => ({ color: colors[i], label: WIND_LABELS[i] })), ...(lines ? [{ color: c.pal.ink, label: '흐름선 (평균 흐름 방향)', shape: 'line' as const }] : [])],
         legendTitle: `보행 높이(지면 위 약 2m)에서 ${season}에 가장 잦은 ${windName(w.fromAz)}풍 대비 속도`,
         summary: [
           near.length ? `대지 주변 30m: 평균 ${fmt(near.reduce((x, y) => x + y, 0) / near.length, 2)}배` : '',
           `계산 영역 중 빨라지는 곳(1.5배 이상) ${pctText(n ? fast / n : 0)}, 거의 멈추는 곳(0.3배 미만) ${pctText(n ? still / n : 0)}`,
           windClipsSite(c.d) ? "대지가 계산한 범위보다 커서 일부가 잘림 — ④ 공간정보에서 '환경 계산'을 다시 하면 대지 크기에 맞춰 계산" : '',
           e.windR === undefined ? "예전에 계산한 결과 — ④ 공간정보에서 '환경 계산'을 다시 하면 대지 크기에 맞춘 범위로 계산" : '',
+          wantLines && !lines ? "흐름선은 흐름 방향을 함께 저장한 결과에서만 그려짐 — ④ 공간정보에서 '환경 계산'을 다시 하면 보임 (지금은 들어오는 방향 화살표)" : '',
         ].filter(Boolean),
         caption: `실험 · 보행 높이(약 2m) 한 층의 평면 흐름, 2D 격자 볼츠만(D2Q9) · 도판보다 넓은 ${fmt(g.nx * g.cell)}m 정사각을 ${fmt(g.cell, 1)}m 칸으로 계산${(e.windR ?? 0) > c.d.R ? ` · 대지가 커서 수집 반경(${fmt(c.d.R)}m) 밖까지 그렸고, 그 바깥은 건물 자료가 없어 빈 땅으로 계산` : ""} · 높이 20m(약 7층) 이상 건물은 막고, 낮은 건물은 높이만큼 바람을 줄여 지나가게 함(지붕 위로 넘는 바람을 흉내) · 실제 풍속·돌풍 아님 · ${e.computedAt.slice(0, 10)} 계산`,
       }

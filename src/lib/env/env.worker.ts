@@ -39,6 +39,9 @@ export interface WindOut {
   l: XY
   /** 격자 좌표: x = 흐름 방향, y = 왼쪽 */
   ratio: PackedGrid
+  /** 평균 흐름 벡터 (흐름 방향·왼쪽 성분, 들어오는 속도 대비) — 흐름선용. 예전 결과에는 없음 */
+  vx?: PackedGrid
+  vy?: PackedGrid
 }
 
 export interface EnvOutput {
@@ -131,9 +134,22 @@ self.onmessage = async (ev: MessageEvent<EnvJob>) => {
       flows.push(f)
       const spec: GridSpec = { x0: -side / 2, y0: side / 2, cell: f.cell, nx: f.n, ny: f.n }
       // 격자 행 j = 왼쪽 방향 → 저장은 위쪽(y0)부터라 행을 뒤집는다
-      const flipped = new Float32Array(f.n * f.n)
-      for (let j = 0; j < f.n; j++) for (let i = 0; i < f.n; i++) flipped[(f.n - 1 - j) * f.n + i] = f.ratio[j * f.n + i]
-      winds.push({ season: w.season, fromAz: w.fromAz, stable: f.stable, d: f.d, l: f.l, ratio: packGrid(spec, flipped, 0.02) })
+      const flip = (a: Float32Array) => {
+        const out = new Float32Array(f.n * f.n)
+        for (let j = 0; j < f.n; j++) for (let i = 0; i < f.n; i++) out[(f.n - 1 - j) * f.n + i] = a[j * f.n + i]
+        return out
+      }
+      winds.push({
+        season: w.season,
+        fromAz: w.fromAz,
+        stable: f.stable,
+        d: f.d,
+        l: f.l,
+        ratio: packGrid(spec, flip(f.ratio), 0.02),
+        // 성분은 −2.5 ~ +2.58 (0.02 단위)
+        vx: packGrid(spec, flip(f.vx), 0.02, -2.5),
+        vy: packGrid(spec, flip(f.vy), 0.02, -2.5),
+      })
     }
     lap('wind')
 

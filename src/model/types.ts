@@ -236,7 +236,7 @@ export interface ProjectEdits {
 // ───────────────────────── Phase 7 도판 ─────────────────────────
 
 export type FrameShape = 'circle' | 'square'
-export type PaletteId = 'default' | 'cvd' | 'mono' | 'paperSage' | 'paperNavy' | 'concrete' | 'brick' | 'wood' | 'metal' | 'night' | 'navy' | 'vividRed' | 'vividTeal'
+export type PaletteId = 'default' | 'cvd' | 'mono' | 'paperSage' | 'paperNavy' | 'pastelBloom' | 'pastelSky' | 'pastelMint' | 'concrete' | 'brick' | 'wood' | 'metal' | 'night' | 'navy' | 'vividRed' | 'vividTeal' | 'theme'
 export type SiteMark = 'outline' | 'fill' | 'dot'
 
 /** 학생이 고친 색 (빈 칸 = 묶음 색 그대로). 줄 색은 자리별, 빈 문자열 = 그대로 */
@@ -255,15 +255,31 @@ export interface PaletteEdit {
 }
 
 /** 도판 하나만 다른 색 (2026-11-12 사용자 결정: 보드 전체 + 도판별 덮어쓰기) */
+/** 테마색 하나로 만드는 색 조합 (2026-11-12 사용자 요청) */
+export interface ThemeSpec {
+  /** 테마색 #rrggbb */
+  color: string
+  /** 범주색을 고르는 방식: 유사색 · 보색 · 세 색 */
+  harmony: 'analog' | 'complement' | 'triad'
+  /** 바탕: 밝게 · 파스텔 · 어둡게 */
+  tone: 'light' | 'pastel' | 'dark'
+  /** '다른 조합'을 누른 횟수 (범주색 순서·강조색을 바꿈) */
+  variant: number
+}
+
 export interface PanelStyle {
   /** 다른 묶음 (없으면 보드 전체 묶음 + 전체 고친 색 위에 colors) */
   palette?: PaletteId
+  /** 테마색으로 만든 조합 (palette보다 먼저) */
+  theme?: ThemeSpec
   colors?: PaletteEdit
 }
 
 export interface DiagramSettings {
   frame: FrameShape
   palette: PaletteId
+  /** 보드 전체를 테마색 조합으로 (있으면 palette 대신) */
+  theme?: ThemeSpec
   /** 보드 전체 묶음에서 학생이 고친 색 */
   colors?: PaletteEdit
   /** 도판별 덮어쓰기 (도판 id → 묶음·색) */
@@ -292,6 +308,12 @@ export interface DiagramSettings {
   sectionVex: number
   /** 단면 범위: site 대지와 주변(기본, 2026-11-12) / radius 수집 반경 전체 */
   sectionRange: 'site' | 'radius'
+  /** 계산 결과(일조·가시권·바람·더위)·지형 칠하기: smooth 매끄럽게(기본, 14-B) / cells 칸 그대로 */
+  fieldStyle: 'smooth' | 'cells'
+  /** 바람 흐름 실험 표현: lines 흐름선(기본) / arrows 들어오는 방향 화살표만 */
+  windStyle: 'lines' | 'arrows'
+  /** 지형 도판 음영 기복 */
+  terrainShade: boolean
 }
 
 /** 도판 하나의 결론 */

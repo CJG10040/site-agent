@@ -3,8 +3,9 @@
 // 보드 전체에 한 묶음 + 학생이 색을 직접 고침 + 필요한 도판만 덮어쓰기. 색 조합은 참고 사이트를 베끼지 않고 새로 짬.
 
 import type { DiagramSettings, PaletteEdit, PaletteId } from '../model/types'
+import { themePalette } from './themePalette'
 
-export type PaletteGroup = '기본' | '종이톤' | '재료' | '어두운 바탕' | '선명한 대비'
+export type PaletteGroup = '기본' | '종이톤' | '파스텔' | '재료' | '어두운 바탕' | '선명한 대비' | '테마색'
 
 export interface Palette {
   id: PaletteId
@@ -128,6 +129,58 @@ export const PALETTES: Palette[] = [
     cat: ['#e0b64f', '#d98a52', '#b8524f', '#3f6d96', '#5a958c', '#7f73a6', '#8e9099', '#ad8a62'],
     seq: ['#efe9dc', '#cdd8dc', '#94b4c4', '#4d7795', '#1e3a57'],
     div: ['#1e4f7a', '#8fb3cc', '#ebe6db', '#e3a873', '#b5493a'],
+  },
+  // ── 파스텔 (2026-11-12 사용자 요청). 옅은 색이 많아도 강한 쪽 끝과 글자는 읽히게 진하게
+  {
+    id: 'pastelBloom',
+    label: '파스텔·봄',
+    group: '파스텔',
+    kind: 'color',
+    paper: '#fdf9f6',
+    ink: '#3a3647',
+    subtle: '#7d7889',
+    base: '#ece6e4',
+    unknown: '#ddd6d4',
+    water: '#b9dcef',
+    green: '#c5e3c1',
+    accent: '#e2556f',
+    cat: ['#f6c98a', '#f4a7a0', '#e98fa8', '#9ec5ea', '#9fd8c4', '#c3aee6', '#c9c4cf', '#e0bf9f'],
+    seq: ['#fbeff0', '#f6cfd8', '#e7a5bd', '#c47a9f', '#8a557a'],
+    div: ['#7aa6d6', '#bcd6ee', '#f4f0f2', '#f3b9a4', '#d9826b'],
+  },
+  {
+    id: 'pastelSky',
+    label: '파스텔·하늘',
+    group: '파스텔',
+    kind: 'color',
+    paper: '#f8fbfd',
+    ink: '#2f3a4a',
+    subtle: '#738094',
+    base: '#e3e9ef',
+    unknown: '#d3dae2',
+    water: '#a9d3ec',
+    green: '#bfe0c8',
+    accent: '#f47a4a',
+    cat: ['#ffd59e', '#ffb59a', '#f59fb0', '#8fbfe6', '#94d6c8', '#b9a8e8', '#c2c9d3', '#d9c2a0'],
+    seq: ['#eef5fb', '#cfe3f3', '#a6c8e6', '#7aa3cf', '#4e74a6'],
+    div: ['#6f9fd8', '#b8d4ef', '#f2f2f0', '#f8c49a', '#e58b6a'],
+  },
+  {
+    id: 'pastelMint',
+    label: '파스텔·민트',
+    group: '파스텔',
+    kind: 'color',
+    paper: '#f7fbf8',
+    ink: '#2e3b37',
+    subtle: '#73827c',
+    base: '#e2ebe6',
+    unknown: '#d2ddd7',
+    water: '#acd8e2',
+    green: '#bfe5c6',
+    accent: '#ec6a5c',
+    cat: ['#f9d98b', '#f7b98f', '#ef9aa3', '#93bfe3', '#8fd3bd', '#bba6e2', '#c3ccc8', '#d8c39d'],
+    seq: ['#eef7f1', '#cdeadb', '#9fd3bd', '#6fb19c', '#40806f'],
+    div: ['#6aa5cf', '#b6d8e8', '#f1f3ef', '#f6c2a0', '#e0866d'],
   },
   // ── 재료 톤
   {
@@ -272,7 +325,7 @@ export const PALETTES: Palette[] = [
   },
 ]
 
-export const PALETTE_GROUPS: PaletteGroup[] = ['기본', '종이톤', '재료', '어두운 바탕', '선명한 대비']
+export const PALETTE_GROUPS: PaletteGroup[] = ['기본', '종이톤', '파스텔', '재료', '어두운 바탕', '선명한 대비']
 
 export function paletteOf(id: PaletteId | undefined): Palette {
   return PALETTES.find((p) => p.id === id) ?? PALETTES[0]
@@ -333,13 +386,19 @@ export function applyPaletteEdit(pal: Palette, edit: PaletteEdit | undefined): P
   return out
 }
 
-type ColorSettings = Pick<DiagramSettings, 'palette' | 'colors' | 'panelStyles'>
+type ColorSettings = Pick<DiagramSettings, 'palette' | 'colors' | 'panelStyles' | 'theme'>
 
-/** 이 도판에 쓸 색: 도판 덮어쓰기에 묶음이 있으면 그 묶음 + 도판 색, 없으면 보드 전체 묶음 + 전체 고친 색 + 도판 색 */
+/** 보드 전체의 고치기 전 묶음 (테마색 조합이 있으면 그것) */
+export function boardBase(settings: ColorSettings): Palette {
+  return settings.theme ? themePalette(settings.theme) : paletteOf(settings.palette)
+}
+
+/** 이 도판에 쓸 색: 도판 덮어쓰기에 테마색·묶음이 있으면 그것 + 도판 색, 없으면 보드 전체(묶음 또는 테마색) + 전체 고친 색 + 도판 색 */
 export function paletteFor(settings: ColorSettings, panelId?: string): Palette {
   const ps = panelId ? settings.panelStyles?.[panelId] : undefined
+  if (ps?.theme) return applyPaletteEdit(themePalette(ps.theme), ps.colors)
   if (ps?.palette) return applyPaletteEdit(paletteOf(ps.palette), ps.colors)
-  return applyPaletteEdit(applyPaletteEdit(paletteOf(settings.palette), settings.colors), ps?.colors)
+  return applyPaletteEdit(applyPaletteEdit(boardBase(settings), settings.colors), ps?.colors)
 }
 
 /** 다시 그려야 하는지 가리는 색 열쇠 */

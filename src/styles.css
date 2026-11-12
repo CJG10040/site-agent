@@ -4323,3 +4323,44 @@ dl {
     flex-basis: 100%;
   }
 }
+
+/* 테마색으로 만들기 */
+.theme-maker {
+  padding: 6px 8px;
+  margin-top: 2px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+}
+
+.theme-maker.on {
+  border-color: var(--accent);
+  border-style: solid;
+}
+
+.theme-color {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.theme-color input[type='color'] {
+  width: 40px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: none;
+  cursor: pointer;
+}
+
+.theme-preview {
+  display: inline-flex;
+}
+
+.pal-strip.wide i {
+  width: 12px;
+}
+
+.theme-note {
+  margin: 0;
+}

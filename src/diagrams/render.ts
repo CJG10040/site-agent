@@ -26,6 +26,9 @@ export const DEFAULT_SETTINGS: DiagramSettings = {
   sectionAngle: 0,
   sectionVex: 1,
   sectionRange: 'site',
+  fieldStyle: 'smooth',
+  windStyle: 'lines',
+  terrainShade: true,
 }
 
 export function settingsOf(project: Project): DiagramSettings {

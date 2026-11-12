@@ -16,6 +16,7 @@ import { bldHeight, bldSourceText, type Bld, type DiagramData, type Pt } from '.
 import { centroidOf, dir8, MAP_CX, MAP_CY, MAP_R, type Frame } from './frame'
 import { isStock, mix, monoShades, steps, sunPathColors, themeColor, zoningColor, type Palette } from './palette'
 import { projOf } from './move'
+import { hillshade, hillshadeExaggeration, sampleGrid, shadeRgb } from './raster'
 import { arealRings, pointInRings, pointToRingsDist, toXY } from '../lib/xy'
 import { ENV_PANELS } from './panelsEnv'
 import { LIFE_PANELS } from './panelsLife'
@@ -1030,7 +1031,8 @@ function frameAffine(c: PanelCtx) {
 }
 
 /** 격자 값마다 색을 칠한 그림 (도판 틀 크기) */
-function terrainRaster(c: PanelCtx, t: TerrainAnalysis, colorAt: (k: number) => string | null): string {
+/** 지형 높이 단계 그림. 14-B: 매끄럽게(보간한 높이로 단계) + 음영 기복(북서쪽 빛) */
+function terrainRaster(c: PanelCtx, t: TerrainAnalysis, colorOf: (v: number) => string | null): string {
   const S = MAP_R * 2
   const canvas = document.createElement('canvas')
   canvas.width = S
@@ -1040,6 +1042,10 @@ function terrainRaster(c: PanelCtx, t: TerrainAnalysis, colorAt: (k: number) => 
   const img = g.createImageData(S, S)
   const A = frameAffine(c)
   const grid = t.grid
+  const smooth = c.st.fieldStyle !== 'cells'
+  const zg = { nx: grid.nx, ny: grid.ny, at: (k: number) => t.rel[k] }
+  const shade = c.st.terrainShade ? hillshade(t.rel, grid.nx, grid.ny, grid.cell) : null
+  const sg = shade ? { nx: grid.nx, ny: grid.ny, at: (k: number) => shade[k] } : null
   const cache = new Map<string, number[]>()
   const rgb = (hex: string) => {
     let v = cache.get(hex)
@@ -1053,12 +1059,15 @@ function terrainRaster(c: PanelCtx, t: TerrainAnalysis, colorAt: (k: number) => 
   for (let py = 0; py < S; py++)
     for (let px = 0; px < S; px++) {
       const [x, y] = A.toUtmk(px + MAP_CX - MAP_R + 0.5, py + MAP_CY - MAP_R + 0.5)
-      const col = Math.floor((x - grid.x0) / grid.cell)
-      const row = Math.floor((grid.y0 - y) / grid.cell)
-      if (col < 0 || row < 0 || col >= grid.nx || row >= grid.ny) continue
-      const color = colorAt(row * grid.nx + col)
+      const fx = (x - grid.x0) / grid.cell
+      const fy = (grid.y0 - y) / grid.cell
+      const v = sampleGrid(zg, fx, fy, smooth)
+      if (Number.isNaN(v)) continue
+      const color = colorOf(v)
       if (!color) continue
-      const [r, gg, b] = rgb(color)
+      const base = rgb(color) as [number, number, number]
+      const f = sg ? sampleGrid(sg, fx, fy, true) : 1
+      const [r, gg, b] = Number.isFinite(f) && f !== 1 ? shadeRgb(base, f) : base
       const o = (py * S + px) * 4
       img.data[o] = r
       img.data[o + 1] = gg
@@ -1115,11 +1124,7 @@ export const TERRAIN_PANELS: PanelDef[] = [
       const start = Math.floor(lo / bandStep) * bandStep
       const nb = Math.max(1, Math.ceil((hi - start) / bandStep))
       const colors = steps(c.pal, Math.max(2, nb))
-      const raster = terrainRaster(c, t, (k) => {
-        const v = t.rel[k]
-        if (Number.isNaN(v)) return null
-        return colors[Math.min(nb - 1, Math.max(0, Math.floor((v - start) / bandStep)))]
-      })
+      const raster = terrainRaster(c, t, (v) => colors[Math.min(nb - 1, Math.max(0, Math.floor((v - start) / bandStep)))])
       const cont = relief >= 3 ? contourSvg(c, t, iv) : { svg: '', step: null }
       const hb = t.high ? c.f.polar(t.high.lon, t.high.lat) : null
       const lb = t.low ? c.f.polar(t.low.lon, t.low.lat) : null
@@ -1147,7 +1152,7 @@ export const TERRAIN_PANELS: PanelDef[] = [
           `대지 안 높낮이 차 ${rangeText(t.site.range, !!t.fine)}`,
           walls.length ? `옹벽·석축·제방 ${fmt(walls.length)}곳 (높이 ${(() => { const hs = walls.map((w) => w.h ?? 0).filter((h) => h > 0); return hs.length ? `${fmt(Math.min(...hs), 1)}~${fmt(Math.max(...hs), 1)}m` : '미상' })()})` : '',
         ].filter(Boolean),
-        caption: terrainCaption(t),
+        caption: terrainCaption(t, c.st.terrainShade ? ` · 음영은 북서쪽 위에서 빛을 비춘 모습(높이 ${hillshadeExaggeration(t.grid.cell)}배 과장, 읽기를 돕는 표현)` : ''),
       }
     },
   },

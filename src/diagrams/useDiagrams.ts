@@ -51,8 +51,12 @@ function settingsKey(id: string, s: DiagramSettings): string {
   if (id === 'sun') return `${common}|${s.sunDay}|${s.sunHour}`
   if (id === 'wind') return `${common}|${s.windSeason}`
   if (id === 'speed' || id === 'speedLocal') return `${common}|${s.speedSnap}`
-  if (id === 'sunSite' || id === 'sunWide') return `${common}|${s.sunDay}`
-  if (id === 'viewshed') return `${common}|${s.planFloors}`
+  if (id === 'sunSite' || id === 'sunWide') return `${common}|${s.sunDay}|${s.fieldStyle}`
+  if (id === 'viewshed') return `${common}|${s.planFloors}|${s.fieldStyle}`
+  if (id === 'heat') return `${common}|${s.fieldStyle}`
+  if (id === 'windSummer' || id === 'windWinter') return `${common}|${s.fieldStyle}|${s.windStyle}`
+  if (id === 'terrain') return `${common}|${s.fieldStyle}|${s.terrainShade}`
+  if (id === 'synth') return `${common}|${s.fieldStyle}|${s.windStyle}|${s.terrainShade}`
   if (id === 'sectionA' || id === 'sectionB') return `${common}|${s.sectionAngle}|${s.sectionVex}|${s.sectionRange}`
   return common
 }

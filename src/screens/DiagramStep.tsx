@@ -423,6 +423,33 @@ export default function DiagramStep({ project, update, config, keys, onGoData, o
             </div>
           </div>
         )}
+        <Seg
+          label="계산·지형 칠하기"
+          value={settings.fieldStyle}
+          options={[
+            { v: 'smooth', label: '매끄럽게' },
+            { v: 'cells', label: '칸 그대로' },
+          ]}
+          onChange={(v) => setSettings({ fieldStyle: v })}
+        />
+        <Seg
+          label="바람 실험"
+          value={settings.windStyle}
+          options={[
+            { v: 'lines', label: '흐름선' },
+            { v: 'arrows', label: '화살표' },
+          ]}
+          onChange={(v) => setSettings({ windStyle: v })}
+        />
+        <Seg
+          label="지형 음영"
+          value={settings.terrainShade ? 'on' : 'off'}
+          options={[
+            { v: 'on', label: '켬' },
+            { v: 'off', label: '끔' },
+          ]}
+          onChange={(v) => setSettings({ terrainShade: v === 'on' })}
+        />
         <Seg label="PNG 크기" value={settings.pngWidth} options={[{ v: 2000, label: '2000px' }, { v: 4000, label: '4000px' }]} onChange={(v) => setSettings({ pngWidth: v })} />
         <div className="diagram-export">
           <button type="button" className="btn small" disabled={!!exporting || busy || !ready.length} onClick={() => void downloadAll('svg')}>
