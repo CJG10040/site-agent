@@ -4402,3 +4402,51 @@ dl {
   gap: 4px 6px;
   align-items: center;
 }
+
+/* 분해 다이어그램 카드 (14-F) */
+.exploded-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 4px 0 8px;
+  padding: 8px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+}
+
+.exploded-list {
+  margin: 0;
+  padding-left: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.exploded-list li {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.exploded-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.exploded-list .btn.small {
+  padding: 2px 8px;
+}
+
+.exploded-row {
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  align-items: center;
+}
+
+.exploded-row select {
+  max-width: 100%;
+}

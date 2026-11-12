@@ -12,6 +12,7 @@ import { synthCtxOf } from './synth'
 import { svgBlob } from './export'
 import { paletteKey } from './palette'
 import { isOverlayId, overlaySpec } from './overlay'
+import { EXPLODED_ID, explodedAz, explodedLayers, SITE_LAYER } from './exploded'
 import { ORDERED_PANELS } from './panels'
 import { collectedDate, renderPanel, settingsOf, type RenderedPanel } from './render'
 
@@ -63,6 +64,10 @@ function flatKey(id: string, s: DiagramSettings): string {
   if (id === 'windSummer' || id === 'windWinter') return `${common}|${s.fieldStyle}|${s.windStyle}`
   if (id === 'terrain' || id === 'slopeWater') return `${common}|${s.fieldStyle}|${s.terrainShade}`
   if (id === 'svfMap' || id === 'noise') return `${common}|${s.fieldStyle}`
+  if (id === EXPLODED_ID) {
+    const ls = explodedLayers(s)
+    return `${common}|${ls.join('>')}|${explodedAz(s)}|${ls.filter((x) => x !== SITE_LAYER).map((x) => settingsKey(x, s)).join('|')}`
+  }
   if (isOverlayId(id)) {
     const o = overlaySpec(s, id)
     return o ? `${common}|${o.base}>${o.top}|${o.opacity}|${o.mode}|${settingsKey(o.base, s)}|${settingsKey(o.top, s)}` : common
@@ -114,6 +119,7 @@ export function useDiagrams(project: Project, vworldKey: string, only?: string[]
       setBusy(true)
       // 겹쳐 보기가 쓰는 도판 (지형·속도 열쇠에)
       const uses = (id: string): string[] => {
+        if (id === EXPLODED_ID) return explodedLayers(settings)
         const o = isOverlayId(id) ? overlaySpec(settings, id) : null
         return o ? [o.base, o.top] : [id]
       }

@@ -85,7 +85,7 @@ export function synthCtxFrom(cardList: Card[], synth: SynthState | null): SynthC
 }
 
 /** 도판 바탕으로 쓰지 않는 것 (지도가 아닌 그림) */
-export const NOT_MAP_PANELS = new Set(['sectionA', 'sectionB', 'storesCompare', 'poiReach', 'skyDome', 'wind', 'synth'])
+export const NOT_MAP_PANELS = new Set(['sectionA', 'sectionB', 'storesCompare', 'poiReach', 'skyDome', 'wind', 'synth', 'exploded'])
 
 function summaryOf(items: SynthItem[], cards: Record<string, SynthCard>, panelLabel?: (id: string) => string): string[] {
   return items.map((it) => {

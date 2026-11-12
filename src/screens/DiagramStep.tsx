@@ -11,6 +11,8 @@ import { editsOf } from '../model/edits'
 import { DXF_LAYERS, siteModelToDxf } from '../export/toDxf'
 import StylePanel from '../components/StylePanel'
 import OverlayControls from '../components/OverlayControls'
+import ExplodedControls from '../components/ExplodedControls'
+import { EXPLODED_ID } from '../diagrams/exploded'
 import { can3d } from '../diagrams/render'
 import { isOverlayId, OVERLAY_IDS } from '../diagrams/overlay'
 import { wgs84ToUtmk } from '../lib/proj'
@@ -631,6 +633,7 @@ export default function DiagramStep({ project, update, config, keys, onGoData, o
                         <span className="muted">{String(panelNumber(def.id)).padStart(2, '0')}</span> {def.title}
                       </h4>
                       {isOverlayId(def.id) && <OverlayControls id={def.id} settings={settings} setSettings={setSettings} />}
+                      {def.id === EXPLODED_ID && <ExplodedControls settings={settings} setSettings={setSettings} />}
                       {empty ? (
                         <p className="muted small">
                           {empty}. {def.needs}

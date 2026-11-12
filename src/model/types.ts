@@ -328,6 +328,8 @@ export interface DiagramSettings {
   terrainShade: boolean
   /** 두 주제 겹쳐 보기 칸 (14-D, 비면 null) */
   overlays?: (OverlaySpec | null)[]
+  /** 분해 다이어그램 (14-F): 층(아래 → 위, 도판 id 또는 'site'), 보는 방향 */
+  exploded?: { layers?: string[]; az?: number }
   /** 3D로 볼 도판 id (14-E, 도판마다 평면/3D) */
   view3d?: string[]
   /** 3D 보는 방향(°, 보는 사람이 선 방위)·내려다보는 각(°)·높이 과장 */
