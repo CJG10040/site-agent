@@ -185,6 +185,119 @@ function hdGlyph(p: Record<string, unknown>): boolean {
   return /^(537[1-4]|538[12]|539[12]|543[12]|544|529|524)$/.test(String(p.kind ?? ''))
 }
 
+/** 다각형의 긴 축 (가장 작은 둘레 사각형의 긴 변 방향) — 꼭짓점이 많은 화살표 면은 가장 긴 변이 가로일 때가 있어서 */
+function longAxis(pts: number[][]): [number, number] {
+  let best = Infinity
+  let out: [number, number] = [1, 0]
+  for (let i = 0; i < pts.length; i++) {
+    const j = (i + 1) % pts.length
+    const L = Math.hypot(pts[j][0] - pts[i][0], pts[j][1] - pts[i][1])
+    if (L < 0.01) continue
+    const e: [number, number] = [(pts[j][0] - pts[i][0]) / L, (pts[j][1] - pts[i][1]) / L]
+    let a0 = Infinity
+    let a1 = -Infinity
+    let b0 = Infinity
+    let b1 = -Infinity
+    for (const q of pts) {
+      const s = q[0] * e[0] + q[1] * e[1]
+      const t = -q[0] * e[1] + q[1] * e[0]
+      a0 = Math.min(a0, s)
+      a1 = Math.max(a1, s)
+      b0 = Math.min(b0, t)
+      b1 = Math.max(b1, t)
+    }
+    const area = (a1 - a0) * (b1 - b0)
+    if (area < best - 1e-9) {
+      best = area
+      out = a1 - a0 >= b1 - b0 ? e : [-e[1], e[0]]
+    }
+  }
+  return out
+}
+
+/**
+ * 진행 방향(az)이 없는 화살표에 '우측통행: 중앙선(종류 501)이 진행 방향의 왼쪽' 규칙으로 방향을 채운다 (hdMap.ts 읽기와 같은 규칙).
+ * 2026-11-13 사용자 화면: 화살표 방향을 읽기 전에 올린 파일은 az가 없어 도형 꼭짓점 순서로 그려져 같은 차로 묶음 안에서 양쪽으로 섞였음.
+ * 화살표 긴 축과 나란한(|cos| ≥ 0.85) 가장 가까운 중앙선(40m 안). 같은 파일로 지금 읽기의 az와 비교해 확인.
+ */
+function fillArrowAz(hd: HdData): void {
+  const need = hd.glyphs.filter((g) => g.az === null)
+  if (!need.length) return
+  const first = need[0].geom
+  const lat0 = (first.type === 'Polygon' ? first.coordinates[0]?.[0]?.[1] : first.coordinates[0]?.[0]?.[0]?.[1]) ?? 35
+  const kx = 111320 * Math.cos((lat0 * Math.PI) / 180)
+  const ky = 110574
+  const B = 50
+  const cells = new Map<string, [number, number, number, number][]>()
+  for (const l of hd.lanes) {
+    if (l.kind !== '501') continue
+    for (const line of l.geom.type === 'LineString' ? [l.geom.coordinates] : l.geom.coordinates)
+      for (let i = 0; i + 1 < line.length; i++) {
+        const seg: [number, number, number, number] = [line[i][0] * kx, line[i][1] * ky, line[i + 1][0] * kx, line[i + 1][1] * ky]
+        const ci = Math.floor((seg[0] + seg[2]) / 2 / B)
+        const cj = Math.floor((seg[1] + seg[3]) / 2 / B)
+        const k = `${ci},${cj}`
+        const a = cells.get(k)
+        if (a) a.push(seg)
+        else cells.set(k, [seg])
+      }
+  }
+  if (!cells.size) return
+  for (const g of need) {
+    const ring = (g.geom.type === 'Polygon' ? g.geom.coordinates[0] : g.geom.coordinates[0]?.[0]) ?? []
+    const pts = ring.map(([lo, la]) => [lo * kx, la * ky])
+    if (pts.length < 3) continue
+    const x = pts.reduce((a, q) => a + q[0], 0) / pts.length
+    const y = pts.reduce((a, q) => a + q[1], 0) / pts.length
+    const [ax, ay] = longAxis(pts)
+    let best = 40
+    let az: number | null = null
+    const ci = Math.floor(x / B)
+    const cj = Math.floor(y / B)
+    for (let di = -1; di <= 1; di++)
+      for (let dj = -1; dj <= 1; dj++)
+        for (const [x1, y1, x2, y2] of cells.get(`${ci + di},${cj + dj}`) ?? []) {
+          const dx = x2 - x1
+          const dy = y2 - y1
+          const L = Math.hypot(dx, dy)
+          if (L < 0.01 || Math.abs((dx * ax + dy * ay) / L) < 0.85) continue
+          const t = Math.max(0, Math.min(1, ((x - x1) * dx + (y - y1) * dy) / (L * L)))
+          const fx = x1 + t * dx
+          const fy = y1 + t * dy
+          const d = Math.hypot(x - fx, y - fy)
+          if (d < best && d > 0.3) {
+            best = d
+            const s = dx * (fy - y) - dy * (fx - x) > 0 ? 1 : -1
+            az = (Math.atan2(dx * s, dy * s) * 180) / Math.PI
+          }
+        }
+    if (az !== null) g.az = Math.round(az * 10) / 10
+  }
+  // 중앙선이 멀어 못 정한 것: 15m 안 나란한 화살표(방향을 아는 것) 중 가장 가까운 것을 따름 (교차로 근처·오르막 표시)
+  const info = hd.glyphs.map((g) => {
+    const ring = (g.geom.type === 'Polygon' ? g.geom.coordinates[0] : g.geom.coordinates[0]?.[0]) ?? []
+    const pts = ring.map(([lo, la]) => [lo * kx, la * ky])
+    const n = Math.max(1, pts.length)
+    const [ax, ay] = longAxis(pts)
+    return { g, x: pts.reduce((s, q) => s + q[0], 0) / n, y: pts.reduce((s, q) => s + q[1], 0) / n, ax, ay }
+  })
+  const known = info.filter((o) => o.g.az !== null)
+  for (const o of info) {
+    if (o.g.az !== null) continue
+    let best = 15
+    let az: number | null = null
+    for (const k of known) {
+      const d = Math.hypot(k.x - o.x, k.y - o.y)
+      if (d >= best) continue
+      const r = ((k.g.az as number) * Math.PI) / 180
+      if (Math.abs(Math.sin(r) * o.ax + Math.cos(r) * o.ay) < 0.85) continue
+      best = d
+      az = k.g.az
+    }
+    if (az !== null) o.g.az = az
+  }
+}
+
 /** 정밀도로지도 차선이 r(m) 안에 있는 점인지 (차선을 5m마다 나눠 칸에 넣어 둠) */
 function nearLanes(hd: HdData, r: number): (lon: number, lat: number) => boolean {
   const first = hd.lanes[0]?.geom
@@ -609,6 +722,9 @@ export function buildDiagramData(project: Project): DiagramData | null {
       bumps: feats('hd:bump').filter((f) => isAreal(f.geometry)).map((f) => f.geometry as Areal),
     }
   }
+
+  // 화살표 진행 방향이 저장되지 않은 노면표시(화살표 고치기 전에 올린 정밀도로지도)는 저장된 중앙선으로 정함 — 다시 올리지 않아도
+  if (hd) fillArrowAz(hd)
 
   // ④ 횡단보도 자료: 정밀도로지도를 고르면 1:1,000 횡단보도는 정밀도로지도가 덮지 않는 곳(차선이 15m 안에 없음)만, 안 씀이면 둘 다 뺌
   if (ngii) {
