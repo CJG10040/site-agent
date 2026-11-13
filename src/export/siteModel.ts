@@ -10,7 +10,8 @@ import earcut from 'earcut'
 import type { Position } from 'geojson'
 import { bldHeight, inNgii, type DiagramData } from '../diagrams/data'
 import type { Areal } from '../lib/geo'
-import { wgs84To5186, wgs84ToUtmk } from '../lib/proj'
+import { utmkToWgs84, wgs84To5186, wgs84ToUtmk } from '../lib/proj'
+import { buildTrees, MIX_SOURCE, type ModelTree, type TreeSrc } from './trees'
 import { terrainAround, type TerrainGrid } from '../lib/terrain'
 import { densifyLine, hatchStripes, markGlyph, ribbon, roadDirs, zebraStripes } from './streetDetail'
 import { centroidOf } from '../diagrams/frame'
@@ -100,7 +101,10 @@ export interface SiteModel {
   mapYear: string | null
   /** 1:1,000 수치지도를 올렸을 때 (15-F) */
   map1000: boolean
-  trees: { x: number; y: number; h: number | null; kind: string }[]
+  /** 15-E 나무: 1:1,000 수치지도·넓은 길 규칙·공원·녹지 규칙·직접 심음 (수종 → 모양·높이) */
+  trees: ModelTree[]
+  /** 수종 비율을 가져온 곳 (예: '서구') · 규칙 */
+  treeInfo: { mix: string; local: boolean; counts: Record<TreeSrc, number>; capped: number }
   /** along = 도로 방향, toRoad = 도로 쪽 (가까운 도로중심선으로, 모르면 동쪽·북쪽) */
   stops: { x: number; y: number; name: string; use: string; along: XY; toRoad: XY }[]
   lamps: { x: number; y: number; toRoad: XY | null }[]
@@ -698,12 +702,9 @@ export async function buildSiteModel(d: DiagramData, half: number, opts: { grid?
     const xy = f([lo, la])
     return inSquare(xy) ? xy : null
   }
-  const trees = n
-    ? n.trees.flatMap((t) => {
-        const xy = ptIn(t.lon, t.lat)
-        return xy ? [{ x: xy[0], y: xy[1], h: t.h, kind: t.kind }] : []
-      })
-    : []
+  // ── 15-E 나무
+  const treeRes = buildTrees(d, f, ([x, y]) => utmkToWgs84(x + X0, y + Y0), half)
+  const trees = treeRes.trees
   // 도로 방향: 도로중심선(브이월드 + 1:1,000 수치지도) — 횡단보도 줄 방향, 쉘터·가로등이 보는 쪽
   const dirLines = [...centers.map((c) => c.pts), ...(n ? n.centers.flatMap((c) => linesOfGeom(c.geom)) : [])].flatMap((l) => clipLine(l, half + 50))
   const dirs = roadDirs(dirLines)
@@ -879,6 +880,7 @@ export async function buildSiteModel(d: DiagramData, half: number, opts: { grid?
     mapYear: n?.year ?? null,
     map1000: !!n?.sheets.some((sh) => sh.scale === 1000),
     trees,
+    treeInfo: { mix: treeRes.mix.name, local: treeRes.mix.local, counts: treeRes.counts, capped: treeRes.capped },
     stops,
     lamps,
     crosswalks,
@@ -941,7 +943,15 @@ export function modelNotes(m: SiteModel, meta: { title: string; address: string;
       ? ([
           [
             '디테일',
-            `${m.map1000 ? `1:1,000 수치지도: 가로수 ${m.trees.length}·정류장 ${m.stops.length}·가로등 ${m.lamps.length}·횡단보도 ${m.crosswalks.length}(줄무늬 45cm 칠·45cm 빔, 도로 방향)·교통섬·안전지대 ${m.safety.length}·담장 등 ${m.fences.length} (나무 높이 모르면 7m, 쉘터 3.6×1.5×2.55m·가로등 8m·담장 높이·인도·교통섬 높이 15cm는 어림)` : ''}${m.map1000 && m.lanes.length ? ' / ' : ''}${m.lanes.length ? `정밀도로지도: 차선 ${m.lanes.length}·노면표시 ${m.marks.length}·보도 면 ${m.hdPaths.length}·연석 ${m.curbs.length} (차선 색·겹선·점선은 유형 코드로 해석, 점선은 3m 칠·5m 빔 어림)` : ''}`,
+            `${m.map1000 ? `1:1,000 수치지도: 정류장 ${m.stops.length}·가로등 ${m.lamps.length}·횡단보도 ${m.crosswalks.length}(줄무늬 45cm 칠·45cm 빔, 도로 방향)·교통섬·안전지대 ${m.safety.length}·담장 등 ${m.fences.length} (쉘터 3.6×1.5×2.55m·가로등 8m·담장 높이·인도·교통섬 높이 15cm는 어림)` : ''}${m.map1000 && m.lanes.length ? ' / ' : ''}${m.lanes.length ? `정밀도로지도: 차선 ${m.lanes.length}·노면표시 ${m.marks.length}·보도 면 ${m.hdPaths.length}·연석 ${m.curbs.length} (차선 색·겹선·점선은 유형 코드로 해석, 점선은 3m 칠·5m 빔 어림)` : ''}`,
+          ],
+        ] as [string, string][])
+      : []),
+    ...(m.trees.length
+      ? ([
+          [
+            '나무',
+            `${m.trees.length.toLocaleString('ko-KR')}그루 — 1:1,000 수치지도 ${m.treeInfo.counts.map} · 넓은 길 규칙 ${m.treeInfo.counts.street} · 공원·녹지 규칙 ${m.treeInfo.counts.park} · 직접 심음 ${m.treeInfo.counts.user}. 수종은 ${m.treeInfo.local ? `광주 ${m.treeInfo.mix}` : '광주 전체'} 가로수 수종 비율(${MIX_SOURCE})로 길마다 하나 골라 어림, 모양은 블록 나무_원뿔형(은행나무·메타세쿼이아)·나무_넓은형(느티나무·왕벚나무·플라타너스)·나무_둥근형(이팝나무·중국단풍·기타·정원수), 높이는 수종의 보통 높이 ±12% 어림${m.treeInfo.capped ? ` (너무 많아 ${m.treeInfo.capped}그루 뺌)` : ''}`,
           ],
         ] as [string, string][])
       : []),

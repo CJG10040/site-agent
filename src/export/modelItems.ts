@@ -56,7 +56,7 @@ export const MODEL_ITEMS: { id: ModelItem; label: string; level: RenderLevel; un
   { id: 'parks', label: '공원·녹지', level: 'normal', unit: '곳' },
   { id: 'rivers', label: '하천', level: 'normal', unit: '곳' },
   { id: 'roofs', label: '지붕 모양 (박공·파라펫)', level: 'detail', unit: '동' },
-  { id: 'trees', label: '가로수·독립수', level: 'detail', unit: '그루' },
+  { id: 'trees', label: '나무 (가로수·공원·직접 심음)', level: 'detail', unit: '그루' },
   { id: 'stops', label: '버스정류장', level: 'detail', unit: '곳' },
   { id: 'lamps', label: '가로등', level: 'detail', unit: '개' },
   { id: 'crosswalks', label: '횡단보도 (줄무늬)', level: 'detail', unit: '곳' },

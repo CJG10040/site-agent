@@ -160,6 +160,26 @@ export interface CollectedLayer {
 }
 
 /** 15-C 렌더링 모델 디테일 단계 */
+/** 15-E 나무 규칙 (⑩ 3D 모형 '나무') */
+export interface TreeSettings {
+  /** 넓은 길(폭 minWidth m 이상)에 1:1,000 가로수가 없으면 양쪽 보도를 따라 spacing m마다 */
+  street: boolean
+  minWidth: number
+  spacing: number
+  /** 공원·녹지 안 parkSpacing m 격자 */
+  park: boolean
+  parkSpacing: number
+}
+
+/** 15-E 학생이 ⑩ 항공사진 지도에서 찍은 것 (경위도). sp = 고른 수종 (없으면 자치구 비율로) */
+export interface TreeEdits {
+  add: { lon: number; lat: number; sp?: string }[]
+  /** 이 점 2.5m 안 나무를 뺌 (규칙이 바뀌어도 같은 자리면 계속 빠짐) */
+  remove: { lon: number; lat: number }[]
+  /** 선을 따라 spacing m마다 */
+  rows: { line: [number, number][]; spacing: number; sp?: string }[]
+}
+
 /** ④ 항목별 자료: 1:1,000 수치지도 · 1:5,000 수치지도 · 정밀도로지도 · 브이월드(건물) · 안 씀 */
 export type SourceId = '1000' | '5000' | 'hd' | 'vworld' | 'off'
 
@@ -223,6 +243,10 @@ export interface Project {
   renderModel?: RenderModelSettings
   /** 15-D 지붕 구조를 건축물대장에서 조회할 반경 (m, 학생이 정함) */
   roofRadiusM?: number
+  /** 15-E 나무 규칙 (없으면 기본: 넓은 길 15m·8m 간격, 공원·녹지 10m 격자) */
+  trees?: TreeSettings
+  /** 15-E 학생이 찍은 나무·지운 자리·줄로 심은 선 */
+  treeEdits?: TreeEdits
   /** ④ 항목별로 쓸 자료 (학생이 기본에서 바꾼 것만, 키 = 수치지도 항목) — model/sourcePick.ts */
   sourcePick?: Partial<Record<string, SourceId>>
   /** 새 1:5,000에서 바뀐 곳은 옛 1:1,000 대신 1:5,000으로 (기본 켬, false면 끔) */

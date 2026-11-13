@@ -6,6 +6,9 @@ import * as THREE from 'three'
 import { dashesOf, densify, offsetLine, triangulate, type Poly, type SiteModel, type XY } from './siteModel'
 import { gableGeometry, parapetGeometry } from './roofs'
 import { WALK_EDGE } from './streetDetail'
+import { SHAPE_LABEL, treeShapeTris, type TreeShape } from './trees'
+
+const TREE_COLOR: Record<TreeShape, string> = { cone: '#5c8c4c', broad: '#6f9d5a', round: '#82ad66' }
 import { BARRIER_RAIL, barrierPosts, boxMesh, BUMP_H, densifyLine, hatchStripes, lampBoxes, poleBoxes, ribbon, shelterBoxes, signalBoxes, signPanels, STREET, type Box, type SignColor } from './streetDetail'
 
 export interface PreviewParts {
@@ -364,31 +367,32 @@ export function buildPreview(m: SiteModel): PreviewParts {
 
   // ── 나무 (수관 + 줄기), 정류장 쉘터 — 같은 모양을 여러 번 (InstancedMesh)
   const dummy = new THREE.Object3D()
-  if (m.trees.length) {
-    const crownG = new THREE.IcosahedronGeometry(1, 1)
-    const trunkG = new THREE.CylinderGeometry(0.15, 0.2, 1, 6)
-    trunkG.rotateX(Math.PI / 2)
-    trunkG.translate(0, 0, 0.5)
+  // 15-E 나무: 모양(원뿔형·넓은형·둥근형)마다 높이 10m 모양 하나를 h/10배로 여러 번
+  for (const shape of ['cone', 'broad', 'round'] as TreeShape[]) {
+    const list = m.trees.filter((t) => t.shape === shape)
+    if (!list.length) continue
+    const { crown, trunk } = treeShapeTris(shape)
+    const crownG = new THREE.BufferGeometry()
+    crownG.setAttribute('position', new THREE.Float32BufferAttribute(crown, 3))
+    crownG.computeVertexNormals()
+    const trunkG = new THREE.BufferGeometry()
+    trunkG.setAttribute('position', new THREE.Float32BufferAttribute(trunk, 3))
+    trunkG.computeVertexNormals()
     disposables.push(crownG, trunkG)
-    const crowns = new THREE.InstancedMesh(crownG, mat(COLORS.tree, { flatShading: true }), m.trees.length)
-    const trunks = new THREE.InstancedMesh(trunkG, mat(COLORS.trunk), m.trees.length)
-    m.trees.forEach((tr, i) => {
-      const h = tr.h && tr.h > 1 ? tr.h : 7
-      const r = Math.max(1.4, h * 0.28)
-      const z0 = z(tr.x, tr.y)
-      dummy.position.set(tr.x, tr.y, z0 + h - r)
-      dummy.scale.set(r, r, r * 0.9)
+    const crowns = new THREE.InstancedMesh(crownG, mat(TREE_COLOR[shape], { flatShading: true }), list.length)
+    const trunks = new THREE.InstancedMesh(trunkG, mat(COLORS.trunk), list.length)
+    list.forEach((tr, i) => {
+      const k = tr.h / 10
+      dummy.position.set(tr.x, tr.y, z(tr.x, tr.y))
+      dummy.scale.set(k, k, k)
       dummy.rotation.set(0, 0, 0)
       dummy.updateMatrix()
       crowns.setMatrixAt(i, dummy.matrix)
-      dummy.position.set(tr.x, tr.y, z0)
-      dummy.scale.set(1, 1, Math.max(0.5, h - r * 1.5))
-      dummy.updateMatrix()
       trunks.setMatrixAt(i, dummy.matrix)
     })
-    crowns.name = '가로수'
+    crowns.name = `나무 (${SHAPE_LABEL[shape]})`
     group.add(crowns, trunks)
-    triangles += m.trees.length * (crownG.index ? crownG.index.count / 3 : crownG.attributes.position.count / 3)
+    triangles += list.length * (crown.length / 9 + trunk.length / 9)
   }
 
   return {

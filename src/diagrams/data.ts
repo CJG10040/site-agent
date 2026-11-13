@@ -6,7 +6,7 @@ import type { Geometry, LineString, MultiLineString } from 'geojson'
 import { centerOf, isAreal, isLinear, siteBoundary, type Areal } from '../lib/geo'
 import { jimokOf } from '../model/codes'
 import { observationsOf } from '../model/observations'
-import type { HideEdit, HideLayer, Project } from '../model/types'
+import type { HideEdit, HideLayer, Project, TreeEdits, TreeSettings } from '../model/types'
 import type { EnvResult } from '../sources/env'
 import type { SpeedSnapshot } from '../sources/its'
 import type { NetworkResult } from '../sources/network'
@@ -335,6 +335,16 @@ function nearLanes(hd: HdData, r: number): (lon: number, lat: number) => boolean
   }
 }
 
+/** 대지의 시군구 코드 (필지 PNU 앞 5자리, 없으면 주소의 광주 자치구 이름으로) */
+function districtOf(project: Project): string | null {
+  const pnu = project.site.parcels.find((p) => /^\d{10}/.test(p.pnu ?? ''))?.pnu
+  if (pnu) return pnu.slice(0, 5)
+  const addr = `${project.site.address?.road ?? ''} ${project.site.address?.parcel ?? ''}`
+  if (!/광주/.test(addr)) return null
+  const m = addr.match(/(광산구|동구|서구|남구|북구)/)
+  return m ? ({ 동구: '29110', 서구: '29140', 남구: '29155', 북구: '29170', 광산구: '29200' } as Record<string, string>)[m[1]] : null
+}
+
 /** 올린 수치지도 도엽 안의 점인지 */
 export function inNgii(n: NgiiData | null, lon: number, lat: number): boolean {
   return !!n && n.sheets.some(({ bounds: b }) => lon >= b[0] && lon <= b[2] && lat >= b[1] && lat <= b[3])
@@ -418,6 +428,8 @@ export interface DiagramData {
   hd: HdData | null
   /** 15-D 건축물대장 지붕 구조: 조회한 필지(PNU)마다 표제부 (대장이 없으면 빈 배열) */
   roofs: Record<string, RoofTitle[]>
+  /** 15-E 나무: ⑩에서 정한 규칙·학생이 찍은 것, 대지 시군구 코드(수종 비율용, 예 '29140' 광주 서구) */
+  treePlan: { settings?: TreeSettings; edits?: TreeEdits; district: string | null }
   /** 대지 필지의 토지이용계획 (지역·지구 이름, 포함/저촉/접합) — 법규 개요 도판 (14-C) */
   landUse: { name: string; kind: string }[]
   /** 토지대장 면적 합계(㎡) — 대지 필지 전체, 직접 그린 경계면 경계 안 면적과 다름 */
@@ -932,6 +944,7 @@ export function buildDiagramData(project: Project): DiagramData | null {
     ngii,
     hd,
     roofs: Object.fromEntries((project.collected['hub:roofs']?.features ?? []).map((f) => [str(f.properties.pnu), (f.properties.titles as RoofTitle[]) ?? []])),
+    treePlan: { settings: project.trees, edits: project.treeEdits, district: districtOf(project) },
     landUse,
     officialArea,
     has,

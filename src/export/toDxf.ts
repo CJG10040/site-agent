@@ -2,6 +2,7 @@
 // 지형은 면 대신 등고선(선마다 높이 = 등고선 높이), 나머지는 높이 0의 평면 선. 단위 m, 원점 = 대지 중심.
 // R12는 글자 인코딩이 코드페이지라 한글이 깨질 수 있어 레이어 이름·글자는 영문·숫자로만 쓴다 (앱 화면에 레이어 설명).
 
+import { crownRadius } from './trees'
 import type { Poly, SiteModel, XY } from './siteModel'
 
 export const DXF_LAYERS: { name: string; color: number; label: string }[] = [
@@ -28,7 +29,10 @@ export const DXF_LAYERS: { name: string; color: number; label: string }[] = [
   { name: 'WALK', color: 253, label: '인도' },
   { name: 'BLDG-MINOR', color: 254, label: '지붕 구조물(무벽건물)·가건물' },
   // 15-F 1:1,000 수치지도·정밀도로지도 (자료가 있을 때만 내용이 들어감)
-  { name: 'TREE', color: 3, label: '가로수·독립수 (원 = 수관 어림)' },
+  { name: 'TREE', color: 3, label: '1:1,000 수치지도 가로수·정원수 (원 = 수관 어림)' },
+  { name: 'TREE-STREET', color: 3, label: '넓은 길 규칙 가로수 (원 = 수관 어림)' },
+  { name: 'TREE-PARK', color: 3, label: '공원·녹지 규칙 나무 (원 = 수관 어림)' },
+  { name: 'TREE-USER', color: 3, label: '직접 심은 나무 (원 = 수관 어림)' },
   { name: 'STOP', color: 5, label: '정류장 (점 + 이름)' },
   { name: 'CROSSWALK', color: 7, label: '횡단보도 (줄무늬 45cm 칠·45cm 빔, 줄마다 닫힌 선)' },
   { name: 'ISLAND', color: 8, label: '교통섬 (1:1,000 안전지대 중 교통섬)' },
@@ -218,10 +222,12 @@ export function siteModelToDxf(m: SiteModel, meta: { title: string; address: str
     if (b.floors && b.parts[0]) text('BLDG-TEXT', centroid(b.parts[0].outer), 1.6, `${b.floors}F`)
   }
   // 15-F 디테일
+  // 15-E 나무: 수관 반지름 원, 출처마다 레이어
+  const treeLayer = { map: 'TREE', street: 'TREE-STREET', park: 'TREE-PARK', user: 'TREE-USER' } as const
   for (const t of m.trees) {
-    const r = Math.max(1.4, (t.h && t.h > 1 ? t.h : 7) * 0.28)
+    const r = crownRadius(t)
     g(0, 'CIRCLE')
-    g(8, 'TREE')
+    g(8, treeLayer[t.src])
     g(10, t.x)
     g(20, t.y)
     g(30, 0)

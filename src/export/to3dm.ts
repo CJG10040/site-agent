@@ -7,6 +7,7 @@ import wasmUrl from 'rhino3dm/rhino3dm.wasm?url'
 import { dashesOf, densify, modelNotes, offsetLine, triangulate, type Poly, type SiteModel, type XY } from './siteModel'
 import { gableGeometry, parapetGeometry, ROOF_LABEL } from './roofs'
 import { WALK_EDGE } from './streetDetail'
+import { SHAPE_LABEL, SRC_LABEL, treeShapeTris, type TreeShape, type TreeSrc } from './trees'
 import { BARRIER_RAIL, barrierPosts, boxMesh, BUMP_H, densifyLine, hatchStripes, lampBoxes, poleBoxes, ribbon, shelterBoxes, signalBoxes, signPanels, STREET, type SignColor } from './streetDetail'
 
 type Rgb = [number, number, number]
@@ -42,11 +43,16 @@ const LAYERS: LayerDef[] = [
   { key: 'roadCenter', name: '도로중심선', color: [200, 160, 40], parent: 'road' },
   { key: 'parcel', name: '필지', color: [170, 170, 200] },
   { key: 'park', name: '공원·녹지', color: [90, 160, 90] },
+  // 15-E 나무: 수종별 모양 3가지를 블록으로 (블록 정의를 바꾸면 모든 나무가 바뀜), 출처마다 레이어
+  { key: 'treeGroup', name: '나무 (블록: 나무_원뿔형·나무_넓은형·나무_둥근형, 높이 10m 기준을 h/10배)', color: [96, 150, 80] },
+  { key: 'treeMap', name: '1:1,000 수치지도 가로수·정원수', color: [80, 140, 70], parent: 'treeGroup' },
+  { key: 'treeStreet', name: '넓은 길 규칙 가로수 (1:1,000 가로수가 없는 길)', color: [110, 160, 80], parent: 'treeGroup' },
+  { key: 'treePark', name: '공원·녹지 규칙 (격자)', color: [90, 150, 100], parent: 'treeGroup' },
+  { key: 'treeUser', name: '직접 심은 나무 (⑩ 지도)', color: [60, 130, 60], parent: 'treeGroup' },
+  { key: 'treeBlock', name: '나무 블록 정의 (수관·줄기)', color: [96, 150, 80], parent: 'treeGroup' },
   { key: 'river', name: '하천', color: [70, 140, 200] },
   // 15-F 1:1,000 수치지도·정밀도로지도 디테일 (자료가 있을 때만)
   { key: 'detail', name: '디테일 (1:1,000 수치지도·정밀도로지도)', color: [110, 110, 110] },
-  { key: 'tree', name: '가로수·독립수 (수관, 높이 모르면 7m)', color: [96, 150, 80], parent: 'detail' },
-  { key: 'trunk', name: '가로수 줄기', color: [120, 95, 70], parent: 'detail' },
   { key: 'stop', name: '정류장 쉘터 (어림 3.6×1.5×2.55m, 도로 쪽이 열림)', color: [70, 80, 95], parent: 'detail' },
   { key: 'stopGlass', name: '정류장 유리', color: [170, 205, 225], parent: 'detail' },
   { key: 'lamp', name: '가로등 (높이 어림 8m, 팔은 도로 쪽)', color: [120, 120, 120], parent: 'detail' },
@@ -67,52 +73,6 @@ const LAYERS: LayerDef[] = [
   { key: 'hdPath', name: '보도 면 (정밀도로지도)', color: [205, 195, 175], parent: 'detail' },
   { key: 'curb', name: '연석 (정밀도로지도, 폭 20cm·높이 15cm 어림)', color: [175, 172, 165], parent: 'detail' },
 ]
-
-/** 정이십면체 (나무 수관) */
-const ICO: { v: number[][]; f: number[][] } = (() => {
-  const t = (1 + Math.sqrt(5)) / 2
-  const raw = [
-    [-1, t, 0],
-    [1, t, 0],
-    [-1, -t, 0],
-    [1, -t, 0],
-    [0, -1, t],
-    [0, 1, t],
-    [0, -1, -t],
-    [0, 1, -t],
-    [t, 0, -1],
-    [t, 0, 1],
-    [-t, 0, -1],
-    [-t, 0, 1],
-  ]
-  const v = raw.map((p) => {
-    const l = Math.hypot(p[0], p[1], p[2])
-    return p.map((c) => c / l)
-  })
-  const f = [
-    [0, 11, 5],
-    [0, 5, 1],
-    [0, 1, 7],
-    [0, 7, 10],
-    [0, 10, 11],
-    [1, 5, 9],
-    [5, 11, 4],
-    [11, 10, 2],
-    [10, 7, 6],
-    [7, 1, 8],
-    [3, 9, 4],
-    [3, 4, 2],
-    [3, 2, 6],
-    [3, 6, 8],
-    [3, 8, 9],
-    [4, 9, 5],
-    [2, 4, 11],
-    [6, 2, 10],
-    [8, 6, 7],
-    [9, 8, 1],
-  ]
-  return { v, f }
-})()
 
 /** wasm 쪽 메모리 풀기 (타입 선언에는 없지만 embind 객체마다 있음) */
 export function free(o: unknown) {
@@ -163,9 +123,16 @@ export async function siteModelTo3dm(m: SiteModel, meta: ExportMeta, onStep?: (s
     for (const def of LAYERS) {
       if (!hasMap && ['bldgMinor', 'mapContour', 'spot', 'wall', 'cutfill', 'walk'].includes(def.key)) continue
       // 디테일 레이어는 자료가 있을 때만
+      const treeHas: Record<string, boolean> = {
+        treeGroup: m.trees.length > 0,
+        treeBlock: m.trees.length > 0,
+        treeMap: m.trees.some((t) => t.src === 'map'),
+        treeStreet: m.trees.some((t) => t.src === 'street'),
+        treePark: m.trees.some((t) => t.src === 'park'),
+        treeUser: m.trees.some((t) => t.src === 'user'),
+      }
+      if (def.key in treeHas && !treeHas[def.key]) continue
       const detailHas: Record<string, boolean> = {
-        tree: m.trees.length > 0,
-        trunk: m.trees.length > 0,
         stop: m.stops.length > 0,
         stopGlass: m.stops.length > 0,
         lamp: m.lamps.length > 0,
@@ -588,50 +555,50 @@ export async function siteModelTo3dm(m: SiteModel, meta: ExportMeta, onStep?: (s
       free(mesh)
       free(at)
     }
-    // 가로수: 줄기(가는 사각 기둥) + 수관(정이십면체)을 각각 메시 하나로
+    // 15-E 나무: 모양 3가지(원뿔형·넓은형·둥근형)를 높이 10m 블록으로 정의하고, 나무마다 그 블록을 (위치, h/10배)로 놓음
     if (m.trees.length) {
-      const crown = new rhino.Mesh()
-      const trunk = new rhino.Mesh()
-      const cv = crown.vertices()
-      const cf = crown.faces()
-      const tv = trunk.vertices()
-      const tf = trunk.faces()
-      for (const t of m.trees) {
-        const hgt = t.h && t.h > 1 ? t.h : 7
-        const z0 = m.zAt(t.x, t.y)
-        const r = Math.max(1.4, hgt * 0.28)
-        const cz = z0 + hgt - r
-        const base = cv.count
-        for (const [a, b, c] of ICO.v) cv.add(t.x + a * r, t.y + b * r, cz + c * r * 0.9)
-        for (const [a, b, c] of ICO.f) cf.addTriFace(base + a, base + b, base + c)
-        const tb = tv.count
-        const w = 0.15
-        const top = cz - r * 0.5
-        for (const [dx, dy] of [
-          [-w, -w],
-          [w, -w],
-          [w, w],
-          [-w, w],
-        ]) {
-          tv.add(t.x + dx, t.y + dy, z0)
-          tv.add(t.x + dx, t.y + dy, top)
+      const blockIds = new Map<TreeShape, string>()
+      for (const shape of ['cone', 'broad', 'round'] as TreeShape[]) {
+        if (!m.trees.some((t) => t.shape === shape)) continue
+        const { crown, trunk } = treeShapeTris(shape)
+        const cm = newMesh()
+        addTris(cm, crown)
+        const tm = newMesh()
+        addTris(tm, trunk)
+        for (const mb of [cm, tm]) {
+          mb.mesh.normals().computeNormals()
+          mb.mesh.compact()
         }
-        for (let k = 0; k < 4; k++) {
-          const a = tb + 2 * k
-          const b = tb + 2 * ((k + 1) % 4)
-          tf.addQuadFace(a, b, b + 1, a + 1)
+        const ca = attrs('treeBlock', '수관', {}, [96, 150, 80])
+        const ta = attrs('treeBlock', '줄기', {}, [120, 95, 70])
+        const idx = doc.instanceDefinitions().add(`나무_${SHAPE_LABEL[shape]}`, `${SHAPE_LABEL[shape]} 나무, 높이 10m 기준 (놓을 때 높이/10배) — 이 블록을 고치면 같은 모양 나무가 모두 바뀜`, '', '', [0, 0, 0], [cm.mesh, tm.mesh], [ca, ta])
+        free(cm.mesh)
+        free(tm.mesh)
+        free(ca)
+        free(ta)
+        const def = doc.instanceDefinitions().findIndex(idx)
+        if (def) {
+          blockIds.set(shape, def.id)
+          free(def)
         }
       }
-      crown.normals().computeNormals()
-      trunk.normals().computeNormals()
-      const a1 = attrs('tree', `가로수·독립수 ${m.trees.length}그루`)
-      objs.addMesh(crown, a1)
-      const a2 = attrs('trunk', '가로수 줄기')
-      objs.addMesh(trunk, a2)
-      free(crown)
-      free(trunk)
-      free(a1)
-      free(a2)
+      const layerOf: Record<TreeSrc, string> = { map: 'treeMap', street: 'treeStreet', park: 'treePark', user: 'treeUser' }
+      for (const t of m.trees) {
+        const id = blockIds.get(t.shape)
+        if (!id) continue
+        const sc = rhino.Transform.scale([0, 0, 0], t.h / 10)
+        const tr = rhino.Transform.translationXYZ(t.x, t.y, m.zAt(t.x, t.y))
+        const xf = rhino.Transform.multiply(tr, sc)
+        // 타입 선언에는 인자가 없지만 실제로는 (블록 id, 변환) — 2026-11-13 rhino3dm 8.35로 확인
+        const ref = new (rhino.InstanceReference as unknown as new (idefId: string, xform: typeof xf) => InstanceType<typeof rhino.InstanceReference>)(id, xf)
+        const at = attrs(layerOf[t.src], `${t.species} ${t.h.toFixed(1)}m`, { 수종: t.species, '높이(m, 어림)': t.h.toFixed(1), 모양: SHAPE_LABEL[t.shape], 출처: SRC_LABEL[t.src] })
+        objs.addInstanceObject(ref, at)
+        free(ref)
+        free(at)
+        free(sc)
+        free(tr)
+        free(xf)
+      }
     }
     // 정류장 쉘터: 지붕판·뒤 기둥·의자·표지(stop) + 뒷벽·옆벽 유리(stopGlass), 열린 쪽이 도로를 봄 + 이름 점
     const addBoxes = (mb: MB, boxes: ReturnType<typeof shelterBoxes>, ground: number) => {

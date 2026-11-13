@@ -4,6 +4,7 @@
 import { lazy, Suspense, useMemo } from 'react'
 import NgiiUpload from '../components/NgiiUpload'
 import RoofLookup from '../components/RoofLookup'
+import TreePanel from '../components/TreePanel'
 import { buildDiagramData } from '../diagrams/data'
 import { collectedDate } from '../diagrams/render'
 import { defaultHalf, halfOptionsFor } from '../export/modelBuild'
@@ -31,7 +32,7 @@ interface Props {
 export default function ModelStep({ project, update, config, keys, onGoData, onGoSite }: Props) {
   // 자료가 바뀔 때만 다시 (결론 고치기 같은 다른 변경에는 그대로)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const data = useMemo(() => buildDiagramData(project), [project.collected, project.site, project.edits?.hides, project.sourcePick, project.sourceAuto])
+  const data = useMemo(() => buildDiagramData(project), [project.collected, project.site, project.edits?.hides, project.sourcePick, project.sourceAuto, project.trees, project.treeEdits])
   // 지붕 구조를 받으면 collected가 바뀌어 모형을 다시 만듦
   const halfOptions = useMemo(() => (data ? halfOptionsFor(data) : []), [data])
   const meta = {
@@ -113,6 +114,7 @@ export default function ModelStep({ project, update, config, keys, onGoData, onG
               <NgiiUpload project={project} update={update} config={config} />
             </details>
             <RoofLookup project={project} update={update} keys={keys} data={data} />
+            <TreePanel project={project} update={update} data={data} config={config} />
           </section>
 
           <Suspense fallback={<p className="loading">작업대 불러오는 중…</p>}>
