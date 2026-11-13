@@ -12,6 +12,7 @@ import { applyEnv } from '../model/applyEnv'
 import { hasNgii, refreshNgiiFacts } from '../model/applyNgii'
 import { saveVersion } from '../model/db'
 import NgiiUpload from '../components/NgiiUpload'
+import SourcePicker from '../components/SourcePicker'
 import { siteKey } from '../model/project'
 import type { Project } from '../model/types'
 import { ALL_CATEGORIES, DATA_CATEGORIES, type DataCategory, type KeyNeed } from '../sources/categories'
@@ -324,6 +325,8 @@ export default function DataStep(props: Props) {
         )}
 
         {boundary && <NgiiUpload project={project} update={update} config={config} />}
+
+        {boundary && <SourcePicker project={project} update={update} config={config} />}
 
         {boundary && <SiteLinks site={site} />}
 

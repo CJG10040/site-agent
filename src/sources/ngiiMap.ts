@@ -12,6 +12,8 @@ export type NgiiKey = 'bldg' | 'road' | 'walk' | 'walkline' | 'contour' | 'spot'
 export const NGII_KEYS: NgiiKey[] = ['bldg', 'road', 'walk', 'walkline', 'contour', 'spot', 'wall', 'cutfill', 'center', 'crosswalk', 'safety', 'stop', 'tree', 'fence', 'lamp', 'water']
 /** 읽기 방식이 바뀌면 올린 때의 판을 올림 — ⑩에서 '다시 올리면 더 들어감' 안내 (3 = 2026-11-13: 안전지대·보도 중심선) */
 export const NGII_READER_V = 3
+/** 1:5,000 읽기 판 (4 = 2026-11-13: 도로중심선·교통섬·담장·하천 면도 읽음 — 항목별 자료 고르기) */
+export const NGII5_READER_V = 4
 export const NGII_LABEL: Record<NgiiKey, string> = {
   bldg: '건물',
   road: '도로경계 면',
@@ -106,6 +108,16 @@ const WANTS: Want[] = [
     props: (r) => ({ kind: r['구분'] ?? '', top: r['상하구분'] !== '하단' }),
     terrain: true,
   },
+  // 아래는 2026-11-13부터 (④ 항목별 자료 고르기 — 1:1,000과 같은 속성 이름, 2025년판 9장에서 확인)
+  {
+    match: (n) => n === 'N3L_A0020000',
+    key: 'center',
+    props: (r) => ({ width: num(r['도로폭']), lanes: num(r['차로수']), name: r['도로명'] || r['명칭'] || '', kind: r['도로구분'] ?? '', oneway: r['일방통행'] === '일방통행' }),
+    terrain: false,
+  },
+  { match: (n) => n.startsWith('N3A_A005'), key: 'safety', props: (r) => ({ kind: r['구조'] ?? '', name: r['명칭'] ?? '' }), terrain: false },
+  { match: (n) => n === 'N3L_B0020000', key: 'fence', props: (r) => ({ kind: r['구분'] || '담장', material: r['재질'] ?? '' }), terrain: false },
+  { match: (n) => n.startsWith('N3A_E00'), key: 'water', props: (r) => ({ name: r['명칭'] ?? '' }), terrain: false },
 ]
 
 // ───────────────────────── SHP·DBF 읽기 ─────────────────────────

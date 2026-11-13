@@ -12,6 +12,7 @@ import { nowIso } from '../model/project'
 import type { Project } from '../model/types'
 import { HD_READER_V } from '../sources/hdMap'
 import { NGII_READER_V } from '../sources/ngiiMap'
+import { pickState, pickText } from '../model/sourcePick'
 import type { ApiKeys } from '../sources/keys'
 import type { VWorldConfig } from '../sources/vworld'
 
@@ -30,7 +31,7 @@ interface Props {
 export default function ModelStep({ project, update, config, keys, onGoData, onGoSite }: Props) {
   // 자료가 바뀔 때만 다시 (결론 고치기 같은 다른 변경에는 그대로)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const data = useMemo(() => buildDiagramData(project), [project.collected, project.site, project.edits?.hides])
+  const data = useMemo(() => buildDiagramData(project), [project.collected, project.site, project.edits?.hides, project.sourcePick, project.sourceAuto])
   // 지붕 구조를 받으면 collected가 바뀌어 모형을 다시 만듦
   const halfOptions = useMemo(() => (data ? halfOptionsFor(data) : []), [data])
   const meta = {
@@ -46,6 +47,10 @@ export default function ModelStep({ project, update, config, keys, onGoData, onG
   // 읽기 방식이 바뀐 뒤 다시 올리지 않은 파일 (원본 파일은 저장하지 않으므로 다시 올려야 새 항목이 들어감)
   const old1000 = sheets.some((p) => Number(p.scale) === 1000 && Number(p.v ?? 0) < NGII_READER_V)
   const oldHd = (project.collected['hd:files']?.features ?? []).some((f) => Number(f.properties.v ?? 0) < HD_READER_V)
+  // ④ 항목별 자료 (두 축척이 겹칠 때)
+  const ps = useMemo(() => pickState(project), [project])
+  const mixed = ps.ctx.cover1000.length > 0 && ps.ctx.cover5000.length > 0
+  const old5000 = mixed && ps.ctx.old5000
 
   return (
     <div className="form-page wide model-page">
@@ -84,16 +89,26 @@ export default function ModelStep({ project, update, config, keys, onGoData, onG
               <li>
                 수치지도: {sheets.length ? `${n1000 ? `1:1,000 ${n1000}도엽` : ''}${n1000 && n5000 ? ' + ' : ''}${n5000 ? `1:5,000 ${n5000}도엽` : ''} — 건물 측량 도형·층수, 대지 주변 2m 지형${n1000 ? ', 가로수·정류장·가로등·횡단보도·담장' : ''}` : '없음 — 지형은 10m 격자, 건물은 브이월드'}
               </li>
+              {mixed && (
+                <li>
+                  1:1,000·1:5,000이 겹치는 곳: 지형 {pickText(ps, 'contour')}, 건물 {pickText(ps, 'bldg')}, 가로수 {pickText(ps, 'tree')} 등 —{' '}
+                  <button type="button" className="link-btn" onClick={onGoData}>
+                    ④ 항목별로 쓸 자료
+                  </button>
+                  에서 바꿈
+                </li>
+              )}
               <li>정밀도로지도: {hdSections.length ? `구간 ${hdSections.length}개 — 차선·노면표시·연석·보도 면` : '없음'}</li>
             </ul>
-            {(old1000 || oldHd) && (
+            {(old1000 || oldHd || old5000) && (
               <p className="notice">
                 예전에 올린 파일이 있습니다 — 원본 파일은 저장하지 않아 <strong>다시 올려야</strong> 새로 읽는 것이 들어갑니다.
                 {old1000 && ' 1:1,000 수치지도: 교통섬·안전지대·어린이보호구역, 보도(폭만큼 15cm 단차).'}
-                {oldHd && ' 정밀도로지도: 신호등·표지판·지주·방호시설·과속방지턱, 화살표 진행 방향.'} 아래 '올리기'에서 같은 파일을 다시 끌어다 놓으세요.
+                {oldHd && ' 정밀도로지도: 신호등·표지판·지주·방호시설·과속방지턱, 화살표 진행 방향.'}
+                {old5000 && ' 1:5,000 수치지도: 도로중심선·교통섬·담장·하천 면(④ 항목별 자료에서 새 자료로 고를 수 있게).'} 아래 '올리기'에서 같은 파일을 다시 끌어다 놓으세요.
               </p>
             )}
-            <details open={old1000 || oldHd || undefined}>
+            <details open={old1000 || oldHd || old5000 || undefined}>
               <summary className="small">수치지도·정밀도로지도 올리기 (④ 공간정보와 같은 칸)</summary>
               <NgiiUpload project={project} update={update} config={config} />
             </details>

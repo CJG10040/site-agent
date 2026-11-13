@@ -141,7 +141,7 @@ export function fineTerrain(n: NgiiData, center: [number, number], half: number)
 
   // ── 1차 삼각망 (옹벽 없이)
   const z1 = tinGrid(xs, zs, spec)
-  const g1: TerrainGrid = { ...spec, z: z1, source: 'map', version: n.year }
+  const g1: TerrainGrid = { ...spec, z: z1, source: 'map', version: n.terrainYear ?? n.year }
 
   // ── 옹벽·석축·제방을 단절선으로: 양옆 0.3m에 h만큼 벌어진 점
   const bx: number[] = [...xs]
@@ -243,7 +243,7 @@ export function fineTerrain(n: NgiiData, center: [number, number], half: number)
       const [lo, la] = lonAt(x0 + (i + 0.5) * cell, y0 - (j + 0.5) * cell)
       if (!n.sheets.some(({ bounds: b }) => lo >= b[0] && lo <= b[2] && la >= b[1] && la <= b[3])) z[k] = NaN
     }
-  return { ...spec, z, source: 'map', version: n.year }
+  return { ...spec, z, source: 'map', version: n.terrainYear ?? n.year }
 }
 
 const cache = new Map<string, TerrainGrid | null>()
@@ -251,7 +251,7 @@ const cache = new Map<string, TerrainGrid | null>()
 /** 같은 수치지도·범위면 다시 만들지 않는다 */
 export function fineTerrainCached(n: NgiiData | null, center: [number, number], half: number): TerrainGrid | null {
   if (!n) return null
-  const key = `${n.sheets.map((s) => s.code).join(',')}|${n.contours.length}|${n.spots.length}|${n.walls.length}|${center[0].toFixed(6)},${center[1].toFixed(6)}|${half}`
+  const key = `${n.sheets.map((s) => s.code).join(',')}|${n.pickSig}|${n.contours.length}|${n.spots.length}|${n.walls.length}|${center[0].toFixed(6)},${center[1].toFixed(6)}|${half}`
   if (!cache.has(key)) {
     if (cache.size > 6) cache.clear()
     cache.set(key, fineTerrain(n, center, half))

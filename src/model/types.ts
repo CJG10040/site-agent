@@ -160,6 +160,9 @@ export interface CollectedLayer {
 }
 
 /** 15-C 렌더링 모델 디테일 단계 */
+/** ④ 항목별 자료: 1:1,000 수치지도 · 1:5,000 수치지도 · 정밀도로지도 · 브이월드(건물) · 안 씀 */
+export type SourceId = '1000' | '5000' | 'hd' | 'vworld' | 'off'
+
 export type RenderLevel = 'light' | 'normal' | 'detail'
 
 /** 15-C 렌더링 모델 설정: 단계 + 켠 항목 (단계를 고르면 그 단계의 항목으로 바뀜) */
@@ -220,6 +223,10 @@ export interface Project {
   renderModel?: RenderModelSettings
   /** 15-D 지붕 구조를 건축물대장에서 조회할 반경 (m, 학생이 정함) */
   roofRadiusM?: number
+  /** ④ 항목별로 쓸 자료 (학생이 기본에서 바꾼 것만, 키 = 수치지도 항목) — model/sourcePick.ts */
+  sourcePick?: Partial<Record<string, SourceId>>
+  /** 새 1:5,000에서 바뀐 곳은 옛 1:1,000 대신 1:5,000으로 (기본 켬, false면 끔) */
+  sourceAuto?: boolean
   /** Phase 7 도판: 그리기 설정과 도판별 결론 */
   diagrams?: DiagramState
   /** Phase 12 종합 다이어그램 (⑧ 해석·가설에서 그림) */

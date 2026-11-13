@@ -5,7 +5,8 @@ import { buildDiagramData, inNgii } from '../diagrams/data'
 import { centroidOf } from '../diagrams/frame'
 import { sheetBounds } from '../lib/mapSheet'
 import { arealRings, localProj, lineToRingsDist, pointInRings, pointToRingsDist, toXY } from '../lib/xy'
-import { NGII_KEYS, NGII_READER_V, ngiiLayer, type NgiiSheet } from '../sources/ngiiMap'
+import { NGII5_READER_V, NGII_KEYS, NGII_READER_V, ngiiLayer, type NgiiSheet } from '../sources/ngiiMap'
+import { pickState, pickSummary, pickText } from './sourcePick'
 import { upsertDrafts, type DraftFact } from './applyCollection'
 import { apiSource } from './applyNearby'
 import { nextNumber, nowIso, siteKey } from './project'
@@ -57,7 +58,7 @@ export function applyNgiiSheets(project: Project, sheets: NgiiSheet[], radiusM: 
                 ],
               }
             : null,
-          properties: { code: s.code, year: s.year, file: s.file, epsg: s.epsg, scale: s.scale ?? 5000, counts: s.counts, radiusM, uploadedAt: t, bounds: b, siteKey: siteKey(project.site), v: NGII_READER_V },
+          properties: { code: s.code, year: s.year, file: s.file, epsg: s.epsg, scale: s.scale ?? 5000, counts: s.counts, radiusM, uploadedAt: t, bounds: b, siteKey: siteKey(project.site), v: s.scale === 1000 ? NGII_READER_V : NGII5_READER_V },
         }
       }),
     ],
@@ -93,7 +94,7 @@ export function refreshNgiiFacts(project: Project): void {
     spatial_scale: scaleText,
     license: '국토지리정보원 공간정보 (출처 표기)',
     limitations:
-      '사진측량 수치지도로 도엽 제작 시점의 현황이며 이후 바뀐 것은 반영되지 않는다. 무벽건물(지붕만)·가건물은 건물 통계·계산에서 뺐다. 사용승인연도·세부 용도는 겹치는 브이월드 건물에서 가져왔다. 옹벽·석축의 낮은 쪽은 선을 그린 방향(오른쪽이 낮음)으로 판단했다.',
+      `사진측량 수치지도로 도엽 제작 시점의 현황이며 이후 바뀐 것은 반영되지 않는다. 무벽건물(지붕만)·가건물은 건물 통계·계산에서 뺐다. 사용승인연도·세부 용도는 겹치는 브이월드 건물에서 가져왔다. 옹벽·석축의 낮은 쪽은 선을 그린 방향(오른쪽이 낮음)으로 판단했다. ${pickSummary(project)}`.trim(),
     original_url: 'https://map.ngii.go.kr/',
     reliability: 'official',
     feature_count: NGII_KEYS.reduce((n, k) => n + (project.collected[ngiiLayer(k)]?.features.length ?? 0), 0),
@@ -149,7 +150,7 @@ function ngiiDrafts(project: Project, srcId: string, R: number): DraftFact[] {
       F(
         'ngii-bldg',
         '주변 건물',
-        `수치지도(${n.year ?? '제작 연도 미상'}) 기준 반경 ${R}m 안 건물은 ${fmt(ngiiIn.length)}동이다(지붕만 있는 구조물·가건물 ${fmt(minorIn)}동 제외, 올린 도엽 안).${cmp}`,
+        `수치지도 ${pickState(project).ctx.cover1000.length ? pickText(pickState(project), 'bldg') : `(${n.year ?? '제작 연도 미상'})`} 기준 반경 ${R}m 안 건물은 ${fmt(ngiiIn.length)}동이다(지붕만 있는 구조물·가건물 ${fmt(minorIn)}동 제외, 올린 도엽 안).${cmp}`,
       ),
     )
   }

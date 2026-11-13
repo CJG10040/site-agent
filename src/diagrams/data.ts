@@ -11,6 +11,8 @@ import type { EnvResult } from '../sources/env'
 import type { SpeedSnapshot } from '../sources/its'
 import type { NetworkResult } from '../sources/network'
 import { laneStyle } from '../sources/hdMap'
+import type { NgiiKey } from '../sources/ngiiMap'
+import { pickSig, pickState, pickText, selectNgii, type Picks } from '../model/sourcePick'
 import { isPlaceholderStop } from '../sources/transit'
 import type { WindResult } from '../sources/wind'
 import { centroidOf } from './frame'
@@ -142,6 +144,14 @@ export interface NgiiData {
   fences: { geom: Lines; kind: string }[]
   lamps: { lon: number; lat: number; kind: string }[]
   water: Areal[]
+  /** ④ 항목별로 고른 자료 (model/sourcePick) — 도엽이 겹칠 때 어느 축척을 썼는지 */
+  pick: Picks
+  /** 고른 자료·바뀐 곳 자동의 서명 (지형 캐시 열쇠) */
+  pickSig: string
+  /** 지형(등고선·표고점)에 쓴 수치지도의 해 */
+  terrainYear: string | null
+  /** 건물 출처 글 (예: '1:5,000(2025년)') — 도엽이 겹치지 않으면 null */
+  bldgText: string | null
 }
 
 /** 정밀도로지도 (15-F): 차선·노면표시·도로 경계·보도 */
@@ -164,7 +174,7 @@ export interface HdData {
 }
 
 /** 정밀도로지도 노면표시가 횡단보도인지: C-ITS 형식 종류 532x(5321 등), 2026 형식 유형 200 (2026-11-13, 도형 크기 약 9×4m로 확인) */
-function hdCrosswalk(p: Record<string, unknown>): boolean {
+export function hdCrosswalk(p: Record<string, unknown>): boolean {
   const kind = String(p.kind ?? '')
   const type = String(p.type ?? '')
   return /^53[23]/.test(kind) || (!kind && type === '200')
@@ -175,6 +185,43 @@ function hdGlyph(p: Record<string, unknown>): boolean {
   return /^(537[1-4]|538[12]|539[12]|543[12]|544|529|524)$/.test(String(p.kind ?? ''))
 }
 
+/** 정밀도로지도 차선이 r(m) 안에 있는 점인지 (차선을 5m마다 나눠 칸에 넣어 둠) */
+function nearLanes(hd: HdData, r: number): (lon: number, lat: number) => boolean {
+  const first = hd.lanes[0]?.geom
+  const lat0 = first ? (first.type === 'LineString' ? first.coordinates[0]?.[1] : first.coordinates[0]?.[0]?.[1]) ?? 35 : 35
+  const kx = 111320 * Math.cos((lat0 * Math.PI) / 180)
+  const ky = 110574
+  const cells = new Map<string, [number, number][]>()
+  const put = (x: number, y: number) => {
+    const k = `${Math.floor(x / r)},${Math.floor(y / r)}`
+    const a = cells.get(k)
+    if (a) a.push([x, y])
+    else cells.set(k, [[x, y]])
+  }
+  for (const l of hd.lanes)
+    for (const line of l.geom.type === 'LineString' ? [l.geom.coordinates] : l.geom.coordinates)
+      for (let i = 0; i < line.length; i++) {
+        const x = line[i][0] * kx
+        const y = line[i][1] * ky
+        put(x, y)
+        if (i + 1 < line.length) {
+          const bx = line[i + 1][0] * kx
+          const by = line[i + 1][1] * ky
+          const k = Math.floor(Math.hypot(bx - x, by - y) / 5)
+          for (let j = 1; j <= k; j++) put(x + ((bx - x) * j) / (k + 1), y + ((by - y) * j) / (k + 1))
+        }
+      }
+  return (lon, lat) => {
+    const x = lon * kx
+    const y = lat * ky
+    const ci = Math.floor(x / r)
+    const cj = Math.floor(y / r)
+    for (let di = -1; di <= 1; di++)
+      for (let dj = -1; dj <= 1; dj++) for (const [px, py] of cells.get(`${ci + di},${cj + dj}`) ?? []) if (Math.hypot(px - x, py - y) <= r) return true
+    return false
+  }
+}
+
 /** 올린 수치지도 도엽 안의 점인지 */
 export function inNgii(n: NgiiData | null, lon: number, lat: number): boolean {
   return !!n && n.sheets.some(({ bounds: b }) => lon >= b[0] && lon <= b[2] && lat >= b[1] && lat <= b[3])
@@ -183,7 +230,9 @@ export function inNgii(n: NgiiData | null, lon: number, lat: number): boolean {
 /** 도판 출처 글: 건물 */
 export function bldSourceText(d: { ngii: NgiiData | null }): string {
   return d.ngii
-    ? `국토지리정보원 ${d.ngii.sheets.some((s) => s.scale === 1000) ? (d.ngii.sheets.some((s) => s.scale !== 1000) ? '1:1,000·1:5,000' : '1:1,000') : '1:5,000'} 수치지도${d.ngii.year ? `(${d.ngii.year}년)` : ''} 건물(올린 도엽 안) + 브이월드 GIS건물통합정보(사용승인연도·용도, 도엽 밖)`
+    ? d.ngii.pick.bldg === 'vworld'
+      ? '브이월드 GIS건물통합정보 (④에서 수치지도 건물 대신 고름)'
+      : `국토지리정보원 ${d.ngii.bldgText ? `${d.ngii.bldgText} ` : `${d.ngii.sheets.some((s) => s.scale === 1000) ? (d.ngii.sheets.some((s) => s.scale !== 1000) ? '1:1,000·1:5,000' : '1:1,000') : '1:5,000'} `}수치지도${d.ngii.bldgText || !d.ngii.year ? '' : `(${d.ngii.year}년)`} 건물(올린 도엽 안) + 브이월드 GIS건물통합정보(사용승인연도·용도, 도엽 밖)`
     : '국토교통부 GIS건물통합정보(브이월드)'
 }
 
@@ -413,15 +462,9 @@ export function buildDiagramData(project: Project): DiagramData | null {
   let ngii: NgiiData | null = null
   const sheetFeats = feats('ngii:sheets')
   if (sheetFeats.length) {
-    // 1:1,000 도엽이 덮는 곳은 1:5,000 자료를 빼고 1:1,000으로 (15-F)
-    const scaleOf = new Map(sheetFeats.map((f) => [str(f.properties.code), Number(f.properties.scale) || 5000]))
-    const cover1000 = sheetFeats.filter((f) => Number(f.properties.scale) === 1000).map((f) => f.properties.bounds as [number, number, number, number])
-    const keep = (f: { geometry: Geometry | null; properties: Record<string, unknown> }) => {
-      if (!cover1000.length || scaleOf.get(str(f.properties.sheet)) === 1000) return true
-      const c = f.geometry?.type === 'Point' ? (f.geometry.coordinates as [number, number]) : centroidOf(f.geometry)
-      return !c || !cover1000.some((b) => c[0] >= b[0] && c[0] <= b[2] && c[1] >= b[1] && c[1] <= b[3])
-    }
-    const nfeats = (id: string) => feats(id).filter(keep)
+    // 1:1,000과 1:5,000이 겹치는 곳은 ④에서 항목마다 고른 자료로 (2026-11-13, 예전엔 모두 1:1,000) — model/sourcePick
+    const st = pickState(project)
+    const nfeats = (id: string) => selectNgii(project, st, id.replace(/^ngii:/, '') as NgiiKey)
     const lines = (id: string) => nfeats(id).filter((f) => isLinear(f.geometry))
     const pts = (id: string) =>
       nfeats(id)
@@ -462,9 +505,24 @@ export function buildDiagramData(project: Project): DiagramData | null {
       fences: lines('ngii:fence').map((f) => ({ geom: f.geometry as Lines, kind: str(f.properties.kind) })),
       lamps: pts('ngii:lamp').map(({ c, p }) => ({ lon: c[0], lat: c[1], kind: str(p.kind) })),
       water: nfeats('ngii:water').filter((f) => isAreal(f.geometry)).map((f) => f.geometry as Areal),
+      pick: st.picks,
+      pickSig: pickSig(project),
+      terrainYear: (() => {
+        const ys = new Set<string>()
+        for (const k of ['contour', 'spot'] as const) {
+          const p = st.picks[k]
+          if (p === '1000' && st.ctx.year1000) ys.add(st.ctx.year1000)
+          if ((p === '5000' || (p === '1000' && st.change)) && st.ctx.year5000) ys.add(st.ctx.year5000)
+          if (p === '1000' && !st.ctx.cover5000.length && st.ctx.year1000) ys.add(st.ctx.year1000)
+          if (p === '5000' && !st.ctx.cover1000.length && st.ctx.year5000) ys.add(st.ctx.year5000)
+        }
+        return [...ys].sort().join('·') || null
+      })(),
+      bldgText: st.ctx.cover1000.length && st.ctx.cover5000.length ? pickText(st, 'bldg') : null,
     }
     const n = ngii
-    const kept = buildings.filter((b) => {
+    // 건물을 '브이월드'로 고르면 수치지도 건물로 바꾸지 않음
+    const kept = st.picks.bldg === 'vworld' ? [...buildings] : buildings.filter((b) => {
       const c = centroidOf(b.geom)
       return !c || !inNgii(n, c[0], c[1])
     })
@@ -549,6 +607,21 @@ export function buildDiagramData(project: Project): DiagramData | null {
         .filter((f) => isLinear(f.geometry))
         .map((f) => ({ geom: f.geometry as Lines, central: !!f.properties.central })),
       bumps: feats('hd:bump').filter((f) => isAreal(f.geometry)).map((f) => f.geometry as Areal),
+    }
+  }
+
+  // ④ 횡단보도 자료: 정밀도로지도를 고르면 1:1,000 횡단보도는 정밀도로지도가 덮지 않는 곳(차선이 15m 안에 없음)만, 안 씀이면 둘 다 뺌
+  if (ngii) {
+    const pc = ngii.pick.crosswalk
+    if (pc === 'off') {
+      ngii.crosswalks = []
+      if (hd) hd.crosswalks = []
+    } else if (pc === 'hd' && hd) {
+      const covered = nearLanes(hd, 15)
+      ngii.crosswalks = ngii.crosswalks.filter((g) => {
+        const c = centroidOf(g)
+        return !c || !covered(c[0], c[1])
+      })
     }
   }
 

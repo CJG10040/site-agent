@@ -1,6 +1,7 @@
 // 도판 화면과 리포트가 함께 쓰는 그리기 훅.
 // 같은 자료·설정으로 그린 도판은 모듈 안에 잠시 보관해 단계를 오갈 때 다시 그리지 않는다.
 
+import { pickSig } from '../model/sourcePick'
 import { useEffect, useMemo, useState } from 'react'
 import { fineHalfFor, fineTerrainCached } from '../lib/terrainFine'
 import { analyzeTerrain, type TerrainAnalysis } from '../lib/terrainSite'
@@ -91,7 +92,9 @@ export function useDiagrams(project: Project, vworldKey: string, only?: string[]
   const ngiiSig = `${project.collected['ngii:sheets']?.retrieved_at ?? ''}${project.collected['hd:files']?.retrieved_at ?? ''}`
   // 학생이 뺀 자료가 바뀌면 자료부터 다시
   const hideSig = (project.edits?.hides ?? []).map((h) => h.id).join(',')
-  const dataSig = `${project.collectedAt ?? ''}|${envSig}|${ngiiSig}|${siteKey(project.site)}|${project.collectedRadiusM ?? project.site.radiusM}|${obsSig}|${hashOf(hideSig)}`
+  // ④ 항목별 자료를 바꾸면 자료부터 다시
+  const srcSig = pickSig(project)
+  const dataSig = `${project.collectedAt ?? ''}|${envSig}|${ngiiSig}|${siteKey(project.site)}|${project.collectedRadiusM ?? project.site.radiusM}|${obsSig}|${hashOf(hideSig)}|${srcSig}`
   const labelEdits = project.edits?.labels ?? []
   const labelSig = labelEdits.map((l) => `${l.panelId}:${l.key}:${l.dx.toFixed(1)},${l.dy.toFixed(1)}:${l.hidden ? 1 : 0}`).join('|')
   // 결론을 고칠 때마다 프로젝트 객체가 바뀌므로, 자료가 실제로 바뀐 때만 다시 만든다

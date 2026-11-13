@@ -174,7 +174,8 @@ export default function NgiiUpload({ project, update, config }: Props) {
         도판·환경 계산·3D·DXF를 다시 그립니다. 파일은 이 브라우저에만 저장됩니다.
       </p>
       <p className="help">
-        더 자세히: <strong>1:1,000 수치지도 2.0</strong>은 <strong>.ngi와 .nda를 함께</strong>(또는 둘을 담은 ZIP) 올리면 그 도엽 안은 1:5,000 대신 1:1,000을 씁니다(도로중심선 폭·횡단보도·정류장·가로수·담장·가로등까지).{' '}
+        더 자세히: <strong>1:1,000 수치지도 2.0</strong>은 <strong>.ngi와 .nda를 함께</strong>(또는 둘을 담은 ZIP) 올리면 도로중심선 폭·횡단보도·정류장·가로수·담장·가로등까지 들어갑니다. 1:5,000과 해가 다르면
+        아래 <strong>항목별로 쓸 자료</strong>에서 항목마다 어느 쪽을 쓸지 고릅니다(기본은 새 자료).{' '}
         <strong>정밀도로지도</strong> ZIP은 차선·노면표시·연석·보도 면을 렌더링 모델(.3dm)에 넣습니다. 여러 파일을 한꺼번에 끌어다 놓아도 종류를 알아서 가립니다.
       </p>
       <div className="ngii-sheets">

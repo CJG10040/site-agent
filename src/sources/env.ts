@@ -180,7 +180,7 @@ export async function computeEnv(project: Project, config: VWorldConfig, onProgr
     buildings: buildings.length,
     unknownHeights,
     terrainSource: terr?.source ?? null,
-    buildingSource: d.ngii ? `국토지리정보원 수치지도${d.ngii.year ? `(${d.ngii.year}년)` : ''}·GIS건물통합정보` : 'GIS건물통합정보',
+    buildingSource: d.ngii && d.ngii.pick.bldg !== 'vworld' ? `국토지리정보원 수치지도${d.ngii.bldgText ? ` ${d.ngii.bldgText}` : d.ngii.year ? `(${d.ngii.year}년)` : ''}·GIS건물통합정보` : 'GIS건물통합정보',
     thermal: hot
       ? { ta: hot.ta, rh: hot.rh, ws: hot.ws, days: hot.days, alt: ts.altitude, az: ts.azimuth, label: `${THERMAL_DAY.month}월 ${THERMAL_DAY.day}일 ${THERMAL_DAY.hour}시` }
       : null,
