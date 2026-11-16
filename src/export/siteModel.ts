@@ -667,11 +667,116 @@ export async function buildSiteModel(d: DiagramData, half: number, opts: { grid?
   }
 
   // ── 다리·고가 (2026-11-16): 교량 상판 밑은 땅을 고르지 않음
+  //    ① 수치지도 교량(A007)·입체교차부(A009) — 다시 올려야 있음
+  //    ② 브이월드 표준노드링크 도로유형 003 교량·001 고가차도 (도로망을 수집했으면, 올리지 않아도) — 링크를 차로 수만큼 넓힌 띠와 도로 면의 겹침
+  //    ③ 그래도 없는 곳: 도로 면이 물 면을 건너는 곳을 다리로 (둔치가 있으면 둔치까지)
+  const ringClose = (r: XY[]) => [...r, r[0]]
+  const turfOf = (p: Poly) => turfPolygon([ringClose(p.outer), ...p.holes.map(ringClose)])
+  const polysFrom = (g: { type: string; coordinates: unknown } | null | undefined): Poly[] =>
+    !g
+      ? []
+      : (g.type === 'Polygon' ? [g.coordinates as Position[][]] : g.type === 'MultiPolygon' ? (g.coordinates as Position[][][]) : [])
+          .map((q) => toPoly(q.map((r) => r.map(([x, y]) => [x, y] as XY))))
+          .filter((p): p is Poly => !!p)
+  const roadBoxes0 = roads.map((p) => ({ p, b: bboxOf(p.outer) }))
+  /** 도로 면 중 이 상자 안 조각과 poly의 겹침 */
+  const roadsIn = (poly: Poly, margin = 2): Poly[] => {
+    const [a, b, c, e] = bboxOf(poly.outer)
+    const out: Poly[] = []
+    for (const { p, b: rb } of roadBoxes0) {
+      if (rb[2] < a - margin || rb[0] > c + margin || rb[3] < b - margin || rb[1] > e + margin) continue
+      try {
+        const local = bboxClip(turfOf(p), [a - margin, b - margin, c + margin, e + margin])
+        const part = intersect(featureCollection([local as ReturnType<typeof turfOf>, turfOf(poly)]))
+        out.push(...polysFrom(part?.geometry))
+      } catch {
+        // 자르기에 실패하면 이 도로 면은 건너뜀
+      }
+    }
+    return out.filter((q) => Math.abs(ringArea(q.outer)) > 10)
+  }
   const deckSrc: DeckSrc[] = n
     ? n.bridges
         .map((b) => ({ polys: clipPolys(polysOf(b.geom, f), half), name: b.name, kind: b.kind, deck: b.deck, length: b.length, height: b.height }))
         .filter((b) => b.polys.length)
     : []
+  const coveredByDeck = (p: XY) => deckSrc.some((s) => s.polys.some((q) => polyHas(p, q)))
+  // ② 표준노드링크
+  for (const [type, kind, deck] of [
+    ['003', '도로교', 'bridge'],
+    ['001', '고가차도', 'overpass'],
+  ] as const) {
+    const strips: Poly[] = []
+    const stripName: { p: Poly; name: string }[] = []
+    for (const l of d.links) {
+      if (l.roadType !== type) continue
+      const halfW = Math.max(5, (l.lanes ?? 2) * 3.25 + 1)
+      for (const pts of (l.geom.type === 'LineString' ? [l.geom.coordinates] : l.geom.coordinates).map((c) => c.map(f)).flatMap((q) => clipLine(q, half))) {
+        const dl = densifyLine(pts, 3)
+        if (dl.length < 2) continue
+        const mid = dl[Math.floor(dl.length / 2)]
+        if (coveredByDeck(mid)) continue
+        const { left, right } = ribbon(dl, halfW * 2)
+        const p = toPoly([[...left, ...[...right].reverse()]])
+        if (p) {
+          strips.push(p)
+          stripName.push({ p, name: l.name })
+        }
+      }
+    }
+    if (!strips.length) continue
+    let merged = strips
+    try {
+      const u = strips.length > 1 ? union(featureCollection(strips.map(turfOf))) : null
+      if (u) merged = polysFrom(u.geometry)
+    } catch {
+      // 합치기에 실패하면 띠 그대로
+    }
+    for (const m of merged) {
+      const onRoad = roadsIn(m)
+      const polys = clipPolys(onRoad.length ? onRoad : [m], half)
+      if (!polys.length) continue
+      // 이 조각에 든 링크의 도로 이름만
+      const names = [...new Set(stripName.filter((s) => s.name && polyHas(innerPt(s.p), m)).map((s) => s.name))]
+      deckSrc.push({ polys, name: `${names.join('·') || kind} (표준노드링크)`, kind, deck, length: null, height: null })
+    }
+  }
+  // ③ 도로 면이 물 면을 건너는 곳
+  for (const w of rivers)
+    for (const wp of w.polys)
+      for (const cross of roadsIn(wp, 0)) {
+        if (Math.abs(ringArea(cross.outer)) < 30) continue
+        const c0 = innerPt(cross)
+        if (coveredByDeck(c0)) continue
+        const [a, b, c, e] = bboxOf(cross.outer)
+        const bank = banks.flatMap((bk) => bk.polys).find((bp) => polyHas(c0, bp))
+        const m = bank ? 10 : 6
+        const box: Poly = {
+          outer: [
+            [a - m, b - m],
+            [c + m, b - m],
+            [c + m, e + m],
+            [a - m, e + m],
+          ],
+          holes: [],
+        }
+        let foot = roadsIn(box, 0)
+        if (bank) {
+          // 둔치(하천경계) 안 조각만 — 물을 건너는 조각과 이어진 것
+          const inBank: Poly[] = []
+          for (const q of foot)
+            try {
+              inBank.push(...polysFrom(intersect(featureCollection([turfOf(q), turfOf(bank)]))?.geometry))
+            } catch {
+              inBank.push(q)
+            }
+          foot = inBank
+        }
+        const hit = foot.filter((q) => polyHas(c0, q))
+        const polys = clipPolys(hit.length ? hit : [cross], half)
+        if (!polys.length) continue
+        deckSrc.push({ polys, name: '', kind: '도로교(자동: 도로가 물을 건넘)', deck: 'bridge', length: null, height: null })
+      }
 
   // ── 땅 다듬기 (groundShape.ts): 물 밑을 파고 물 높이를 고르게, 도로 면을 매끈하게 (정밀도로지도 노면 높이가 있으면 기준점으로)
   const hdPts = (d.hd?.ground ?? []).map((g) => {
@@ -1109,7 +1214,7 @@ export function modelNotes(m: SiteModel, meta: { title: string; address: string;
       ? ([
           [
             '다리·고가',
-            `${m.decks.length}곳 (${[...new Set(m.decks.map((d) => d.sub))].join('·')}) — 교량은 양 끝 도로 높이를 곧게 이은 상판, 고가차도는 양 끝에서 경사 6%로 올라 5m 밑 높이 + 상판. 상판 두께·난간·교각 간격은 어림(실측 아님)`,
+            `${m.decks.length}곳 (수치지도 ${m.decks.filter((d) => !/표준노드링크/.test(d.name) && !/자동/.test(d.sub)).length} · 표준노드링크 ${m.decks.filter((d) => /표준노드링크/.test(d.name)).length} · 도로가 물을 건너는 곳 자동 ${m.decks.filter((d) => /자동/.test(d.sub)).length}) — 교량은 양 끝 도로 높이를 곧게 이은 상판, 고가차도는 양 끝에서 경사 6%로 올라 5m 밑 높이 + 상판. 상판 두께·난간·교각 간격은 어림(실측 아님)`,
           ],
         ] as [string, string][])
       : []),

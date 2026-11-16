@@ -95,6 +95,10 @@ export interface Link {
   id: string
   name: string
   maxSpd: number | null
+  /** 도로유형 (표준노드링크 구축기준): 000 일반도로 · 001 고가차도 · 002 지하차도 · 003 교량 · 004 터널 */
+  roadType: string
+  /** 차로 수 (한 방향 링크) */
+  lanes: number | null
 }
 
 export interface Area<T = Record<string, never>> {
@@ -915,7 +919,14 @@ export function buildDiagramData(project: Project): DiagramData | null {
 
   const links: Link[] = feats('LT_L_MOCTLINK')
     .filter((f) => isLinear(f.geometry))
-    .map((f) => ({ geom: f.geometry as LineString | MultiLineString, id: linkIdOf(f.properties), name: str(f.properties.road_name), maxSpd: num(f.properties.max_spd) }))
+    .map((f) => ({
+      geom: f.geometry as LineString | MultiLineString,
+      id: linkIdOf(f.properties),
+      name: str(f.properties.road_name),
+      maxSpd: num(f.properties.max_spd),
+      roadType: str(f.properties.road_type ?? f.properties.ROAD_TYPE),
+      lanes: num(f.properties.lanes ?? f.properties.LANES),
+    }))
   const speedSnaps = feats('its:speed').map((f) => f.properties as unknown as SpeedSnapshot)
   const network = (feats('network:graph')[0]?.properties as unknown as NetworkResult | undefined) ?? null
   const wind = (feats('kma:wind')[0]?.properties as unknown as WindResult | undefined) ?? null
