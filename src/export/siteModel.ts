@@ -638,15 +638,60 @@ export async function buildSiteModel(d: DiagramData, half: number, opts: { grid?
     xs.sort((a, b) => a - b)
     return xs.length >= 2 ? [(xs[0] + xs[1]) / 2, y] : c
   }
+  const ringClose = (r: XY[]) => [...r, r[0]]
+  const turfOf = (p: Poly) => turfPolygon([ringClose(p.outer), ...p.holes.map(ringClose)])
+  const polysFrom = (g: { type: string; coordinates: unknown } | null | undefined): Poly[] =>
+    !g
+      ? []
+      : (g.type === 'Polygon' ? [g.coordinates as Position[][]] : g.type === 'MultiPolygon' ? (g.coordinates as Position[][][]) : [])
+          .map((q) => toPoly(q.map((r) => r.map(([x, y]) => [x, y] as XY))))
+          .filter((p): p is Poly => !!p)
+  const boxHit = (a: [number, number, number, number], b: [number, number, number, number]) => !(a[2] < b[0] || a[0] > b[2] || a[3] < b[1] || a[1] > b[3])
+  /** 이 면들이 다른 면들에 덮인 비율 (0~1) */
+  const coverBy = (ps: Poly[], others: Poly[]): number => {
+    const total = areaOf(ps)
+    if (!total || !others.length) return 0
+    let inter = 0
+    for (const p of ps) {
+      const bp = bboxOf(p.outer)
+      const hits = others.filter((o) => boxHit(bp, bboxOf(o.outer)))
+      if (!hits.length) continue
+      try {
+        const u = hits.length > 1 ? union(featureCollection(hits.map(turfOf))) : turfOf(hits[0])
+        if (!u) continue
+        inter += areaOf(polysFrom(intersect(featureCollection([turfOf(p), u as ReturnType<typeof turfOf>]))?.geometry))
+      } catch {
+        // 겹침 계산에 실패하면 이 조각은 안 덮인 것으로
+      }
+    }
+    return inter / total
+  }
+  // 예전에 올려 종류를 모르는 수치지도 하천 (2026-11-16 고침 — '다른 면의 안쪽 점을 품으면 둔치'는 물·둔치가 뒤바뀌는 곳이 있었음):
+  // 다른 하천 면들에 80% 넘게 덮이면 물(하천경계 안의 물 면), 덜 덮였지만 겹치면 둔치(하천경계), 아무와도 안 겹치면 물
+  const unknownWater = ngWater.filter((w) => !w.kind)
   for (const w of ngWater) {
     let kind = w.kind
     if (!kind) {
-      const others = ngWater.filter((o) => o !== w && areaOf(o.polys) * 1.5 < areaOf(w.polys))
-      kind = others.some((o) => o.polys.some((q) => w.polys.some((p) => polyHas(innerPt(q), p)))) ? 'bank' : 'water'
+      const others = unknownWater.filter((o) => o !== w).flatMap((o) => o.polys)
+      const c = coverBy(w.polys, others)
+      kind = c >= 0.8 ? 'water' : c > 0.02 ? 'bank' : 'water'
     }
     ;(kind === 'bank' ? banks : rivers).push({ polys: w.polys, name: kind === 'bank' ? '하천 둔치 (수치지도 하천경계)' : kind === 'lake' ? '호수·저수지 (수치지도)' : '하천 물 (수치지도 실폭하천)' })
   }
   const vwRivers: { polys: Poly[]; name: string; src: string }[] = []
+  // 올린 수치지도 도엽 (경위도 사각형 → 모형 좌표 네모)
+  const sheetQuads: Poly[] = (n?.sheets ?? []).flatMap((sh) => {
+    const [w0, s0, e0, n0] = sh.bounds
+    const q = toPoly([[f([w0, s0]), f([e0, s0]), f([e0, n0]), f([w0, n0])]])
+    return q ? [q] : []
+  })
+  let sheetUnion: ReturnType<typeof turfOf> | null = null
+  try {
+    const u = sheetQuads.length > 1 ? union(featureCollection(sheetQuads.map(turfOf))) : null
+    if (u) sheetUnion = u as ReturnType<typeof turfOf>
+  } catch {
+    sheetUnion = null
+  }
   for (const a of d.parks) {
     const polys = clipPolys(polysOf(a.geom, f), half)
     if (!polys.length) continue
@@ -654,9 +699,18 @@ export async function buildSiteModel(d: DiagramData, half: number, opts: { grid?
       parks.push({ polys, name: a.name })
       continue
     }
-    // 수치지도 도엽 안이면 뺌 (수치지도 하천이 있을 때)
-    if (ngWater.length && polys.every((p) => covered(innerPt(p)))) continue
-    vwRivers.push({ polys, name: a.name, src: a.extra.src ?? 'wkmstrm' })
+    // 수치지도 하천이 있으면 도엽 범위를 잘라내고 밖만 (2026-11-16 고침: 길쭉한 하천 면은 가운데 점이 도엽 밖이라 통째로 남아 물이 둔치까지 덮었음)
+    let keep = polys
+    if (ngWater.length && sheetQuads.length)
+      keep = polys.flatMap((p) => {
+        try {
+          const left = difference(featureCollection([turfOf(p), sheetUnion ?? turfOf(sheetQuads[0])]))
+          return polysFrom(left?.geometry).filter((q) => Math.abs(ringArea(q.outer)) > 50)
+        } catch {
+          return polys.every((q) => covered(innerPt(q))) ? [] : [p]
+        }
+      })
+    if (keep.length) vwRivers.push({ polys: keep, name: a.name, src: a.extra.src ?? 'wkmstrm' })
   }
   const vwWater = vwRivers.filter((r) => r.src !== 'upis')
   for (const r of vwRivers) {
@@ -669,15 +723,7 @@ export async function buildSiteModel(d: DiagramData, half: number, opts: { grid?
   // ── 다리·고가 (2026-11-16): 교량 상판 밑은 땅을 고르지 않음
   //    ① 수치지도 교량(A007)·입체교차부(A009) — 다시 올려야 있음
   //    ② 브이월드 표준노드링크 도로유형 003 교량·001 고가차도 (도로망을 수집했으면, 올리지 않아도) — 링크를 차로 수만큼 넓힌 띠와 도로 면의 겹침
-  //    ③ 그래도 없는 곳: 도로 면이 물 면을 건너는 곳을 다리로 (둔치가 있으면 둔치까지)
-  const ringClose = (r: XY[]) => [...r, r[0]]
-  const turfOf = (p: Poly) => turfPolygon([ringClose(p.outer), ...p.holes.map(ringClose)])
-  const polysFrom = (g: { type: string; coordinates: unknown } | null | undefined): Poly[] =>
-    !g
-      ? []
-      : (g.type === 'Polygon' ? [g.coordinates as Position[][]] : g.type === 'MultiPolygon' ? (g.coordinates as Position[][][]) : [])
-          .map((q) => toPoly(q.map((r) => r.map(([x, y]) => [x, y] as XY))))
-          .filter((p): p is Poly => !!p)
+  //    ③ 도로중심선이 물을 건너는 구간을 둔치까지 도로 폭 띠로 → ④ 그래도 없는 곳은 도로 면이 물 면을 건너는 곳
   const roadBoxes0 = roads.map((p) => ({ p, b: bboxOf(p.outer) }))
   /** 도로 면 중 이 상자 안 조각과 poly의 겹침 */
   const roadsIn = (poly: Poly, margin = 2): Poly[] => {
@@ -741,7 +787,73 @@ export async function buildSiteModel(d: DiagramData, half: number, opts: { grid?
       deckSrc.push({ polys, name: `${names.join('·') || kind} (표준노드링크)`, kind, deck, length: null, height: null })
     }
   }
-  // ③ 도로 면이 물 면을 건너는 곳
+  // ③ 도로중심선(수치지도·브이월드 도로·표준노드링크)이 물을 건너는 구간 — 둔치(하천경계) 안까지 이어, 도로 폭 띠로
+  //    (2026-11-16 고침: 도로 면만 보면 다리 위는 도로경계 면이 없어 물 가운데 조각만 떠 있었음)
+  {
+    const wPolys = rivers.flatMap((r) => r.polys).map((p) => ({ p, b: bboxOf(p.outer) }))
+    const bPolys = banks.flatMap((b) => b.polys).map((p) => ({ p, b: bboxOf(p.outer) }))
+    const inSet = (q: XY, set: { p: Poly; b: [number, number, number, number] }[]) =>
+      set.some(({ p, b }) => q[0] >= b[0] && q[0] <= b[2] && q[1] >= b[1] && q[1] <= b[3] && polyHas(q, p))
+    const lineXY = (g: { type: string; coordinates: unknown }) =>
+      (g.type === 'LineString' ? [g.coordinates as Position[]] : g.type === 'MultiLineString' ? (g.coordinates as Position[][]) : []).map((c) => c.map(f))
+    const cls: { pts: XY[]; w: number }[] = [
+      ...(n ? n.centers.flatMap((c) => lineXY(c.geom).map((pts) => ({ pts, w: c.width && c.width > 3 ? c.width : c.lanes ? c.lanes * 3.25 + 2 : 12 }))) : []),
+      ...centers.map((c) => ({ pts: c.pts, w: c.width && c.width > 3 ? c.width : 12 })),
+      ...d.links.flatMap((l) => lineXY(l.geom).map((pts) => ({ pts, w: Math.max(10, (l.lanes ?? 2) * 3.25 * 2 + 2) }))),
+    ]
+    const allW = wPolys.length ? wPolys.map((x) => x.b).reduce((a, b) => [Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.max(a[2], b[2]), Math.max(a[3], b[3])] as [number, number, number, number]) : null
+    const ribbons: Poly[] = []
+    if (allW)
+      for (const cl of cls) {
+        for (const part of clipLine(cl.pts, half + 20)) {
+          const bb = bboxOf(part)
+          if (!boxHit(bb, allW)) continue
+          const q = densifyLine(part, 2)
+          if (q.length < 2) continue
+          const wet = q.map((pt) => inSet(pt, wPolys))
+          let i = 0
+          while (i < q.length) {
+            if (!wet[i]) {
+              i++
+              continue
+            }
+            let j = i
+            while (j + 1 < q.length && wet[j + 1]) j++
+            // 물 구간 [i, j] → 둔치 안이면 60m까지 늘리고 3m 더
+            let a = i
+            let b = j
+            for (let k = 0; k < 30 && a > 0 && (inSet(q[a - 1], bPolys) || inSet(q[a - 1], wPolys)); k++) a--
+            for (let k = 0; k < 30 && b + 1 < q.length && (inSet(q[b + 1], bPolys) || inSet(q[b + 1], wPolys)); k++) b++
+            a = Math.max(0, a - 2)
+            b = Math.min(q.length - 1, b + 2)
+            if (j - i >= 1) {
+              const seg = q.slice(a, b + 1)
+              const mid = seg[Math.floor(seg.length / 2)]
+              if (!coveredByDeck(mid)) {
+                const { left, right } = ribbon(seg, cl.w)
+                const rp = toPoly([[...left, ...[...right].reverse()]])
+                if (rp) ribbons.push(rp)
+              }
+            }
+            i = j + 1
+          }
+        }
+      }
+    if (ribbons.length) {
+      let merged = ribbons
+      try {
+        const u = ribbons.length > 1 ? union(featureCollection(ribbons.map(turfOf))) : null
+        if (u) merged = polysFrom(u.geometry)
+      } catch {
+        // 합치기에 실패하면 띠 그대로
+      }
+      for (const m of merged) {
+        const polys = clipPolys([m], half)
+        if (polys.length) deckSrc.push({ polys, name: '', kind: '도로교(자동: 도로가 물을 건넘)', deck: 'bridge', length: null, height: null })
+      }
+    }
+  }
+  // ④ 그래도 없는 곳: 도로 면이 물 면을 건너는 곳
   for (const w of rivers)
     for (const wp of w.polys)
       for (const cross of roadsIn(wp, 0)) {
@@ -916,7 +1028,12 @@ export async function buildSiteModel(d: DiagramData, half: number, opts: { grid?
   }
   // ── 15-E 나무
   const treeRes = buildTrees(d, f, ([x, y]) => utmkToWgs84(x + X0, y + Y0), half)
-  const trees = treeRes.trees
+  // 다리·고가 상판 위와 물 위 나무는 뺌 (직접 심은 나무는 그대로) — 2026-11-16: 다리 위에 가로수 규칙 나무가 줄지어 섰음
+  const waterBoxes = rivers.flatMap((r) => r.polys).map((p) => ({ p, b: bboxOf(p.outer) }))
+  const onWater = (x: number, y: number) => waterBoxes.some(({ p, b }) => x >= b[0] && x <= b[2] && y >= b[1] && y <= b[3] && polyHas([x, y], p))
+  const trees = treeRes.trees.filter((t) => t.src === 'user' || (!deckAt(decks, t.x, t.y) && !onWater(t.x, t.y)))
+  const treeCounts = { ...treeRes.counts }
+  for (const k of Object.keys(treeCounts) as TreeSrc[]) treeCounts[k] = trees.filter((t) => t.src === k).length
   // 도로 방향: 도로중심선(브이월드 + 1:1,000 수치지도) — 횡단보도 줄 방향, 쉘터·가로등이 보는 쪽
   const dirLines = [...centers.map((c) => c.pts), ...(n ? n.centers.flatMap((c) => linesOfGeom(c.geom)) : [])].flatMap((l) => clipLine(l, half + 50))
   const dirs = roadDirs(dirLines)
@@ -1139,7 +1256,7 @@ export async function buildSiteModel(d: DiagramData, half: number, opts: { grid?
     mapYear: n?.year ?? null,
     map1000: !!n?.sheets.some((sh) => sh.scale === 1000),
     trees,
-    treeInfo: { mix: treeRes.mix.name, local: treeRes.mix.local, counts: treeRes.counts, capped: treeRes.capped },
+    treeInfo: { mix: treeRes.mix.name, local: treeRes.mix.local, counts: treeCounts, capped: treeRes.capped },
     stops,
     lamps,
     crosswalks,
