@@ -1,7 +1,7 @@
 // 15-B 콘타 모형 → 라이노 .3dm (mm). 레이저 판 도면(판마다 레이어, 선 색: 외곽 자르기 분홍 · 구멍 자르기 빨강 · 새김 파랑)
 // + 재료 판 테두리 + 번호 붙은 3D 조립 안내(판을 두께만큼 쌓은 솔리드). 조립 모습은 원점(대지 중심), 재료 판은 그 오른쪽에 나란히.
 
-import { free, loadRhino, type ExportMeta } from './to3dm'
+import { free, loadRhino, yieldUi, type ExportMeta } from './to3dm'
 import { placedShapes, ROAD_T, type ContourPlan, type EngraveKind } from './contour'
 import type { XY } from './siteModel'
 
@@ -42,8 +42,13 @@ export function contourNotes(plan: ContourPlan, meta: ExportMeta, elev: number |
   ]
 }
 
-export async function contourTo3dm(plan: ContourPlan, meta: ExportMeta, elev: number | null, onStep?: (s: string) => void): Promise<Uint8Array> {
-  onStep?.('라이노 모듈 불러오는 중')
+export async function contourTo3dm(plan: ContourPlan, meta: ExportMeta, elev: number | null, onStep?: (s: string, frac?: number) => void): Promise<Uint8Array> {
+  // 단계마다 알리고 화면을 그릴 틈 (2026-11-16 진행도)
+  const step = async (label: string, frac: number) => {
+    onStep?.(label, frac)
+    await yieldUi()
+  }
+  await step('라이노 모듈 불러오는 중', 0.05)
   const rhino = await loadRhino()
   const doc = new rhino.File3dm()
   try {
@@ -110,7 +115,7 @@ export async function contourTo3dm(plan: ContourPlan, meta: ExportMeta, elev: nu
     const k = 1000 / plan.scale
 
     // ── 3D 조립 안내 (원점 = 대지 중심)
-    onStep?.('조립 모습')
+    await step('조립 모습', 0.2)
     for (const piece of plan.pieces) {
       const z0 = piece.kind === 'plate' ? (piece.plate - 1) * plan.thickness : piece.plate * plan.thickness
       const h = piece.kind === 'plate' ? plan.thickness : ROAD_T
@@ -144,7 +149,7 @@ export async function contourTo3dm(plan: ContourPlan, meta: ExportMeta, elev: nu
     dot('원점 (대지 중심)', [0, 0, plan.height + 5], 'info')
 
     // ── 재료 판 (조립 모습 오른쪽에 나란히)
-    onStep?.('재료 판 도면')
+    await step('재료 판 도면', 0.55)
     let x0 = plan.side / 2 + 200
     for (const g of plan.groups) {
       const label = g.material === 'plate' ? `판 재료 (우드락·폼보드 ${g.thickness}mm)` : `도로 조각 재료 (${g.thickness}mm)`
@@ -182,7 +187,7 @@ export async function contourTo3dm(plan: ContourPlan, meta: ExportMeta, elev: nu
       x0 += 200
     }
 
-    onStep?.('파일 쓰는 중')
+    await step('파일 쓰는 중', 0.9)
     return doc.toByteArray()
   } finally {
     free(doc)

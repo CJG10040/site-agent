@@ -109,8 +109,44 @@ export interface ExportMeta {
   collected: string
 }
 
-export async function siteModelTo3dm(m: SiteModel, meta: ExportMeta, onStep?: (s: string) => void, ro: RenderOptions = {}): Promise<Uint8Array> {
-  onStep?.('라이노 모듈 불러오는 중')
+/** 진행 알림: 단계 이름과 0~1 진행 비율 */
+export type ExportStep = (label: string, frac?: number) => void
+
+/**
+ * 화면이 다시 그려질 틈을 줌 (2026-11-16 사용자 요청: 내려받기 중 멈춘 건지 진행 중인지 모르겠음 —
+ * 만드는 동안 쉬지 않고 계산해 진행 글이 한 번도 안 바뀌었음). 탭이 가려져 그리기가 멈춰도 50ms면 넘어감
+ */
+export function yieldUi(): Promise<void> {
+  return new Promise((resolve) => {
+    let done = false
+    const go = () => {
+      if (done) return
+      done = true
+      resolve()
+    }
+    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => setTimeout(go, 0))
+    setTimeout(go, 50)
+  })
+}
+
+export async function siteModelTo3dm(m: SiteModel, meta: ExportMeta, onStep?: ExportStep, ro: RenderOptions = {}): Promise<Uint8Array> {
+  let curLabel = ''
+  let lastYield = performance.now()
+  /** 단계가 바뀔 때: 알리고 화면을 그리게 */
+  const step = async (label: string, frac: number) => {
+    curLabel = label
+    onStep?.(label, frac)
+    await yieldUi()
+    lastYield = performance.now()
+  }
+  /** 긴 반복 중간: 0.15초마다 한 번만 알리고 화면을 그리게 */
+  const tick = async (frac: number, detail: string) => {
+    if (performance.now() - lastYield < 150) return
+    onStep?.(`${curLabel} ${detail}`, frac)
+    await yieldUi()
+    lastYield = performance.now()
+  }
+  await step('라이노 모듈 불러오는 중', 0.02)
   const rhino = await loadRhino()
   const style = ro.materials ?? 'none'
   const mats = materialSet(style)
@@ -407,7 +443,7 @@ export async function siteModelTo3dm(m: SiteModel, meta: ExportMeta, onStep?: (s
     }
 
     // ── 지형 면
-    onStep?.('지형 면')
+    await step('지형 면', 0.06)
     const t = m.terrain
     if (t) {
       const mesh = new rhino.Mesh()
@@ -447,7 +483,7 @@ export async function siteModelTo3dm(m: SiteModel, meta: ExportMeta, onStep?: (s
       )
 
     // ── 건물 (15-D: 경사 지붕은 지붕에 맞춘 벽 메시 + 지붕 면, 평지붕은 돌출 + 파라펫)
-    onStep?.('건물')
+    await step('건물', 0.15)
     const addTris = (mb: MB, tris: number[]) => {
       for (let i = 0; i + 8 < tris.length; i += 9) {
         const a = mb.vs.add(tris[i], tris[i + 1], tris[i + 2])
@@ -461,7 +497,9 @@ export async function siteModelTo3dm(m: SiteModel, meta: ExportMeta, onStep?: (s
     const parapetMb = newMesh()
     const parapetSiteMb = newMesh()
     let pitched = 0
+    let bi = 0
     for (const b of m.buildings) {
+      if (++bi % 50 === 0) await tick(0.15 + (0.27 * bi) / m.buildings.length, `${bi.toLocaleString('ko-KR')}/${m.buildings.length.toLocaleString('ko-KR')}동`)
       const key = b.top === null ? 'bldgUnknown' : b.onSite ? 'bldgSite' : 'bldgAround'
       const label = [b.name, b.floors ? `${b.floors}층` : '층수 모름'].filter(Boolean).join(' ')
       const user: Record<string, string> = { 층수: b.floors ? String(b.floors) : '모름' }
@@ -561,7 +599,7 @@ export async function siteModelTo3dm(m: SiteModel, meta: ExportMeta, onStep?: (s
     for (const p of m.minor) addPolyline(draped(p.outer, true, 0.05), 'bldgMinor', '지붕 구조물·가건물')
 
     // ── 도로·필지·공원·하천·대지
-    onStep?.('도로·필지')
+    await step('도로·필지·하천', 0.42)
     // 도로 면은 매끈하게 다듬은 땅 위 (groundShape.ts), 다리·고가 위 조각은 그 상판 높이로
     drapedMesh(m.roads, 'roadSurf', '도로 면', 0.08)
     // 고가 밑도 도로 (상판 위 도로 면과 따로)
@@ -600,6 +638,7 @@ export async function siteModelTo3dm(m: SiteModel, meta: ExportMeta, onStep?: (s
     }
     Z = m.zAt
     // 다리·고가: 상판·교각 + 난간
+    if (m.decks.length) await step('다리·고가', 0.52)
     for (const d of m.decks) {
       const g = deckTris(d, m.zAt)
       const label = [d.name, d.sub].filter(Boolean).join(' ')
@@ -618,7 +657,7 @@ export async function siteModelTo3dm(m: SiteModel, meta: ExportMeta, onStep?: (s
     }
 
     // ── 1:1,000 수치지도·정밀도로지도 디테일 (15-F)
-    if (m.crosswalks.length || m.marks.length || m.hdPaths.length || m.lanes.length || m.trees.length || m.fences.length || m.stops.length || m.lamps.length || m.curbs.length) onStep?.('디테일 (나무·차선·횡단보도 등)')
+    if (m.crosswalks.length || m.marks.length || m.hdPaths.length || m.lanes.length || m.trees.length || m.fences.length || m.stops.length || m.lamps.length || m.curbs.length) await step('디테일 (차선·횡단보도·연석 등)', 0.56)
     // 도로 위 디테일은 다리·고가 위면 상판 높이로
     Z = m.roadAt
     addRaised(m.hdPaths, 'hdPath', '보도 면 (15cm 단차)', WALK_EDGE)
@@ -702,6 +741,7 @@ export async function siteModelTo3dm(m: SiteModel, meta: ExportMeta, onStep?: (s
     }
     // 15-E 나무: 모양 3가지(원뿔형·넓은형·둥근형)를 높이 10m 블록으로 정의하고, 나무마다 그 블록을 (위치, h/10배)로 놓음
     if (m.trees.length) {
+      await step('나무', 0.66)
       const blockIds = new Map<TreeShape, string>()
       for (const shape of ['cone', 'broad', 'round'] as TreeShape[]) {
         if (!m.trees.some((t) => t.shape === shape)) continue
@@ -728,7 +768,9 @@ export async function siteModelTo3dm(m: SiteModel, meta: ExportMeta, onStep?: (s
         }
       }
       const layerOf: Record<TreeSrc, string> = { map: 'treeMap', street: 'treeStreet', park: 'treePark', user: 'treeUser' }
+      let ti = 0
       for (const t of m.trees) {
+        if (++ti % 200 === 0) await tick(0.66 + (0.18 * ti) / m.trees.length, `${ti.toLocaleString('ko-KR')}/${m.trees.length.toLocaleString('ko-KR')}그루`)
         const id = blockIds.get(t.shape)
         if (!id) continue
         const sc = rhino.Transform.scale([0, 0, 0], t.h / 10)
@@ -746,6 +788,7 @@ export async function siteModelTo3dm(m: SiteModel, meta: ExportMeta, onStep?: (s
       }
     }
     // 정류장 쉘터: 지붕판·뒤 기둥·의자·표지(stop) + 뒷벽·옆벽 유리(stopGlass), 열린 쪽이 도로를 봄 + 이름 점
+    if (m.stops.length || m.lamps.length || m.poles.length || m.signals.length || m.signs.length || m.barriers.length || m.bumps.length) await step('정류장·가로등·신호등·표지판', 0.85)
     const addBoxes = (mb: MB, boxes: ReturnType<typeof shelterBoxes>, ground: number) => {
       for (const b of boxes) {
         const { v, f } = boxMesh(b, ground)
@@ -836,9 +879,12 @@ export async function siteModelTo3dm(m: SiteModel, meta: ExportMeta, onStep?: (s
     // ── 렌더 재질 무늬 이미지를 파일 안에 넣음 (쓴 재질 것만). 라이노가 열 때 '파일이름_embedded_files' 폴더로 풀어 씀
     if (mats) {
       const used = texturesOf(mats, [...matIdx.keys()].filter((id) => id !== 'aerial'))
-      if (used.length) onStep?.('재질 무늬 그리는 중')
+      if (used.length) await step('재질 무늬 그리는 중', 0.88)
       const files = new Map<string, Uint8Array>()
-      for (const t of used) files.set(TEX_FILE[t], await textureJpeg(t))
+      for (let ti2 = 0; ti2 < used.length; ti2++) {
+        if (ti2) await step(`재질 무늬 그리는 중 ${ti2 + 1}/${used.length}`, 0.88 + (0.05 * ti2) / used.length)
+        files.set(TEX_FILE[used[ti2]], await textureJpeg(used[ti2]))
+      }
       if (aerial && matIdx.has('aerial')) files.set(aerial.file, aerial.bytes)
       for (const [file, bytes] of files) {
         const ef = rhino.EmbeddedFile.fromByteArray(bytes as unknown as string)
@@ -853,7 +899,7 @@ export async function siteModelTo3dm(m: SiteModel, meta: ExportMeta, onStep?: (s
       for (const [k, v] of RENDER_HELP) strings.set(`렌더: ${k}`, v)
     }
 
-    onStep?.('파일 쓰는 중')
+    await step('파일 쓰는 중 — 라이노 모듈이 한 번에 써서 화면이 잠시 멈출 수 있음', 0.93)
     return doc.toByteArray()
   } catch (e) {
     // wasm 메모리를 넘으면 Aborted() — 모듈이 죽으니 다음엔 새로 불러오고, 알아듣게 (2026-11-16: 1,000m 범위 자세히 + 무늬 재질에서 확인)

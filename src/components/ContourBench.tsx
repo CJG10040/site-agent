@@ -91,6 +91,7 @@ export default function ContourBench({ data, baseName, meta, settings, onSetting
   const [err, setErr] = useState<string | null>(null)
   const [view, setView] = useState<'3d' | 'sheets'>('3d')
   const [busy, setBusy] = useState<string | null>(null)
+  const [frac, setFrac] = useState<number | null>(null)
   const [msg, setMsg] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
 
   // 범위가 바뀌면 대지 모형(지형·도로·건물)을 다시
@@ -153,7 +154,10 @@ export default function ContourBench({ data, baseName, meta, settings, onSetting
     setMsg(null)
     try {
       const { contourTo3dm } = await import('../export/contour3dm')
-      const bytes = await contourTo3dm(plan, meta, model?.origin.elev ?? null, (x) => setBusy(x))
+      const bytes = await contourTo3dm(plan, meta, model?.origin.elev ?? null, (x, f) => {
+        setBusy(x)
+        if (f !== undefined) setFrac(f)
+      })
       downloadBlob(`${baseName}_콘타_1-${plan.scale}_${plan.thickness}mm.3dm`, new Blob([bytes as BlobPart], { type: 'application/octet-stream' }))
       onExported?.()
       setMsg({ kind: 'ok', text: `콘타 모형 라이노 파일을 내려받았습니다 — ${fmt(bytes.length / 1e6, 1)}MB (단위 mm).` })
@@ -161,6 +165,7 @@ export default function ContourBench({ data, baseName, meta, settings, onSetting
       setMsg({ kind: 'error', text: `만들지 못했습니다: ${e instanceof Error ? e.message : String(e)}` })
     } finally {
       setBusy(null)
+      setFrac(null)
     }
   }
 
@@ -305,7 +310,7 @@ export default function ContourBench({ data, baseName, meta, settings, onSetting
 
         <section className="workbench-actions">
           <button type="button" className="btn primary" disabled={!plan || !!busy} onClick={() => void download()}>
-            {busy ? `만드는 중… ${busy}` : '라이노 .3dm 내려받기 (판 도면 + 조립 안내)'}
+            {busy ? `만드는 중… ${busy}${frac !== null ? ` ${Math.round(frac * 100)}%` : ''}` : '라이노 .3dm 내려받기 (판 도면 + 조립 안내)'}
           </button>
           {msg && <p className={`notice ${msg.kind === 'error' ? 'error' : 'ok'}`}>{msg.text}</p>}
           <p className="muted small">

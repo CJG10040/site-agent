@@ -52,6 +52,25 @@ export default function ModelWorkbench({ data, baseName, meta, halfOptions, init
   const [showPreview, setShowPreview] = useState(true)
   const [previewInfo, setPreviewInfo] = useState<{ triangles: number; ms: number } | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
+  // 진행도 (2026-11-16 사용자 요청: 내려받기 중 멈춘 건지 진행 중인지 모르겠음): 0~1, 모르면 null
+  const [frac, setFrac] = useState<number | null>(null)
+  const [startedAt, setStartedAt] = useState<number | null>(null)
+  const [, setNow] = useState(0)
+  useEffect(() => {
+    if (!busy) return
+    const id = window.setInterval(() => setNow(Date.now()), 500)
+    return () => window.clearInterval(id)
+  }, [busy])
+  const begin = (label: string) => {
+    setBusy(label)
+    setFrac(0)
+    setStartedAt(Date.now())
+  }
+  const finish = () => {
+    setBusy(null)
+    setFrac(null)
+    setStartedAt(null)
+  }
   const [msg, setMsg] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
 
   // Esc로 닫기, 열려 있는 동안 뒤 화면이 스크롤되지 않게 (떠 있는 창일 때만)
@@ -131,20 +150,35 @@ export default function ModelWorkbench({ data, baseName, meta, halfOptions, init
     if (aerialRef.current?.sig === sig && aerialRef.current.tex) return aerialRef.current.tex
     setBusy('항공사진 타일 받는 중')
     const { aerialForModel } = await import('../export/aerialTexture')
-    const tex = await aerialForModel(m, vworldKey, (s) => setBusy(s))
+    // 항공사진은 전체의 앞 20%
+    const tex = await aerialForModel(m, vworldKey, (s) => {
+      setBusy(s)
+      const t = /(\d+)\/(\d+)/.exec(s)
+      if (t) setFrac((0.2 * Number(t[1])) / Number(t[2]))
+    })
     aerialRef.current = { sig, tex }
     return tex
   }
 
   const download3dm = async () => {
     if (!shown) return
-    setBusy('라이노 모듈 불러오는 중')
+    begin('라이노 모듈 불러오는 중')
     setMsg(null)
     try {
       const t0 = performance.now()
       const aerial = await getAerial(shown)
       const { siteModelTo3dm } = await import('../export/to3dm')
-      const bytes = await siteModelTo3dm(shown, meta, (s) => setBusy(s), { materials: material, aerial })
+      const base = aerialOn ? 0.2 : 0
+      const bytes = await siteModelTo3dm(
+        shown,
+        meta,
+        (s, f) => {
+          setBusy(s)
+          if (f !== undefined) setFrac(base + (1 - base) * f)
+        },
+        { materials: material, aerial },
+      )
+      setFrac(1)
       downloadBlob(`${name}.3dm`, new Blob([bytes as BlobPart], { type: 'application/octet-stream' }))
       onExported?.()
       const miss = aerialOn && !aerial ? ' 항공사진은 받지 못해 땅 재질로 넣었습니다(키·연결 확인).' : ''
@@ -152,13 +186,14 @@ export default function ModelWorkbench({ data, baseName, meta, halfOptions, init
     } catch (e) {
       setMsg({ kind: 'error', text: `만들지 못했습니다: ${e instanceof Error ? e.message : String(e)}` })
     } finally {
-      setBusy(null)
+      finish()
     }
   }
   /** 무늬 이미지만 따로 (D5에서 .3dm을 바로 불러와 무늬가 안 보일 때 .3dm 옆에 풀기) */
   const downloadTextures = async () => {
     if (!shown) return
-    setBusy('재질 무늬 그리는 중')
+    begin('재질 무늬 그리는 중')
+    setFrac(null)
     setMsg(null)
     try {
       const aerial = await getAerial(shown)
@@ -184,7 +219,7 @@ export default function ModelWorkbench({ data, baseName, meta, halfOptions, init
     } catch (e) {
       setMsg({ kind: 'error', text: `무늬 이미지를 만들지 못했습니다: ${e instanceof Error ? e.message : String(e)}` })
     } finally {
-      setBusy(null)
+      finish()
     }
   }
   const downloadDxf = () => {
@@ -347,8 +382,21 @@ export default function ModelWorkbench({ data, baseName, meta, halfOptions, init
 
             <section className="workbench-actions">
               <button type="button" className="btn primary" disabled={!shown || !!busy} onClick={() => void download3dm()}>
-                {busy ? `만드는 중… ${busy}` : '라이노 .3dm 내려받기'}
+                {busy ? `만드는 중…${frac !== null ? ` ${Math.round(frac * 100)}%` : ''}` : '라이노 .3dm 내려받기'}
               </button>
+              {busy && (
+                <div className="export-progress" role="status" aria-live="polite">
+                  <div className={`export-bar${frac === null ? ' indeterminate' : ''}`} role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={frac === null ? undefined : Math.round(frac * 100)}>
+                    <span style={frac === null ? undefined : { width: `${Math.max(2, Math.round(frac * 100))}%` }} />
+                  </div>
+                  <p className="small">
+                    {busy}
+                    {frac !== null && <strong> · {Math.round(frac * 100)}%</strong>}
+                    {startedAt !== null && <span className="muted"> · {Math.floor((Date.now() - startedAt) / 1000)}초 지남</span>}
+                  </p>
+                  <p className="muted small">범위가 넓거나 '자세히'면 1분 넘게 걸릴 수 있습니다. 막대 위 빛이 움직이면 진행 중입니다 — 마지막 '파일 쓰는 중'은 숫자가 멈춰도 빛은 움직입니다.</p>
+                </div>
+              )}
               {withTextures && (
                 <button type="button" className="btn small" disabled={!shown || !!busy} onClick={() => void downloadTextures()}>
                   무늬 이미지 따로 받기 (ZIP)

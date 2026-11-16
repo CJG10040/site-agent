@@ -5042,3 +5042,48 @@ dl {
 .render-help li {
   margin: 0.3em 0;
 }
+
+/* 내려받기 진행도 (2026-11-16) */
+.export-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.export-progress p {
+  margin: 0;
+}
+.export-bar {
+  position: relative;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--border);
+  overflow: hidden;
+}
+.export-bar > span {
+  display: block;
+  height: 100%;
+  background: var(--accent, #d9480f);
+  border-radius: 4px;
+}
+.export-bar::after {
+  /* 화면 계산이 멈춰도(파일 쓰기) 움직이는 빛 — transform 움직임은 그리기 스레드에서 돌아감 */
+  content: '';
+  position: absolute;
+  inset: 0;
+  width: 25%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55), transparent);
+  animation: export-slide 1.4s linear infinite;
+  will-change: transform;
+}
+.export-bar.indeterminate > span {
+  width: 30%;
+  animation: export-slide 1.2s ease-in-out infinite;
+}
+@keyframes export-slide {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(340%);
+  }
+}
