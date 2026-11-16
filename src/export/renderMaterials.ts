@@ -34,7 +34,6 @@ export type MatId =
   | 'facade'
   | 'facadeSite'
   | 'roof'
-  | 'parapet'
   | 'water'
   | 'glass'
   | 'metal'
@@ -81,7 +80,6 @@ const NAME: Record<MatId, string> = {
   facade: 'SA_Facade (주변 건물 외벽)',
   facadeSite: 'SA_Facade_Site (대지 안 기존 건물)',
   roof: 'SA_Roof (경사 지붕)',
-  parapet: 'SA_Parapet (파라펫)',
   water: 'SA_Water (하천)',
   glass: 'SA_Glass (유리)',
   metal: 'SA_Metal (가로등·지주·방호시설)',
@@ -112,7 +110,6 @@ const REAL: Record<MatId, Omit<MatDef, 'name'>> = {
   facade: { base: [214, 210, 202], rough: 0.7, tile: 3 },
   facadeSite: { base: [226, 200, 190], rough: 0.7, tile: 3 },
   roof: { base: [98, 100, 106], rough: 0.5, metal: 0.3, tile: 3 },
-  parapet: { base: [200, 198, 192], rough: 0.8, tex: 'concrete', tile: 3 },
   water: { base: [52, 86, 100], rough: 0.05, tile: 8 },
   glass: { base: [190, 214, 224], rough: 0.05, opacity: 0.35 },
   metal: { base: [150, 152, 155], rough: 0.4, metal: 1 },
@@ -143,7 +140,6 @@ const WHITE: Record<MatId, Omit<MatDef, 'name'>> = {
   facade: { base: [240, 238, 234], rough: 0.85 },
   facadeSite: { base: [242, 226, 220], rough: 0.85 },
   roof: { base: [232, 230, 226], rough: 0.85 },
-  parapet: { base: [240, 238, 234], rough: 0.85 },
   water: { base: [196, 212, 220], rough: 0.15 },
   glass: { base: [230, 238, 242], rough: 0.05, opacity: 0.4 },
   metal: { base: [210, 210, 208], rough: 0.8 },
@@ -176,7 +172,8 @@ export const LAYER_MAT: Partial<Record<string, MatId>> = {
   bldgAround: 'facade',
   bldgSite: 'facadeSite',
   roofPitched: 'roof',
-  parapet: 'parapet',
+  // 파라펫은 건물 매스와 같은 재질 (2026-11-16 사용자 지적: 매스와 다르게 보임) — 대지 안 건물 것은 물체 재질로 facadeSite
+  parapet: 'facade',
   mesh: 'ground',
   wall: 'retaining',
   roadSurf: 'asphalt',

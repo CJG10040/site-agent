@@ -38,7 +38,7 @@ const LAYERS: LayerDef[] = [
   { key: 'bldgUnknown', name: '층수 모름 (발자국만)', color: [190, 190, 190], parent: 'bldg' },
   { key: 'bldgMinor', name: '지붕 구조물·가건물 (수치지도, 발자국)', color: [200, 190, 170], parent: 'bldg' },
   { key: 'roofPitched', name: '경사 지붕 (박공 25°·금속 8°, 건축물대장 지붕 구조 또는 규칙)', color: [160, 100, 80], parent: 'bldg' },
-  { key: 'parapet', name: '파라펫 (평지붕 테두리, 높이 1m·두께 20cm 어림)', color: [205, 200, 192], parent: 'bldg' },
+  { key: 'parapet', name: '파라펫 (평지붕 테두리, 높이 1m·두께 20cm 어림 — 건물과 같은 색·재질)', color: [150, 150, 150], parent: 'bldg' },
   { key: 'terrain', name: '지형', color: [150, 120, 90] },
   { key: 'mesh', name: '지형 면', color: [215, 205, 185], parent: 'terrain' },
   { key: 'contour', name: '등고선', color: [176, 130, 90], parent: 'terrain' },
@@ -446,7 +446,9 @@ export async function siteModelTo3dm(m: SiteModel, meta: ExportMeta, onStep?: (s
       }
     }
     const roofMb = newMesh()
+    // 파라펫: 건물 매스와 같은 색·재질 (주변 건물 / 대지 안 건물을 따로 모음)
     const parapetMb = newMesh()
+    const parapetSiteMb = newMesh()
     let pitched = 0
     for (const b of m.buildings) {
       const key = b.top === null ? 'bldgUnknown' : b.onSite ? 'bldgSite' : 'bldgAround'
@@ -472,7 +474,7 @@ export async function siteModelTo3dm(m: SiteModel, meta: ExportMeta, onStep?: (s
             continue
           }
         }
-        if (b.roof) addTris(parapetMb, parapetGeometry(p, b.top))
+        if (b.roof) addTris(b.onSite ? parapetSiteMb : parapetMb, parapetGeometry(p, b.top))
         const outer = new rhino.PolylineCurve(ring(p.outer))
         const ex = rhino.Extrusion.create(outer, b.top - b.base, true)
         free(outer)
@@ -493,6 +495,7 @@ export async function siteModelTo3dm(m: SiteModel, meta: ExportMeta, onStep?: (s
     }
     addMeshObj(roofMb, 'roofPitched', `경사 지붕 ${pitched}동`)
     addMeshObj(parapetMb, 'parapet', '파라펫')
+    addMeshObj(parapetSiteMb, 'parapet', '파라펫 (대지 안 건물)', {}, [230, 150, 150], 'facadeSite')
 
     // ── 수치지도: 원본 등고선·표고점·옹벽·절성토·지붕 구조물
     for (const c of m.mapContours) addPolyline(c.pts.map(([x, y]) => [x, y, c.z]), 'mapContour', `해발 ${c.level}m`, { 해발: String(c.level), 구분: c.major ? '계곡선' : '주곡선' })
