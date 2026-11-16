@@ -69,6 +69,27 @@ function boxBlur(src: Float32Array, W: number, H: number, rad: number): Float32A
   return out
 }
 
+/** 가로·세로 상자 안 최솟값(mode 1) 또는 최댓값(mode -1) */
+function rankFilter(src: Float32Array, W: number, H: number, rad: number, mode: 1 | -1): Float32Array {
+  const tmp = new Float32Array(W * H)
+  const out = new Float32Array(W * H)
+  const pick = mode === 1 ? Math.min : Math.max
+  const init = mode === 1 ? Infinity : -Infinity
+  for (let r = 0; r < H; r++)
+    for (let c = 0; c < W; c++) {
+      let m = init
+      for (let k = Math.max(0, c - rad); k <= Math.min(W - 1, c + rad); k++) m = pick(m, src[r * W + k])
+      tmp[r * W + c] = m
+    }
+  for (let c = 0; c < W; c++)
+    for (let r = 0; r < H; r++) {
+      let m = init
+      for (let k = Math.max(0, r - rad); k <= Math.min(H - 1, r + rad); k++) m = pick(m, tmp[k * W + c])
+      out[r * W + c] = m
+    }
+  return out
+}
+
 export function shapeGround(g: TerrainGrid, inp: ShapeInput): ShapeResult {
   const { X0, Y0, half } = inp
   const cell = g.cell
@@ -78,7 +99,8 @@ export function shapeGround(g: TerrainGrid, inp: ShapeInput): ShapeResult {
   const r1 = Math.min(g.ny - 1, Math.ceil((g.y0 - (Y0 - half - MARGIN)) / cell))
   const W = c1 - c0 + 1
   const H = r1 - r0 + 1
-  const none: ShapeResult = { grid: g, waterLevel: () => null, stats: { roadCells: 0, waterCells: 0, hdCells: 0, hdOffset: null } }
+  // 늘 사본 (모형 만들기에서 다리 밑을 파는 등 고쳐 써도 지형 캐시가 바뀌지 않게)
+  const none: ShapeResult = { grid: { ...g, z: g.z.slice() }, waterLevel: () => null, stats: { roadCells: 0, waterCells: 0, hdCells: 0, hdOffset: null } }
   if (W < 3 || H < 3) return none
   const N = W * H
   // 칸 가운데 (모형 좌표)
@@ -152,6 +174,68 @@ export function shapeGround(g: TerrainGrid, inp: ShapeInput): ShapeResult {
         for (let k = Math.max(0, r - rad); k <= Math.min(H - 1, r + rad); k++) m = Math.min(m, b[k * W + c])
         lo[r * W + c] = m
       }
+    // 하천 깊이 어림 (2026-11-16 사용자 결정): 수치지도에는 하천 바닥 높이가 없어(물 면 약 15만㎡ 안에 표고점 998개 중 7개)
+    // 물가 땅이 둑 높이에 가깝게 나와 도로와 물 높이 차가 1~2.5m뿐이었음(실제 도심 하천은 둑 위 도로가 물보다 4~6m 높음) → 다리 밑이 낮아 교각도 안 섰음.
+    // 물 높이를 '둑 마루(하천경계 바로 바깥 칸, 둔치 자료가 없으면 물가 칸)의 둘레 평균 - 깊이'보다 높지 않게:
+    // 깊이 = 1.5m + 물 폭 × 0.06 (물 폭 10m 2.1m · 30m 3.3m · 50m 이상 4.5m), 둔치 자료가 없으면 그 절반. 지금 물 높이보다 6m 넘게 낮추지는 않음
+    {
+      const mB0 = new Uint8Array(N)
+      if (inp.banks?.length) raster(inp.banks, mB0, 1)
+      const crest = new Float32Array(N).fill(Infinity)
+      let crestN = 0
+      for (let r = 0; r < H; r++)
+        for (let c = 0; c < W; c++) {
+          const i = r * W + c
+          if (mW[i] || mB0[i] || !Number.isFinite(Z0[i])) continue
+          if ((c > 0 && mB0[i - 1]) || (c + 1 < W && mB0[i + 1]) || (r > 0 && mB0[i - W]) || (r + 1 < H && mB0[i + W])) {
+            crest[i] = Z0[i]
+            crestN++
+          }
+        }
+      const hasBanks = crestN > 0
+      // 둑 마루 높이 = 60m 안 둑 마루 칸들의 평균 (가장 낮은 곳을 쓰면 둑 바깥 낮은 땅이 섞여 너무 깊어졌음)
+      const src = hasBanks ? crest : a
+      const cw = new Float32Array(N)
+      const cv = new Float32Array(N)
+      for (let i = 0; i < N; i++)
+        if (Number.isFinite(src[i])) {
+          cw[i] = 1
+          cv[i] = src[i]
+        }
+      const cr = Math.max(1, Math.round(30 / cell))
+      const cbw = boxBlur(boxBlur(cw, W, H, cr), W, H, cr)
+      const cbv = boxBlur(boxBlur(cv, W, H, cr), W, H, cr)
+      const crestMin = new Float32Array(N).fill(Infinity)
+      for (let i = 0; i < N; i++) if (cbw[i] > 1e-6) crestMin[i] = cbv[i] / cbw[i]
+      // 물 폭: 물 칸에서 물가까지 거리(칸, 3-4 거리 근사) → 30m 안 가장 큰 값 × 2
+      const dIn = new Float32Array(N)
+      for (let i = 0; i < N; i++) dIn[i] = mW[i] ? 1e9 : 0
+      for (let r = 0; r < H; r++)
+        for (let c = 0; c < W; c++) {
+          const i = r * W + c
+          if (!mW[i]) continue
+          let m = dIn[i]
+          if (c > 0) m = Math.min(m, dIn[i - 1] + 1)
+          if (r > 0) m = Math.min(m, dIn[i - W] + 1)
+          dIn[i] = m
+        }
+      for (let r = H - 1; r >= 0; r--)
+        for (let c = W - 1; c >= 0; c--) {
+          const i = r * W + c
+          if (!mW[i]) continue
+          let m = dIn[i]
+          if (c + 1 < W) m = Math.min(m, dIn[i + 1] + 1)
+          if (r + 1 < H) m = Math.min(m, dIn[i + W] + 1)
+          dIn[i] = m
+        }
+      const halfW = rankFilter(dIn, W, H, Math.max(1, Math.round(30 / cell)), -1)
+      for (let i = 0; i < N; i++) {
+        if (!mW[i] || !Number.isFinite(lo[i]) || !Number.isFinite(crestMin[i])) continue
+        const width = 2 * halfW[i] * cell
+        const depth = Math.min(4.5, 1.5 + 0.06 * width) * (hasBanks ? 1 : 0.5)
+        lo[i] = Math.max(lo[i] - 6, Math.min(lo[i], crestMin[i] - depth))
+      }
+    }
     // 하천을 따라 고르게 (물 칸끼리만 평균)
     const w = new Float32Array(N)
     const v = new Float32Array(N)

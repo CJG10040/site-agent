@@ -928,8 +928,6 @@ export async function buildSiteModel(d: DiagramData, half: number, opts: { grid?
     : null
   const sg = shaped?.grid ?? null
   const zAt = sg ? makeZAt(sg, X0, Y0, z0) : () => 0
-  const terrain = sg ? terrainSubset(sg, X0, Y0, z0, half) : null
-  const { step, lines } = terrain ? contourLinesOf(terrain) : { step: 1, lines: [] }
   const waterAt = (x: number, y: number): number | null => {
     const l = shaped?.waterLevel(x, y)
     return l === null || l === undefined ? null : l - z0
@@ -944,6 +942,28 @@ export async function buildSiteModel(d: DiagramData, half: number, opts: { grid?
     waterAt,
     half,
   })
+  // 다리 밑 땅은 상판 밑에서 1m 아래까지 파냄 — 2026-11-16: 동림교처럼 물 면 자료가 없거나 하천 바닥이 등고선으로 메워진 곳은
+  // 다리 밑 땅이 상판보다 높아(최대 7m) 상판이 땅에 묻혔음. 고가 밑은 그대로(밑에 도로)
+  if (sg)
+    for (const dk of decks) {
+      if (dk.kind !== 'bridge') continue
+      const [bx0, by0, bx1, by1] = dk.bbox
+      const c0 = Math.max(0, Math.floor((bx0 + X0 - sg.x0) / sg.cell))
+      const c1 = Math.min(sg.nx - 1, Math.ceil((bx1 + X0 - sg.x0) / sg.cell))
+      const r0 = Math.max(0, Math.floor((sg.y0 - (by1 + Y0)) / sg.cell))
+      const r1 = Math.min(sg.ny - 1, Math.ceil((sg.y0 - (by0 + Y0)) / sg.cell))
+      for (let r = r0; r <= r1; r++)
+        for (let c = c0; c <= c1; c++) {
+          const x = sg.x0 + (c + 0.5) * sg.cell - X0
+          const y = sg.y0 - (r + 0.5) * sg.cell - Y0
+          if (!dk.polys.some((q) => polyHas([x, y], q))) continue
+          const k = r * sg.nx + c
+          const cap = dk.zTop(x, y) - dk.thick - 1 + z0
+          if (Number.isFinite(sg.z[k]) && sg.z[k] > cap) sg.z[k] = cap
+        }
+    }
+  const terrain = sg ? terrainSubset(sg, X0, Y0, z0, half) : null
+  const { step, lines } = terrain ? contourLinesOf(terrain) : { step: 1, lines: [] }
   const roadAt = (x: number, y: number): number => {
     const dk = deckAt(decks, x, y)
     return dk ? dk.zTop(x, y) : zAt(x, y)
@@ -1346,7 +1366,7 @@ export function modelNotes(m: SiteModel, meta: { title: string; address: string;
     ],
     [
       '하천',
-      `물 면 ${m.rivers.length}곳(평평하게 고른 물 높이, 물 밑 땅은 0.6m 파냄)${m.banks.length ? `, 둔치 ${m.banks.length}곳(하천경계 — 물 면 아래)` : ''} — 수치지도가 있으면 그 도엽 안 브이월드 하천은 뺌`,
+      `물 면 ${m.rivers.length}곳 — 수치지도에 하천 바닥 높이가 없어 물 높이는 어림: 물가 땅과 '둑 마루 평균 - 깊이(물 폭 10m 2.1m ~ 50m 이상 4.5m)' 중 낮은 쪽, 물 밑 땅은 0.6m 파냄${m.banks.length ? `, 둔치 ${m.banks.length}곳(하천경계 — 물가에서 둑 쪽으로 30% 비탈)` : ''}, 다리 밑 땅은 상판 밑 1m 아래까지. 수치지도가 있으면 그 도엽 안 브이월드 하천은 뺌`,
     ],
     ...(m.decks.length
       ? ([

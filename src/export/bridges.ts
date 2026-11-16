@@ -292,7 +292,28 @@ export function buildDecks(src: DeckSrc[], zAt: (x: number, y: number) => number
       s.length,
     )
     if (!ax || ax.L < 1) continue
-    const { c, u, v, L, W } = ax
+    let { u, v, L, W } = ax
+    const { c } = ax
+    // 다리 축: 양 끝 너머가 도로인 쪽이 건너는 방향 — 2026-11-16 고침: 광천1교는 바닥 모양이 길이(65m)보다 폭(82m)이 넓어
+    // 하천을 따라가는 쪽을 축으로 잡아 교각·난간 방향이 틀렸음
+    if (s.deck === 'bridge' && opts.onRoad) {
+      const ends = (uu: XY, vv: XY, LL: number, WW: number) => {
+        let n = 0
+        for (const sg of [-1, 1])
+          for (const t of [-0.5, 0, 0.5])
+            for (const e of [3, 8]) {
+              const x = c[0] + uu[0] * sg * (LL + e) + vv[0] * t * WW
+              const y = c[1] + uu[1] * sg * (LL + e) + vv[1] * t * WW
+              if (!s.polys.some((q) => inPoly([x, y], q)) && opts.onRoad!(x, y)) n++
+            }
+        return n
+      }
+      if (ends(v, u, W, L) > ends(u, v, L, W)) {
+        // 새 u = 옛 v, 새 v = 새 u를 왼쪽으로 90° 돌린 것 = -옛 u
+        ;[u, v] = [v, [-u[0], -u[1]] as XY]
+        ;[L, W] = [W, L]
+      }
+    }
     const at = (s2: number, t: number): XY => [c[0] + u[0] * s2 + v[0] * t, c[1] + u[1] * s2 + v[1] * t]
     const sOf = (x: number, y: number) => (x - c[0]) * u[0] + (y - c[1]) * u[1]
     const inside = (x: number, y: number) => s.polys.some((p) => inPoly([x, y], p))
@@ -403,13 +424,14 @@ export function buildDecks(src: DeckSrc[], zAt: (x: number, y: number) => number
     const th = /보도/.test(s.kind) ? 0.3 : 0.6
     for (const p of kind === 'bridge' ? [null] : s.polys) {
       const pa = p ? axisOf(p.outer, null) : { c, u, v, L, W }
-      if (!pa || 2 * pa.L <= d.span * 1.2) continue
-      const n = Math.round((2 * pa.L) / d.span)
+      // 다리는 20m 넘으면 항상(2026-11-16: 다리 밑이 낮게 나와 교각이 하나도 없던 다리가 많았음), 고가는 경간 1.2배 넘을 때
+      if (!pa || (kind === 'bridge' ? 2 * pa.L < 20 : 2 * pa.L <= d.span * 1.2)) continue
+      const n = Math.max(2, Math.round((2 * pa.L) / d.span))
       for (let i = 1; i < n; i++) {
         const sp = -pa.L + (i * 2 * pa.L) / n
         const pc: XY = [pa.c[0] + pa.u[0] * sp, pa.c[1] + pa.u[1] * sp]
         if (p && !inPoly(pc, p)) continue
-        if (zTop(pc[0], pc[1]) - d.thick - zAt(pc[0], pc[1]) > 1.5) piers.push({ c: pc, along: pa.u, half: kind === 'overpass' ? Math.min(pa.W * 0.5, 4) : pa.W * 0.75, th })
+        if (zTop(pc[0], pc[1]) - d.thick - zAt(pc[0], pc[1]) > (kind === 'bridge' ? 0.5 : 1.5)) piers.push({ c: pc, along: pa.u, half: kind === 'overpass' ? Math.min(pa.W * 0.5, 4) : pa.W * 0.75, th })
       }
     }
     // 난간: 조각의 긴 축과 나란한 바깥 변 — 바깥 3m가 1.5m 넘게 낮거나 도로가 아닌 곳 (다리 끝에서 옆길로 이어지는 곳은 막지 않음)
