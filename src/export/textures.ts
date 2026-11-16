@@ -168,16 +168,22 @@ function grass(seed: number): ImageData {
   })
 }
 
-/** 땅: 흙과 풀이 섞인 바닥 (한 장 8m, 항공사진을 안 입힐 때 지형 면) */
+/**
+ * 땅: 회색 맨땅·다진 포장 (한 장 6m, 항공사진을 안 입힐 때 지형 면).
+ * 2026-11-16 사용자 결정: 흙·풀 섞인 초록빛은 공원·녹지 잔디와 구분이 안 됨 → 회색 맨땅. 아스팔트보다 밝고 콘크리트보다 어둡고 거칠게
+ */
 function ground(seed: number): ImageData {
   const rand = mulberry32(seed)
-  const mask = fbm(rand, 3, 4)
-  const fine = fbm(rand, 96, 2)
-  const dot = mulberry32(seed + 4)
+  const big = fbm(rand, 4, 3)
+  const mid = fbm(rand, 40, 2)
+  const grit = fbm(rand, 256, 1)
+  const stone = mulberry32(seed + 4)
   return paint((x, y) => {
-    const m = smooth(0.32, 0.72, mask(x, y))
-    const k = 0.86 + 0.2 * fine(x, y) + (dot() - 0.5) * 0.1
-    return [(110 + (94 - 110) * m) * k, (102 + (108 - 102) * m) * k, (80 + (64 - 80) * m) * k]
+    let k = 1 + 0.1 * (big(x, y) - 0.5) * 2 + 0.06 * (mid(x, y) - 0.5) * 2 + 0.07 * (grit(x, y) - 0.5) * 2
+    const s = stone()
+    if (s < 0.025) k += 0.1 + stone() * 0.1
+    else if (s < 0.045) k -= 0.12
+    return [148 * k, 144 * k, 136 * k]
   })
 }
 
