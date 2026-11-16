@@ -8,7 +8,7 @@ import { bboxClip, difference, featureCollection, intersect, polygon as turfPoly
 import { contours } from 'd3-contour'
 import earcut from 'earcut'
 import type { Position } from 'geojson'
-import { bldHeight, inNgii, type DiagramData } from '../diagrams/data'
+import { inNgii, type DiagramData } from '../diagrams/data'
 import type { Areal } from '../lib/geo'
 import { utmkToWgs84, wgs84To5186, wgs84ToUtmk } from '../lib/proj'
 import { buildTrees, MIX_SOURCE, type ModelTree, type TreeSrc } from './trees'
@@ -20,6 +20,7 @@ import type { RoofTitle } from '../sources/buildingRegister'
 import { pitchedFits, roofKindOf, ruleRoof, type ModelRoof } from './roofs'
 import { buildDecks, deckAt, inPoly as polyHas, roadAtFn, type Deck, type DeckSrc } from './bridges'
 import { shapeGround } from './groundShape'
+import { DIM_DEFS, dimsOf, modelBldHeight, TREE_DIM, type ModelDims } from './modelDims'
 import { groundZ, waterAtFn, type GroundData, type WaterData } from './samplers'
 
 export type XY = [number, number]
@@ -155,6 +156,8 @@ export interface SiteModel {
   waterAt: (x: number, y: number) => number | null
   /** 하천 깊이 강조 (0 = 자료 그대로 ~ 1 = 처음 어림 ~ 1.5) */
   riverDepth: number
+  /** 어림 치수 (modelDims.ts) — 라이노 파일·미리보기가 시설 크기·차선 폭 등을 이것으로 그림 */
+  dims: ModelDims
   /** 위 높이 함수들의 자료 (일꾼에 넘겨 다시 만들 때 — modelTransfer.ts). decks는 항목을 꺼도 그대로 (roadAt이 씀) */
   samp: { ground: GroundData | null; water: WaterData | null; z0: number; decks: Deck[] }
 }
@@ -517,7 +520,9 @@ function roadSurfaces(lines: { pts: XY[]; width: number | null }[], half: number
 /**
  * @param opts.grid 지형 격자를 직접 줄 때 (나중에 더 정밀한 DEM·현황측량을 올려 쓰는 자리). 주지 않으면 10m 지형 타일을 읽는다.
  */
-export async function buildSiteModel(d: DiagramData, half: number, opts: { grid?: TerrainGrid | null; riverDepth?: number } = {}): Promise<SiteModel> {
+export async function buildSiteModel(d: DiagramData, half: number, opts: { grid?: TerrainGrid | null; riverDepth?: number; dims?: Partial<Record<string, number>> | null } = {}): Promise<SiteModel> {
+  // 어림 치수 (modelDims.ts) — 고친 값 + 기본값
+  const dm = dimsOf(opts.dims)
   const [lon, lat] = d.center
   const [X0, Y0] = wgs84ToUtmk(lon, lat)
   const [x5186, y5186] = wgs84To5186(lon, lat)
@@ -907,6 +912,9 @@ export async function buildSiteModel(d: DiagramData, half: number, opts: { grid?
         banks: banks.flatMap((b) => b.polys),
         hd: hdPts,
         depthScale: riverDepth,
+        waterCarve: dm.waterCarve,
+        bankStep: dm.bankStep,
+        bankSlope: dm.bankSlope,
       })
     : null
   const sg = shaped?.grid ?? null
@@ -923,6 +931,7 @@ export async function buildSiteModel(d: DiagramData, half: number, opts: { grid?
     hd: hdOff === null || hdOff === undefined ? [] : hdPts.map((q) => ({ x: q.x, y: q.y, z: q.z - hdOff - z0 })),
     waterAt,
     half,
+    dims: dm,
   })
   // 다리 밑 땅은 상판 밑에서 1m 아래까지 파냄 — 2026-11-16: 동림교처럼 물 면 자료가 없거나 하천 바닥이 등고선으로 메워진 곳은
   // 다리 밑 땅이 상판보다 높아(최대 7m) 상판이 땅에 묻혔음. 고가 밑은 그대로(밑에 도로)
@@ -983,7 +992,8 @@ export async function buildSiteModel(d: DiagramData, half: number, opts: { grid?
     const zs = [...parts.flatMap((p) => p.outer.map(([x, y]) => zAt(x, y))), zAt(cx, cy)]
     const base = Math.min(...zs) - 0.2
     const mean = zs.reduce((s, z) => s + z, 0) / zs.length
-    const top = bldHeight(b) !== null ? mean + (bldHeight(b) as number) : null
+    const bh = modelBldHeight(b, dm)
+    const top = bh !== null ? mean + bh : null
     buildings.push({
       parts,
       base,
@@ -1047,7 +1057,7 @@ export async function buildSiteModel(d: DiagramData, half: number, opts: { grid?
     return inSquare(xy) ? xy : null
   }
   // ── 15-E 나무
-  const treeRes = buildTrees(d, f, ([x, y]) => utmkToWgs84(x + X0, y + Y0), half)
+  const treeRes = buildTrees(d, f, ([x, y]) => utmkToWgs84(x + X0, y + Y0), half, Object.fromEntries(Object.entries(TREE_DIM).map(([sp, k]) => [sp, dm[k]])))
   // 다리·고가 상판 위와 물 위 나무는 뺌 (직접 심은 나무는 그대로) — 2026-11-16: 다리 위에 가로수 규칙 나무가 줄지어 섰음
   const waterBoxes = rivers.flatMap((r) => r.polys).map((p) => ({ p, b: bboxOf(p.outer) }))
   const onWater = (x: number, y: number) => waterBoxes.some(({ p, b }) => x >= b[0] && x <= b[2] && y >= b[1] && y <= b[3] && polyHas([x, y], p))
@@ -1100,7 +1110,7 @@ export async function buildSiteModel(d: DiagramData, half: number, opts: { grid?
   const zebra = crosswalks.flatMap((cw) => {
     const o = cw.outer
     const c: XY = [o.reduce((s, p) => s + p[0], 0) / o.length, o.reduce((s, p) => s + p[1], 0) / o.length]
-    return zebraStripes(cw, dirs.near(c[0], c[1], 30)?.dir ?? null)
+    return zebraStripes(cw, dirs.near(c[0], c[1], 30)?.dir ?? null, dm)
   })
   const safety = n
     ? n.safety.flatMap((s) => {
@@ -1108,7 +1118,7 @@ export async function buildSiteModel(d: DiagramData, half: number, opts: { grid?
         return clipPolys(polysOf(s.geom, f), half).map((poly) => ({ poly, kind }))
       })
     : []
-  const hatch = safety.filter((s) => s.kind === 'painted').flatMap((s) => hatchStripes(s.poly))
+  const hatch = safety.filter((s) => s.kind === 'painted').flatMap((s) => hatchStripes(s.poly, dm))
 
   // ── 정밀도로지도 신호등·표지판·지주·방호시설·과속방지턱 (2026-11-13)
   const hdd = d.hd
@@ -1129,7 +1139,7 @@ export async function buildSiteModel(d: DiagramData, half: number, opts: { grid?
   const pole = (key: string, at: XY) => {
     let p = poleMap.get(key)
     if (!p) {
-      p = { x: at[0], y: at[1], top: 3.5, arms: [], kinds: new Set() }
+      p = { x: at[0], y: at[1], top: dm.poleH, arms: [], kinds: new Set() }
       poleMap.set(key, p)
     }
     return p
@@ -1165,7 +1175,7 @@ export async function buildSiteModel(d: DiagramData, half: number, opts: { grid?
       const arm = ps ? Math.hypot(xy[0] - ps[0], xy[1] - ps[1]) : 0
       if (ps && arm > 1) pl.arms.push({ to: xy, h: hh + ph - 0.1 })
     }
-    // 아무것도 안 달린 지주도 (어림 3.5m)
+    // 아무것도 안 달린 지주도 (어림 치수 poleH, 기본 3.5m)
     for (const [pid, xy] of postXY) if (!poleMap.has(pid) && inSquare(xy)) pole(pid, xy)
   }
   const poles = [...poleMap.values()].filter((p) => inSquare([p.x, p.y])).map((p) => ({ ...p, kinds: [...p.kinds] }))
@@ -1300,6 +1310,7 @@ export async function buildSiteModel(d: DiagramData, half: number, opts: { grid?
     waterAt,
     samp: { ground, water: shaped?.water ?? null, z0, decks },
     riverDepth,
+    dims: dm,
   }
 }
 
@@ -1353,7 +1364,7 @@ export function modelNotes(m: SiteModel, meta: { title: string; address: string;
       ? ([
           [
             '다리·고가',
-            `${m.decks.length}곳 (수치지도 ${m.decks.filter((d) => !/표준노드링크/.test(d.name) && !/자동/.test(d.sub)).length} · 표준노드링크 ${m.decks.filter((d) => /표준노드링크/.test(d.name)).length} · 도로가 물을 건너는 곳 자동 ${m.decks.filter((d) => /자동/.test(d.sub)).length}) — 교량은 양 끝 도로 높이를 곧게 이은 상판, 고가차도는 양 끝에서 경사 6%로 올라 5m 밑 높이 + 상판. 상판 두께·난간·교각 간격은 어림(실측 아님)`,
+            `${m.decks.length}곳 (수치지도 ${m.decks.filter((d) => !/표준노드링크/.test(d.name) && !/자동/.test(d.sub)).length} · 표준노드링크 ${m.decks.filter((d) => /표준노드링크/.test(d.name)).length} · 도로가 물을 건너는 곳 자동 ${m.decks.filter((d) => /자동/.test(d.sub)).length}) — 교량은 양 끝 도로 높이를 곧게 이은 상판, 고가차도는 양 끝에서 경사 ${String(Math.round(m.dims.overGrade * 100) / 100)}%로 올라 ${String(Math.round(m.dims.overH * 100) / 100)}m 밑 높이 + 상판. 상판 두께·난간·교각 간격은 어림(실측 아님)`,
           ],
         ] as [string, string][])
       : []),
@@ -1361,7 +1372,7 @@ export function modelNotes(m: SiteModel, meta: { title: string; address: string;
       ? ([
           [
             '디테일',
-            `${m.map1000 ? `1:1,000 수치지도: 정류장 ${m.stops.length}·가로등 ${m.lamps.length}·횡단보도 ${m.crosswalks.length}(줄무늬 45cm 칠·45cm 빔, 도로 방향)·교통섬·안전지대 ${m.safety.length}·담장 등 ${m.fences.length} (쉘터 3.6×1.5×2.55m·가로등 8m·담장 높이·인도·교통섬 높이 15cm는 어림)` : ''}${m.map1000 && m.lanes.length ? ' / ' : ''}${m.lanes.length ? `정밀도로지도: 차선 ${m.lanes.length}·노면표시 ${m.marks.length}·보도 면 ${m.hdPaths.length}·연석 ${m.curbs.length} (차선 색·겹선·점선은 유형 코드로 해석, 점선은 3m 칠·5m 빔 어림)` : ''}`,
+            `${m.map1000 ? `1:1,000 수치지도: 정류장 ${m.stops.length}·가로등 ${m.lamps.length}·횡단보도 ${m.crosswalks.length}(줄무늬 ${Math.round(m.dims.zebraBar * 100)}cm 칠·${Math.round(m.dims.zebraGap * 100)}cm 빔, 도로 방향)·교통섬·안전지대 ${m.safety.length}·담장 등 ${m.fences.length} (쉘터 ${String(Math.round(m.dims.shelterW * 100) / 100)}×${String(Math.round(m.dims.shelterD * 100) / 100)}×${String(Math.round(m.dims.shelterH * 100) / 100)}m·가로등 ${String(Math.round(m.dims.lampH * 100) / 100)}m·담장 높이·인도·교통섬 높이 ${Math.round(m.dims.curbH * 100)}cm는 어림)` : ''}${m.map1000 && m.lanes.length ? ' / ' : ''}${m.lanes.length ? `정밀도로지도: 차선 ${m.lanes.length}·노면표시 ${m.marks.length}·보도 면 ${m.hdPaths.length}·연석 ${m.curbs.length} (차선 색·겹선·점선은 유형 코드로 해석, 점선은 ${String(Math.round(m.dims.dashOn * 100) / 100)}m 칠·${String(Math.round(m.dims.dashOff * 100) / 100)}m 빔 어림)` : ''}`,
           ],
         ] as [string, string][])
       : []),
@@ -1375,6 +1386,11 @@ export function modelNotes(m: SiteModel, meta: { title: string; address: string;
       : []),
     ['범위', `원점 중심 가로·세로 ${Math.round(m.half * 2).toLocaleString('ko-KR')}m`],
     ['수집일', meta.collected],
+    // 어림 치수를 고쳤으면 무엇을 고쳤는지 (기본값 그대로면 이 줄 없음)
+    ...(() => {
+      const ch = DIM_DEFS.filter((d) => Math.abs(m.dims[d.key] - d.def) > 1e-9)
+      return ch.length ? ([['어림 치수 (고친 것)', ch.map((d) => `${d.label} ${d.def}→${m.dims[d.key]}${d.unit}`).join(' · ')]] as [string, string][]) : []
+    })(),
   ]
 }
 

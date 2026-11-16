@@ -3,6 +3,7 @@
 // 찍은 것은 바로 프로젝트에 저장(되돌리기 가능)되고 렌더링 모델·.3dm·DXF가 따라 바뀐다.
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { dimsOf, TREE_DIM } from '../export/modelDims'
 import OlMap from 'ol/Map'
 import View from 'ol/View'
 import TileLayer from 'ol/layer/Tile'
@@ -148,7 +149,7 @@ export default function TreePanel({ project, update, data, config }: Props) {
                 <option value="">수종: 자치구 비율로</option>
                 {SPECIES_ORDER.filter((s) => s !== '기타').map((s) => (
                   <option key={s} value={s}>
-                    {s} ({SPECIES[s].h}m)
+                    {s} ({dimsOf(project.modelDims)[TREE_DIM[s]] ?? SPECIES[s].h}m)
                   </option>
                 ))}
               </select>

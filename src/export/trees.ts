@@ -92,10 +92,15 @@ const pick = (mix: SpeciesMix, u: number): string => {
   }
   return mix.list[mix.list.length - 1]?.species ?? '기타'
 }
-const make = (x: number, y: number, ll: Position, species: string, src: TreeSrc, jitter: number): ModelTree => {
-  const sp = SPECIES[species] ?? SPECIES['기타']
-  return { x, y, lon: ll[0], lat: ll[1], h: Math.round(sp.h * (0.88 + 0.24 * jitter) * 10) / 10, shape: sp.shape, species, src }
-}
+/** 나무 만들기 — heights: 수종별 보통 높이 (어림 치수에서 고친 값, 없으면 SPECIES) */
+const maker =
+  (heights?: Record<string, number>) =>
+  (x: number, y: number, ll: Position, species: string, src: TreeSrc, jitter: number): ModelTree => {
+    const key = SPECIES[species] ? species : '기타'
+    const sp = SPECIES[key]
+    const h0 = heights?.[key] ?? sp.h
+    return { x, y, lon: ll[0], lat: ll[1], h: Math.round(h0 * (0.88 + 0.24 * jitter) * 10) / 10, shape: sp.shape, species, src }
+  }
 
 // ───────────────────────── 도형 도우미 (모형 좌표 m) ─────────────────────────
 
@@ -252,7 +257,8 @@ const CAP = 20000
 /**
  * 나무를 만든다. f: 경위도 → 모형 좌표(m), inv: 반대. half: 정사각 반쪽(m) 밖은 뺌.
  */
-export function buildTrees(d: DiagramData, f: (p: Position) => XY, inv: (p: XY) => Position, half: number): TreeResult {
+export function buildTrees(d: DiagramData, f: (p: Position) => XY, inv: (p: XY) => Position, half: number, heights?: Record<string, number>): TreeResult {
+  const make = maker(heights)
   const plan = d.treePlan
   const st = treeSettingsOf(plan?.settings)
   const edits: TreeEdits = plan?.edits ?? { add: [], remove: [], rows: [] }

@@ -137,6 +137,13 @@ export default function ModelStep({ project, update, config, keys, onGoData, onG
                   d.renderModel = r
                 })
               }
+              modelDims={project.modelDims}
+              onModelDims={(v) =>
+                update((d) => {
+                  if (Object.keys(v).length) d.modelDims = v
+                  else delete d.modelDims
+                })
+              }
               riverDepth={project.riverDepth ?? 1}
               onRiverDepth={(v) =>
                 update((d) => {

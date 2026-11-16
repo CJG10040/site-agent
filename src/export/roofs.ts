@@ -62,7 +62,7 @@ export function pitchedFits(p: Poly, kind: 'gable' | 'metal'): boolean {
  * 벽은 꼭짓점마다 지붕 높이까지 (박공 면의 삼각형 벽이 저절로 생김), 지붕은 용마루로 나눈 두 평면.
  * 구멍(안마당)이 있거나, 너무 넓거나(박공 20m·금속 60m 넘음), 많이 오목하면 null (평지붕 + 파라펫으로).
  */
-export function gableGeometry(p: Poly, base: number, eave: number, kind: 'gable' | 'metal'): { walls: number[]; roof: number[]; ridge: number } | null {
+export function gableGeometry(p: Poly, base: number, eave: number, kind: 'gable' | 'metal', pitchDeg: number = PITCH[kind]): { walls: number[]; roof: number[]; ridge: number } | null {
   if (p.holes.length) return null
   const o = p.outer
   if (o.length < 3) return null
@@ -71,7 +71,7 @@ export function gableGeometry(p: Poly, base: number, eave: number, kind: 'gable'
   const vc = (b0 + b1) / 2
   const halfW = (b1 - b0) / 2
   if (halfW < 0.5 || !pitchedFits(p, kind)) return null
-  const tan = Math.tan((PITCH[kind] * Math.PI) / 180)
+  const tan = Math.tan((pitchDeg * Math.PI) / 180)
   const zOf = (q: XY) => eave + (halfW - Math.abs(dot(q, v) - vc)) * tan
   // 바깥 고리에 용마루를 지나는 점을 넣음 (벽 위 선이 지붕과 맞게)
   const ring: XY[] = []
@@ -109,10 +109,10 @@ export function gableGeometry(p: Poly, base: number, eave: number, kind: 'gable'
 }
 
 /** 평지붕 파라펫: 바깥 고리(와 안마당 고리) 안쪽으로 폭 0.2m·높이 1m 띠 (윗면 + 안·밖 옆면) */
-export function parapetGeometry(p: Poly, top: number): number[] {
+export function parapetGeometry(p: Poly, top: number, parapetH: number = PARAPET_H, parapetW: number = PARAPET_W): number[] {
   const out: number[] = []
   const z0 = top
-  const z1 = top + PARAPET_H
+  const z1 = top + parapetH
   // 바깥 고리는 반시계, 구멍은 시계 → 왼쪽이 늘 건물 안
   for (const r of [p.outer, ...p.holes]) {
     const n = r.length
@@ -129,7 +129,7 @@ export function parapetGeometry(p: Poly, top: number): number[] {
       const ny = e1[0] / l1 + e2[0] / l2
       const L = Math.hypot(nx, ny) || 1
       const cos = Math.max(0.67, L / 2)
-      return [q[0] + (nx / L) * (PARAPET_W / cos), q[1] + (ny / L) * (PARAPET_W / cos)] as XY
+      return [q[0] + (nx / L) * (parapetW / cos), q[1] + (ny / L) * (parapetW / cos)] as XY
     })
     for (let i = 0; i < n; i++) {
       const j = (i + 1) % n

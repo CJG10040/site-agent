@@ -13,6 +13,7 @@ import { siteModelToDxf } from '../export/toDxf'
 import { downloadBlob } from '../model/project'
 import type { ContourSettings, RenderLevel, RenderModelSettings } from '../model/types'
 import ContourBench from './ContourBench'
+import ModelDimsPanel from './ModelDimsPanel'
 import RiverDepthControl from './RiverDepthControl'
 
 const ModelPreview = lazy(() => import('./ModelPreview'))
@@ -41,6 +42,9 @@ interface Props {
   /** 하천 깊이 강조 (0~1.5, 프로젝트에 저장 — 렌더링 모델·콘타 모형 같은 값) */
   riverDepth?: number
   onRiverDepth?: (v: number) => void
+  /** 어림 치수 (기본값과 다른 것만, 프로젝트에 저장) */
+  modelDims?: Partial<Record<string, number>>
+  onModelDims?: (d: Partial<Record<string, number>>) => void
 }
 
 type Tab = 'render' | 'contour'
@@ -48,7 +52,7 @@ type Tab = 'render' | 'contour'
 const sideLabel = (h: number) => (h * 2 >= 1000 ? `${(h * 2) / 1000}km` : `${h * 2}m`)
 const fmt = (n: number, d = 0) => n.toLocaleString('ko-KR', { maximumFractionDigits: d })
 
-export default function ModelWorkbench({ data, baseName, meta, halfOptions, initialHalf, asPage = false, onClose, onExported, contour, onContour, render, onRender, vworldKey = '', riverDepth = 1, onRiverDepth }: Props) {
+export default function ModelWorkbench({ data, baseName, meta, halfOptions, initialHalf, asPage = false, onClose, onExported, contour, onContour, render, onRender, vworldKey = '', riverDepth = 1, onRiverDepth, modelDims, onModelDims }: Props) {
   const [tab, setTab] = useState<Tab>('render')
   const [half, setHalf] = useState(initialHalf)
   const [model, setModel] = useState<SiteModel | null>(null)
@@ -90,7 +94,8 @@ export default function ModelWorkbench({ data, baseName, meta, halfOptions, init
     }
   }, [busy, onClose, asPage])
 
-  // 범위·하천 깊이가 바뀌면 모형을 다시 만듦
+  // 범위·하천 깊이·어림 치수가 바뀌면 모형을 다시 만듦
+  const dimsKey = JSON.stringify(modelDims ?? {})
   // 하천이 있는지 (다시 만드는 동안에도 깊이 막대가 사라지지 않게 기억)
   const [riverN, setRiverN] = useState(0)
   useEffect(() => {
@@ -101,7 +106,7 @@ export default function ModelWorkbench({ data, baseName, meta, halfOptions, init
     void (async () => {
       await new Promise((r) => setTimeout(r, 30))
       try {
-        const m = await buildModelFor(data, half, { riverDepth })
+        const m = await buildModelFor(data, half, { riverDepth, dims: modelDims })
         if (alive) {
           setModel(m)
           setRiverN(m.rivers.length)
@@ -115,7 +120,8 @@ export default function ModelWorkbench({ data, baseName, meta, halfOptions, init
     return () => {
       alive = false
     }
-  }, [data, half, riverDepth])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, half, riverDepth, dimsKey])
 
   // 15-C 단계·항목: 끈 항목을 비운 모형으로 물체 수·미리보기·내려받기
   const [rs, setRs] = useState<RenderModelSettings>(() => render ?? { level: 'detail', items: itemsOfLevel('detail') })
@@ -327,6 +333,8 @@ export default function ModelWorkbench({ data, baseName, meta, halfOptions, init
 
             {riverN > 0 && onRiverDepth && <RiverDepthControl value={riverDepth} onChange={onRiverDepth} disabled={!!busy} />}
 
+            {onModelDims && <ModelDimsPanel value={modelDims} onChange={onModelDims} disabled={!!busy} />}
+
             <section>
               <h3>들어가는 것</h3>
               {building && <p className="muted small">모형 만드는 중…</p>}
@@ -439,7 +447,7 @@ export default function ModelWorkbench({ data, baseName, meta, halfOptions, init
           </main>
         </div>
       ) : (
-        <ContourBench data={data} baseName={baseName} meta={meta} settings={contour} onSettings={onContour} onExported={onExported} riverDepth={riverDepth} onRiverDepth={onRiverDepth} />
+        <ContourBench data={data} baseName={baseName} meta={meta} settings={contour} onSettings={onContour} onExported={onExported} riverDepth={riverDepth} onRiverDepth={onRiverDepth} modelDims={modelDims} />
       )}
     </div>
   )

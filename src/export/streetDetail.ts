@@ -3,6 +3,7 @@
 // 치수는 도로교통 규격·흔한 시설 크기의 어림 (화면·파일 설명에 '어림'으로 적음).
 
 import type { Poly, XY } from './siteModel'
+import { DEFAULT_DIMS, type ModelDims } from './modelDims'
 
 export const STREET = {
   /** 도로 면을 지형 위로 띄우는 높이 (m) */
@@ -142,7 +143,7 @@ export const span = (o: XY[], a: XY) => {
  * 횡단보도 줄무늬: 줄은 차가 다니는 방향(도로 방향)으로 길고, 건너는 방향을 따라 45cm 칠·45cm 빔으로 늘어섬 (가운데 맞춤).
  * 도로 방향을 모르면 횡단보도의 짧은 변을 줄 방향으로 봄.
  */
-export function zebraStripes(cw: Poly, roadDir: XY | null): Poly[] {
+export function zebraStripes(cw: Poly, roadDir: XY | null, sz: { zebraBar: number; zebraGap: number } = STREET): Poly[] {
   const o = cw.outer
   if (o.length < 3) return []
   const { u, v, lenU, lenV } = mainAxes(o)
@@ -153,7 +154,7 @@ export function zebraStripes(cw: Poly, roadDir: XY | null): Poly[] {
   const a = barAlongU ? v : u
   const [s0, s1] = span(o, a)
   const L = s1 - s0
-  const { zebraBar: bar, zebraGap: gap } = STREET
+  const { zebraBar: bar, zebraGap: gap } = sz
   const n = Math.floor((L + gap) / (bar + gap))
   if (n < 1) return []
   const start = s0 + (L - (n * bar + (n - 1) * gap)) / 2
@@ -169,13 +170,13 @@ export function zebraStripes(cw: Poly, roadDir: XY | null): Poly[] {
 // ───────────────────────── 안전지대 빗금 ─────────────────────────
 
 /** 칠한 안전지대: 긴 축에 45°로 기운 노란 빗금 (테두리는 띠로 따로) */
-export function hatchStripes(p: Poly): Poly[] {
+export function hatchStripes(p: Poly, sz: { hatchW: number; hatchGap: number } = STREET): Poly[] {
   const o = p.outer
   if (o.length < 3) return []
   const { u, v } = mainAxes(o)
   const a = unit([u[0] + v[0], u[1] + v[1]])
   const [s0, s1] = span(o, a)
-  const { hatchW: w, hatchGap: gap } = STREET
+  const { hatchW: w, hatchGap: gap } = sz
   const out: Poly[] = []
   for (let s = s0 + gap / 2; s + w <= s1; s += w + gap) {
     const r = band(o, a, s, s + w)
@@ -230,34 +231,40 @@ export interface Box {
 }
 
 /** 정류장 쉘터 (어림 3.6 × 1.5 × 2.55m): 지붕판, 뒷벽·옆벽 유리, 뒤 기둥 둘, 의자, 정류장 표지. 앞(열린 쪽)이 도로를 봄 */
-export function shelterBoxes(x: number, y: number, along: XY, toRoad: XY): Box[] {
+export function shelterBoxes(x: number, y: number, along: XY, toRoad: XY, dm: Pick<ModelDims, 'shelterW' | 'shelterD' | 'shelterH'> = DEFAULT_DIMS): Box[] {
   const ux = along
   const uy = toRoad
-  const at = (lx: number, ly: number): XY => [x + ux[0] * lx + uy[0] * ly, y + ux[1] * lx + uy[1] * ly]
+  // 어림 치수: 길이·깊이·높이를 기본(3.6 × 1.5 × 2.55m)에 견준 배율로 모든 부재를 늘이고 줄임 (의자 높이는 그대로)
+  const sx = dm.shelterW / 3.6
+  const sy = dm.shelterD / 1.5
+  const sz = dm.shelterH / 2.55
+  const at = (lx: number, ly: number): XY => [x + ux[0] * lx * sx + uy[0] * ly * sy, y + ux[1] * lx * sx + uy[1] * ly * sy]
   return [
-    { c: at(0, 0.05), ux, hx: 1.85, hy: 0.8, z0: 2.45, z1: 2.55, part: 'roof' },
-    { c: at(0, -0.65), ux, hx: 1.75, hy: 0.02, z0: 0.15, z1: 2.4, part: 'glass' },
-    { c: at(-1.75, -0.3), ux, hx: 0.02, hy: 0.35, z0: 0.15, z1: 2.4, part: 'glass' },
-    { c: at(-1.8, -0.7), ux, hx: 0.05, hy: 0.05, z0: 0, z1: 2.45, part: 'frame' },
-    { c: at(1.8, -0.7), ux, hx: 0.05, hy: 0.05, z0: 0, z1: 2.45, part: 'frame' },
-    { c: at(0.2, -0.42), ux, hx: 1.0, hy: 0.18, z0: 0.42, z1: 0.47, part: 'bench' },
+    { c: at(0, 0.05), ux, hx: 1.85 * sx, hy: 0.8 * sy, z0: 2.45 * sz, z1: 2.55 * sz, part: 'roof' },
+    { c: at(0, -0.65), ux, hx: 1.75 * sx, hy: 0.02, z0: 0.15, z1: 2.4 * sz, part: 'glass' },
+    { c: at(-1.75, -0.3), ux, hx: 0.02, hy: 0.35 * sy, z0: 0.15, z1: 2.4 * sz, part: 'glass' },
+    { c: at(-1.8, -0.7), ux, hx: 0.05, hy: 0.05, z0: 0, z1: 2.45 * sz, part: 'frame' },
+    { c: at(1.8, -0.7), ux, hx: 0.05, hy: 0.05, z0: 0, z1: 2.45 * sz, part: 'frame' },
+    { c: at(0.2, -0.42), ux, hx: 1.0 * sx, hy: 0.18, z0: 0.42, z1: 0.47, part: 'bench' },
     { c: at(-0.6, -0.42), ux, hx: 0.03, hy: 0.15, z0: 0, z1: 0.42, part: 'frame' },
     { c: at(1.0, -0.42), ux, hx: 0.03, hy: 0.15, z0: 0, z1: 0.42, part: 'frame' },
-    { c: at(2.4, 0.45), ux, hx: 0.04, hy: 0.04, z0: 0, z1: 2.9, part: 'frame' },
-    { c: at(2.4, 0.45), ux, hx: 0.3, hy: 0.02, z0: 2.3, z1: 2.85, part: 'sign' },
+    { c: at(2.4, 0.45), ux, hx: 0.04, hy: 0.04, z0: 0, z1: 2.9 * sz, part: 'frame' },
+    { c: at(2.4, 0.45), ux, hx: 0.3, hy: 0.02, z0: 2.3 * sz, z1: 2.85 * sz, part: 'sign' },
   ]
 }
 
 /** 가로등 (어림 높이 8m): 기둥, 도로 쪽으로 뻗은 팔 1.6m, 등 머리. 도로 방향을 모르면 기둥 위에 등만 */
-export function lampBoxes(x: number, y: number, toRoad: XY | null): Box[] {
+export function lampBoxes(x: number, y: number, toRoad: XY | null, dm: Pick<ModelDims, 'lampH' | 'lampArm'> = DEFAULT_DIMS): Box[] {
   const ux: XY = toRoad ?? [1, 0]
   const at = (l: number): XY => [x + ux[0] * l, y + ux[1] * l]
-  const H = 8
+  const H = dm.lampH
+  // 팔 길이는 기본 1.6m에 견준 배율
+  const k = dm.lampArm / 1.6
   return toRoad
     ? [
         { c: [x, y], ux, hx: 0.09, hy: 0.09, z0: 0, z1: H, part: 'pole' },
-        { c: at(0.8), ux, hx: 0.8, hy: 0.04, z0: H - 0.12, z1: H - 0.04, part: 'pole' },
-        { c: at(1.55), ux, hx: 0.35, hy: 0.14, z0: H - 0.22, z1: H - 0.08, part: 'head' },
+        { c: at(0.8 * k), ux, hx: 0.8 * k, hy: 0.04, z0: H - 0.12, z1: H - 0.04, part: 'pole' },
+        { c: at(1.55 * k), ux, hx: 0.35, hy: 0.14, z0: H - 0.22, z1: H - 0.08, part: 'head' },
       ]
     : [
         { c: [x, y], ux, hx: 0.09, hy: 0.09, z0: 0, z1: H, part: 'pole' },
@@ -285,8 +292,8 @@ export function boxMesh(b: Box, ground: number): { v: number[][]; f: number[][] 
 // ───────────────────────── 정밀도로지도 신호등·표지판·지주·방호시설 (2026-11-13) ─────────────────────────
 
 /** 지주: 기둥(어림 지름 16cm) + 차량 신호등·표지판까지 뻗은 팔 */
-export function poleBoxes(p: { x: number; y: number; top: number; arms: { to: XY; h: number }[] }): Box[] {
-  const out: Box[] = [{ c: [p.x, p.y], ux: [1, 0], hx: 0.08, hy: 0.08, z0: 0, z1: p.top, part: 'pole' }]
+export function poleBoxes(p: { x: number; y: number; top: number; arms: { to: XY; h: number }[] }, dm: Pick<ModelDims, 'poleD'> = DEFAULT_DIMS): Box[] {
+  const out: Box[] = [{ c: [p.x, p.y], ux: [1, 0], hx: dm.poleD / 2, hy: dm.poleD / 2, z0: 0, z1: p.top, part: 'pole' }]
   for (const a of p.arms) {
     const dx = a.to[0] - p.x
     const dy = a.to[1] - p.y
@@ -298,10 +305,12 @@ export function poleBoxes(p: { x: number; y: number; top: number; arms: { to: XY
 }
 
 /** 신호등 상자: 차량등 1.3 × 0.32 × 0.44m(가로로 길게), 보행등 0.35 × 0.3 × 0.85m (어림) */
-export function signalBoxes(s: { x: number; y: number; h: number; vehicle: boolean; axis: XY }): Box[] {
+export function signalBoxes(s: { x: number; y: number; h: number; vehicle: boolean; axis: XY }, dm: Pick<ModelDims, 'sigCarL' | 'sigPedH'> = DEFAULT_DIMS): Box[] {
+  // 보행등 높이는 기본 0.85m에 견준 배율
+  const kp = dm.sigPedH / 0.85
   return s.vehicle
-    ? [{ c: [s.x, s.y], ux: s.axis, hx: 0.65, hy: 0.16, z0: s.h - 0.22, z1: s.h + 0.22, part: 'head' }]
-    : [{ c: [s.x, s.y], ux: s.axis, hx: 0.17, hy: 0.15, z0: s.h - 0.45, z1: s.h + 0.4, part: 'head' }]
+    ? [{ c: [s.x, s.y], ux: s.axis, hx: dm.sigCarL / 2, hy: 0.16, z0: s.h - 0.22, z1: s.h + 0.22, part: 'head' }]
+    : [{ c: [s.x, s.y], ux: s.axis, hx: 0.17, hy: 0.15, z0: s.h - 0.45 * kp, z1: s.h + 0.4 * kp, part: 'head' }]
 }
 
 export type SignColor = 'red' | 'yellow' | 'white' | 'blue'
@@ -356,17 +365,22 @@ export function signPanels(s: { x: number; y: number; h: number; ph: number; pw:
 }
 
 /** 방호시설 기둥 (2m마다, 높이 0.8m 어림) — 가로대는 쓰는 쪽에서 선을 따라 세운 띠로 */
-export function barrierPosts(pts: XY[]): Box[] {
-  const d = densifyLine(pts, 2)
+export function barrierPosts(pts: XY[], dm: Pick<ModelDims, 'barrierH' | 'barrierGap'> = DEFAULT_DIMS): Box[] {
+  const d = densifyLine(pts, dm.barrierGap)
   return d.map((p, i) => {
     const q = d[Math.min(d.length - 1, i + 1)]
     const r = d[Math.max(0, i - 1)]
     const ux = unit([q[0] - r[0], q[1] - r[1]])
-    return { c: p, ux, hx: 0.05, hy: 0.05, z0: 0, z1: 0.8, part: 'frame' as const }
+    return { c: p, ux, hx: 0.05, hy: 0.05, z0: 0, z1: dm.barrierH, part: 'frame' as const }
   })
 }
 
 export const BARRIER_RAIL: [number, number] = [0.5, 0.8]
+/** 방호시설 가로대 (땅 위 아래·위 높이): 기본 0.5~0.8m를 높이에 맞춰 늘이고 줄임 */
+export const barrierRail = (dm: Pick<ModelDims, 'barrierH'> = DEFAULT_DIMS): [number, number] => {
+  const k = dm.barrierH / 0.8
+  return [BARRIER_RAIL[0] * k, BARRIER_RAIL[1] * k]
+}
 export const BUMP_H = 0.08
 
 // ───────────────────────── 노면표시 모양 (2026-11-13) ─────────────────────────

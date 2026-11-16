@@ -5099,3 +5099,47 @@ dl {
   flex: 1 1 140px;
   min-width: 0;
 }
+
+/* 어림 치수 (2026-11-17) */
+.model-dims-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 4px 0 6px;
+}
+.model-dims-group {
+  border-top: 1px solid var(--border);
+  padding: 4px 0;
+}
+.model-dims-group > summary {
+  cursor: pointer;
+  font-size: 13px;
+  padding: 4px 0;
+}
+.model-dims-badge {
+  color: var(--accent);
+  font-weight: 600;
+}
+.model-dims-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  margin: 2px 0 6px;
+}
+.model-dims-table td {
+  padding: 2px 4px;
+  vertical-align: middle;
+}
+.model-dims-table td.num input {
+  width: 64px;
+}
+.model-dims-table td:last-child {
+  white-space: nowrap;
+}
+.model-dims-table tr.changed td:first-child {
+  color: var(--accent);
+  font-weight: 600;
+}
+.model-dims-table tr.changed input {
+  border-color: var(--accent);
+}

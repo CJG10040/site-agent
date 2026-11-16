@@ -29,6 +29,10 @@ export interface ShapeInput {
   hd: { x: number; y: number; z: number }[]
   /** 하천 깊이 강조 (2026-11-17 사용자 결정: 막대로 조절, 렌더링·콘타 모형 같은 값): 0 = 자료 그대로(물가 땅 높이), 1 = 처음 어림, 1.5 = 더 깊게. 없으면 1 */
   depthScale?: number
+  /** 어림 치수 (modelDims): 물 밑 파기(m), 둔치 물가 턱(m), 둔치 비탈(%) — 없으면 0.6·0.4·30 */
+  waterCarve?: number
+  bankStep?: number
+  bankSlope?: number
 }
 
 export interface ShapeResult {
@@ -309,7 +313,7 @@ export function shapeGround(g: TerrainGrid, inp: ShapeInput): ShapeResult {
         if (mW[i]) continue
         if ((c > 0 && mW[i - 1]) || (c + 1 < W && mW[i + 1]) || (r > 0 && mW[i - W]) || (r + 1 < H && mW[i + W])) mWc[i] = 1
       }
-    for (let i = 0; i < N; i++) if (mWc[i] && Number.isFinite(level[i]) && Number.isFinite(Z[i])) Z[i] = Math.min(Z[i], level[i] - (mW[i] ? WATER_DEPTH : 0.2))
+    for (let i = 0; i < N; i++) if (mWc[i] && Number.isFinite(level[i]) && Number.isFinite(Z[i])) Z[i] = Math.min(Z[i], level[i] - (mW[i] ? (inp.waterCarve ?? WATER_DEPTH) : 0.2))
     // 둔치: 물가에서 둑 쪽으로 비탈(물 높이 + 0.4m + 거리 × 0.3)보다 높은 땅은 그 비탈까지 낮춤 — 2026-11-16: 물 면만 파서 물가가 절벽이 되고
     // 둔치를 얹은 삼각형 사이로 땅이 뾰족하게 솟았음. 하천 바닥이 둑 높이로 메워진 자료(수치지도)에서 둔치의 볼록한 곳도 걷어 냄
     if (inp.banks?.length) {
@@ -350,7 +354,7 @@ export function shapeGround(g: TerrainGrid, inp: ShapeInput): ShapeResult {
       }
       for (let i = 0; i < N; i++) {
         if (!mB[i] || mWc[i] || !Number.isFinite(dw[i]) || !Number.isFinite(lv[i]) || !Number.isFinite(Z[i])) continue
-        Z[i] = Math.min(Z[i], lv[i] + 0.4 + dw[i] * cell * 0.3)
+        Z[i] = Math.min(Z[i], lv[i] + (inp.bankStep ?? 0.4) + dw[i] * cell * ((inp.bankSlope ?? 30) / 100))
       }
     }
   }

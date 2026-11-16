@@ -1,3 +1,4 @@
+import { loadUserDims } from '../export/modelDims'
 import { SCHEMA_VERSION, type Card, type CardType, type Project, type StepId } from './types'
 
 export function newId(): string {
@@ -11,7 +12,10 @@ export function nowIso(): string {
 
 export function createProject(): Project {
   const t = nowIso()
+  // 어림 치수: '내 기본값'(이 브라우저)을 저장해 두었으면 그 값으로 시작
+  const dims = loadUserDims()
   return {
+    ...(dims && Object.keys(dims).length ? { modelDims: dims } : {}),
     schema: SCHEMA_VERSION,
     id: newId(),
     createdAt: t,

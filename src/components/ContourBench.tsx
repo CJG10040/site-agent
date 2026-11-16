@@ -35,6 +35,8 @@ interface Props {
   /** 하천 깊이 강조 (렌더링 모델과 같은 값) */
   riverDepth?: number
   onRiverDepth?: (v: number) => void
+  /** 어림 치수 (렌더링 모델과 같은 값 — 콘타에는 하천 둘레 땅 모양만 영향) */
+  modelDims?: Partial<Record<string, number>>
 }
 
 const fmt = (n: number, d = 0) => n.toLocaleString('ko-KR', { maximumFractionDigits: d })
@@ -69,7 +71,7 @@ function NumField({ value, min, max, step = 1, onCommit, label, suffix }: { valu
   )
 }
 
-export default function ContourBench({ data, baseName, meta, settings, onSettings, onExported, riverDepth = 1, onRiverDepth }: Props) {
+export default function ContourBench({ data, baseName, meta, settings, onSettings, onExported, riverDepth = 1, onRiverDepth, modelDims }: Props) {
   const [local, setLocal] = useState<ContourSettings>(() => contourSettingsOf(settings))
   // 저장된 설정이 바뀌면 (다른 탭·되돌리기) 따라감
   useEffect(() => {
@@ -100,6 +102,7 @@ export default function ContourBench({ data, baseName, meta, settings, onSetting
 
   // 범위·하천 깊이가 바뀌면 대지 모형(지형·도로·건물)을 다시
   const [riverN, setRiverN] = useState(0)
+  const dimsKey = JSON.stringify(modelDims ?? {})
   useEffect(() => {
     if (half === null) return
     let alive = true
@@ -110,7 +113,7 @@ export default function ContourBench({ data, baseName, meta, settings, onSetting
     void (async () => {
       await new Promise((r) => setTimeout(r, 30))
       try {
-        const m = await buildModelFor(data, half, { riverDepth })
+        const m = await buildModelFor(data, half, { riverDepth, dims: modelDims })
         if (alive) {
           setModel(m)
           setRiverN(m.rivers.length)
@@ -125,7 +128,8 @@ export default function ContourBench({ data, baseName, meta, settings, onSetting
     return () => {
       alive = false
     }
-  }, [data, half, riverDepth])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, half, riverDepth, dimsKey])
 
   // 판 계산 (작업자 스레드, 설정을 바꾸면 앞 계산은 멈춤)
   useEffect(() => {

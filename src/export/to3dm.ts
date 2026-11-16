@@ -8,12 +8,13 @@ import { dashesOf, densify, modelNotes, offsetLine, triangulate, type Poly, type
 import { gableGeometry, parapetGeometry, ROOF_LABEL } from './roofs'
 import { WALK_EDGE } from './streetDetail'
 import { SHAPE_LABEL, SRC_LABEL, treeShapeTris, type TreeShape, type TreeSrc } from './trees'
-import { BARRIER_RAIL, barrierPosts, boxMesh, BUMP_H, densifyLine, hatchStripes, lampBoxes, poleBoxes, ribbon, shelterBoxes, signalBoxes, signPanels, STREET, type SignColor } from './streetDetail'
+import { barrierPosts, barrierRail, boxMesh, densifyLine, hatchStripes, lampBoxes, poleBoxes, ribbon, shelterBoxes, signalBoxes, signPanels, type SignColor } from './streetDetail'
 import type { AerialTex } from './aerialTexture'
 import { LAYER_MAT, MATERIAL_STYLES, materialSet, RENDER_HELP, TEX_FILE, texPath, texturesOf, type MaterialStyle, type MatId } from './renderMaterials'
 import { textureJpeg } from './textures'
 import { deckZ } from './bridges'
 import { deckTris } from './bridgeMesh'
+import type { ModelDims } from './modelDims'
 import { aerialUv } from './samplers'
 
 type Rgb = [number, number, number]
@@ -32,7 +33,7 @@ interface LayerDef {
   parent?: string
 }
 
-const LAYERS: LayerDef[] = [
+export const LAYERS: LayerDef[] = [
   { key: 'info', name: '정보', color: [40, 40, 40] },
   { key: 'site', name: '대지 경계', color: [220, 38, 38] },
   { key: 'bldg', name: '건물', color: [140, 140, 140] },
@@ -91,6 +92,34 @@ const LAYERS: LayerDef[] = [
   { key: 'hdPath', name: '보도 면 (정밀도로지도)', color: [205, 195, 175], parent: 'detail' },
   { key: 'curb', name: '연석 (정밀도로지도, 폭 20cm·높이 15cm 어림)', color: [175, 172, 165], parent: 'detail' },
 ]
+
+/** 어림 치수(modelDims)가 들어간 레이어 이름 — 기본값이면 위 LAYERS 이름과 같은 글 */
+const mStr = (v: number) => String(Math.round(v * 100) / 100)
+const cmStr = (v: number) => String(Math.round(v * 100))
+const f1Str = (v: number) => (Math.abs(v * 10 - Math.round(v * 10)) < 1e-9 ? v.toFixed(1) : mStr(v))
+export const DIM_LAYER_NAME: Record<string, (d: ModelDims) => string> = {
+  roofPitched: (d) => `경사 지붕 (박공 ${mStr(d.pitchGable)}°·금속 ${mStr(d.pitchMetal)}°, 건축물대장 지붕 구조 또는 규칙)`,
+  parapet: (d) => `파라펫 (평지붕 테두리, 높이 ${mStr(d.parapetH)}m·두께 ${cmStr(d.parapetW)}cm 어림 — 건물과 같은 색·재질)`,
+  walk: (d) => `인도 (수치지도, 차도보다 ${cmStr(d.curbH)}cm 높게 어림)`,
+  river: (d) => `하천 물 (평평하게, 물 밑 땅은 ${mStr(d.waterCarve)}m 파냄)`,
+  bridgeRail: (d) => {
+    const lo = Math.min(d.railRoad, d.railWalk)
+    const hi = Math.max(d.railRoad, d.railWalk)
+    return `난간 (높이 ${lo === hi ? f1Str(lo) : `${f1Str(lo)}~${f1Str(hi)}`}m)`
+  },
+  stop: (d) => `정류장 쉘터 (어림 ${mStr(d.shelterW)}×${mStr(d.shelterD)}×${mStr(d.shelterH)}m, 도로 쪽이 열림)`,
+  lamp: (d) => `가로등 (높이 어림 ${mStr(d.lampH)}m, 팔은 도로 쪽)`,
+  crosswalk: (d) => `횡단보도 (줄무늬 ${cmStr(d.zebraBar)}cm 칠·${cmStr(d.zebraGap)}cm 빔)`,
+  island: (d) => `교통섬 (차도보다 ${cmStr(d.curbH)}cm 높게 어림)`,
+  fence: (d) => `담장·가드레일 (높이 어림 담장 ${mStr(d.fenceWall)}m·가드레일 ${mStr(d.fenceGuard)}m)`,
+  laneWhite: (d) => `차선 (흰색, 폭 ${cmStr(d.laneW)}cm 면)`,
+  laneYellow: (d) => `차선 (황색·중앙선, 폭 ${cmStr(d.laneW)}cm 면)`,
+  laneBlue: (d) => `차선 (청색·버스, 폭 ${cmStr(d.laneW)}cm 면)`,
+  signal: (d) => `신호등 (정밀도로지도 높이, 차량등 ${mStr(d.sigCarL)}m·보행등 0.35m 상자 어림)`,
+  barrier: (d) => `방호시설 (가드레일·중앙분리대 등, 높이 ${mStr(d.barrierH)}m 어림)`,
+  bump: (d) => `과속방지턱 (높이 ${cmStr(d.bumpH)}cm 어림)`,
+  curb: (d) => `연석 (정밀도로지도, 폭 ${cmStr(d.curbW)}cm·높이 ${cmStr(d.curbH)}cm 어림)`,
+}
 
 /** wasm 쪽 메모리 풀기 (타입 선언에는 없지만 embind 객체마다 있음) */
 export function free(o: unknown) {
@@ -262,7 +291,7 @@ export async function siteModelTo3dm(m: SiteModel, meta: ExportMeta, onStep?: Ex
             ? m.roadSource === 'centerline'
               ? '도로 면 (도로중심선 폭)'
               : '도로 면 (수치지도 도로경계)'
-            : def.name
+            : (DIM_LAYER_NAME[def.key]?.(m.dims) ?? def.name)
       L.color = { r: def.color[0], g: def.color[1], b: def.color[2], a: 255 }
       if (def.parent) L.parentLayerId = layerId.get(def.parent) ?? ''
       const lm = mats ? layerMat(def.key) : undefined
@@ -374,8 +403,8 @@ export async function siteModelTo3dm(m: SiteModel, meta: ExportMeta, onStep?: Ex
     }
 
     // ── 거리 디테일 메시 도우미 (2026-11-13): 띠·옆면·상자를 메시 하나에 모음
-    const R = STREET.roadLift
-    const H = STREET.curbH
+    const R = m.dims.roadLift
+    const H = m.dims.curbH
     type MB = { mesh: InstanceType<typeof rhino.Mesh>; vs: ReturnType<InstanceType<typeof rhino.Mesh>['vertices']>; fs: ReturnType<InstanceType<typeof rhino.Mesh>['faces']> }
     const newMesh = (): MB => {
       const mesh = new rhino.Mesh()
@@ -508,7 +537,7 @@ export async function siteModelTo3dm(m: SiteModel, meta: ExportMeta, onStep?: Ex
       const user: Record<string, string> = { 층수: b.floors ? String(b.floors) : '모름' }
       if (b.use) user['용도'] = b.use
       if (b.top !== null) user['높이(m, 어림)'] = (b.top - b.base).toFixed(1)
-      if (b.roof) user['지붕'] = `${ROOF_LABEL[b.roof.kind]} — ${b.roof.source === 'register' ? `건축물대장 지붕 구조: ${b.roof.label}` : '규칙 (대장에서 찾지 못함)'}`
+      if (b.roof) user['지붕'] = `${b.roof.kind === 'flat' ? ROOF_LABEL.flat : b.roof.kind === 'gable' ? `박공 (경사 ${mStr(m.dims.pitchGable)}°)` : `낮은 경사 (금속, ${mStr(m.dims.pitchMetal)}°)`} — ${b.roof.source === 'register' ? `건축물대장 지붕 구조: ${b.roof.label}` : '규칙 (대장에서 찾지 못함)'}`
       for (const p of b.parts) {
         const ring = (r: XY[]) => [...r, r[0]].map(([x, y]) => [x, y, b.base])
         if (b.top === null) {
@@ -516,7 +545,7 @@ export async function siteModelTo3dm(m: SiteModel, meta: ExportMeta, onStep?: Ex
           continue
         }
         if (b.roof && b.roof.kind !== 'flat') {
-          const g = gableGeometry(p, b.base, b.top, b.roof.kind)
+          const g = gableGeometry(p, b.base, b.top, b.roof.kind, b.roof.kind === 'gable' ? m.dims.pitchGable : m.dims.pitchMetal)
           if (g) {
             const wm = newMesh()
             addTris(wm, g.walls)
@@ -526,7 +555,7 @@ export async function siteModelTo3dm(m: SiteModel, meta: ExportMeta, onStep?: Ex
             continue
           }
         }
-        if (b.roof) addTris(b.onSite ? parapetSiteMb : parapetMb, parapetGeometry(p, b.top))
+        if (b.roof) addTris(b.onSite ? parapetSiteMb : parapetMb, parapetGeometry(p, b.top, m.dims.parapetH, m.dims.parapetW))
         const outer = new rhino.PolylineCurve(ring(p.outer))
         const ex = rhino.Extrusion.create(outer, b.top - b.base, true)
         free(outer)
@@ -684,7 +713,7 @@ export async function siteModelTo3dm(m: SiteModel, meta: ExportMeta, onStep?: Ex
     {
       const mb = newMesh()
       addDraped(mb, m.hatch, R + 0.03, 3)
-      for (const s of m.safety) if (s.kind === 'painted') addRibbon(mb, s.poly.outer, STREET.hatchEdge, R + 0.03, true)
+      for (const s of m.safety) if (s.kind === 'painted') addRibbon(mb, s.poly.outer, m.dims.hatchEdge, R + 0.03, true)
       addMeshObj(mb, 'safetyPaint', '안전지대 표시 (노란 빗금)')
     }
     if (m.yellowMarks.length) {
@@ -703,8 +732,8 @@ export async function siteModelTo3dm(m: SiteModel, meta: ExportMeta, onStep?: Ex
     if (m.curbs.length) {
       const mb = newMesh()
       for (const c of m.curbs) {
-        addRibbon(mb, c, STREET.curbW, R + H)
-        const { left, right } = ribbon(densifyLine(c, 2), STREET.curbW)
+        addRibbon(mb, c, m.dims.curbW, R + H)
+        const { left, right } = ribbon(densifyLine(c, 2), m.dims.curbW)
         addSides(mb, left, R, R + H, false)
         addSides(mb, [...right].reverse(), R, R + H, false)
       }
@@ -716,14 +745,14 @@ export async function siteModelTo3dm(m: SiteModel, meta: ExportMeta, onStep?: Ex
       if (!ls.length) continue
       const mb = newMesh()
       for (const l of ls)
-        for (const line of l.double ? [offsetLine(l.pts, 0.15), offsetLine(l.pts, -0.15)] : [l.pts])
-          for (const seg of l.dashed ? dashesOf(line) : [line]) addRibbon(mb, seg, STREET.laneW, R + 0.03)
+        for (const line of l.double ? [offsetLine(l.pts, m.dims.laneDouble / 2), offsetLine(l.pts, -m.dims.laneDouble / 2)] : [l.pts])
+          for (const seg of l.dashed ? dashesOf(line, m.dims.dashOn, m.dims.dashOff) : [line]) addRibbon(mb, seg, m.dims.laneW, R + 0.03)
       const key = color === 'yellow' ? 'laneYellow' : color === 'blue' ? 'laneBlue' : 'laneWhite'
       addMeshObj(mb, key, `차선 ${ls.length}줄`)
     }
     // 담장·가드레일: 선을 따라 세운 얇은 면
     for (const w of m.fences) {
-      const hgt = /가드|펜스|레일/.test(w.kind) ? 0.8 : 1.5
+      const hgt = /가드|펜스|레일/.test(w.kind) ? m.dims.fenceGuard : m.dims.fenceWall
       const pts = densify(w.pts, 3, false)
       if (pts.length < 2) continue
       const mesh = new rhino.Mesh()
@@ -802,7 +831,7 @@ export async function siteModelTo3dm(m: SiteModel, meta: ExportMeta, onStep?: Ex
     }
     for (const st of m.stops) {
       const z0 = m.roadAt(st.x, st.y) + R + H
-      const boxes = shelterBoxes(st.x, st.y, st.along, st.toRoad)
+      const boxes = shelterBoxes(st.x, st.y, st.along, st.toRoad, m.dims)
       const label = [st.name, st.use].filter(Boolean).join(' · ') || '정류장'
       const user = { 이름: st.name, 용도: st.use }
       const frame = newMesh()
@@ -826,19 +855,19 @@ export async function siteModelTo3dm(m: SiteModel, meta: ExportMeta, onStep?: Ex
     // 가로등: 기둥 + 도로 쪽 팔 + 등 머리 (모두 메시 하나)
     if (m.lamps.length) {
       const mb = newMesh()
-      for (const l of m.lamps) addBoxes(mb, lampBoxes(l.x, l.y, l.toRoad), m.roadAt(l.x, l.y) + R + H)
+      for (const l of m.lamps) addBoxes(mb, lampBoxes(l.x, l.y, l.toRoad, m.dims), m.roadAt(l.x, l.y) + R + H)
       addMeshObj(mb, 'lamp', `가로등 ${m.lamps.length}개`)
     }
 
     // ── 정밀도로지도 신호등·지주·표지판·방호시설·과속방지턱 (2026-11-13). 높이는 땅(지형 + 도로 면) 위
     if (m.poles.length) {
       const mb = newMesh()
-      for (const p of m.poles) addBoxes(mb, poleBoxes(p), m.roadAt(p.x, p.y) + R)
+      for (const p of m.poles) addBoxes(mb, poleBoxes(p, m.dims), m.roadAt(p.x, p.y) + R)
       addMeshObj(mb, 'pole', `지주 ${m.poles.length}개`)
     }
     if (m.signals.length) {
       const mb = newMesh()
-      for (const s of m.signals) addBoxes(mb, signalBoxes(s), m.roadAt(s.x, s.y) + R)
+      for (const s of m.signals) addBoxes(mb, signalBoxes(s, m.dims), m.roadAt(s.x, s.y) + R)
       addMeshObj(mb, 'signal', `신호등 ${m.signals.length}개 (차량 ${m.signals.filter((s) => s.vehicle).length} · 보행 ${m.signals.filter((s) => !s.vehicle).length})`)
     }
     if (m.signs.length) {
@@ -864,18 +893,18 @@ export async function siteModelTo3dm(m: SiteModel, meta: ExportMeta, onStep?: Ex
     if (m.barriers.length) {
       const mb = newMesh()
       for (const b of m.barriers) {
-        for (const pb of barrierPosts(b.pts)) addBoxes(mb, [pb], m.roadAt(pb.c[0], pb.c[1]) + R)
-        addSides(mb, b.pts, R + BARRIER_RAIL[0], R + BARRIER_RAIL[1], false)
+        for (const pb of barrierPosts(b.pts, m.dims)) addBoxes(mb, [pb], m.roadAt(pb.c[0], pb.c[1]) + R)
+        addSides(mb, b.pts, R + barrierRail(m.dims)[0], R + barrierRail(m.dims)[1], false)
       }
       addMeshObj(mb, 'barrier', `방호시설 ${m.barriers.length}줄 (중앙 ${m.barriers.filter((b) => b.central).length})`)
     }
     if (m.bumps.length) {
       const mb = newMesh()
-      addDraped(mb, m.bumps, R + BUMP_H, 1.5)
-      for (const p of m.bumps) for (const r of [p.outer, ...p.holes]) addSides(mb, r, R, R + BUMP_H)
+      addDraped(mb, m.bumps, R + m.dims.bumpH, 1.5)
+      for (const p of m.bumps) for (const r of [p.outer, ...p.holes]) addSides(mb, r, R, R + m.dims.bumpH)
       addMeshObj(mb, 'bump', `과속방지턱 ${m.bumps.length}개`)
       const st = newMesh()
-      addDraped(st, m.bumps.flatMap((p) => hatchStripes(p)), R + BUMP_H + 0.005, 1.5)
+      addDraped(st, m.bumps.flatMap((p) => hatchStripes(p)), R + m.dims.bumpH + 0.005, 1.5)
       addMeshObj(st, 'bump', '과속방지턱 흰 줄', {}, [245, 245, 245], 'paintWhite')
     }
 

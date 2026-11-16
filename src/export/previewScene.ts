@@ -11,7 +11,7 @@ import { deckZ } from './bridges'
 import { deckTris } from './bridgeMesh'
 
 const TREE_COLOR: Record<TreeShape, string> = { cone: '#5c8c4c', broad: '#6f9d5a', round: '#82ad66' }
-import { BARRIER_RAIL, barrierPosts, boxMesh, BUMP_H, densifyLine, hatchStripes, lampBoxes, poleBoxes, ribbon, shelterBoxes, signalBoxes, signPanels, STREET, type Box, type SignColor } from './streetDetail'
+import { barrierPosts, barrierRail, boxMesh, densifyLine, hatchStripes, lampBoxes, poleBoxes, ribbon, shelterBoxes, signalBoxes, signPanels, type Box, type SignColor } from './streetDetail'
 
 export interface PreviewParts {
   group: THREE.Group
@@ -171,8 +171,8 @@ export function buildPreview(m: SiteModel): PreviewParts {
     addMesh(rail, COLORS.rail, { side: THREE.DoubleSide }, '다리·고가 난간')
   }
   // ── 거리 디테일 (2026-11-13): 인도·교통섬 단차, 횡단보도 줄무늬, 안전지대 빗금, 차선·연석 띠
-  const R = STREET.roadLift
-  const H = STREET.curbH
+  const R = m.dims.roadLift
+  const H = m.dims.curbH
   /** 선 → 폭 w 띠 삼각형 (지형에 얹음) */
   const ribbonTris = (pts: XY[], w: number, lift: number, out: number[], closed = false) => {
     const d = densifyLine(pts, 2, closed)
@@ -237,23 +237,23 @@ export function buildPreview(m: SiteModel): PreviewParts {
   {
     const out: number[] = []
     drapedPolys(m.hatch, R + 0.03, 3, out)
-    for (const sz of m.safety) if (sz.kind === 'painted') ribbonTris(sz.poly.outer, STREET.hatchEdge, R + 0.03, out, true)
+    for (const sz of m.safety) if (sz.kind === 'painted') ribbonTris(sz.poly.outer, m.dims.hatchEdge, R + 0.03, out, true)
     drapedPolys(m.yellowMarks, R + 0.03, 3, out)
     addMesh(out, COLORS.hatch, { polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }, '안전지대 표시')
   }
   {
     const out: number[] = []
     for (const c of m.curbs) {
-      ribbonTris(c, STREET.curbW, R + H, out)
-      const { left, right } = ribbon(densifyLine(c, 2), STREET.curbW)
+      ribbonTris(c, m.dims.curbW, R + H, out)
+      const { left, right } = ribbon(densifyLine(c, 2), m.dims.curbW)
       sideTris(left, R, R + H, out, false)
       sideTris(right, R, R + H, out, false)
     }
     addMesh(out, COLORS.curb, { side: THREE.DoubleSide }, '연석')
     const lanes: Record<'white' | 'yellow' | 'blue', number[]> = { white: [], yellow: [], blue: [] }
     for (const l of m.lanes)
-      for (const line of l.double ? [offsetLine(l.pts, 0.15), offsetLine(l.pts, -0.15)] : [l.pts])
-        for (const seg of l.dashed ? dashesOf(line) : [line]) ribbonTris(seg, STREET.laneW, R + 0.03, lanes[l.color])
+      for (const line of l.double ? [offsetLine(l.pts, m.dims.laneDouble / 2), offsetLine(l.pts, -m.dims.laneDouble / 2)] : [l.pts])
+        for (const seg of l.dashed ? dashesOf(line, m.dims.dashOn, m.dims.dashOff) : [line]) ribbonTris(seg, m.dims.laneW, R + 0.03, lanes[l.color])
     const lo = { polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }
     addMesh(lanes.white, COLORS.laneWhite, lo, '차선 (흰색)')
     addMesh(lanes.yellow, COLORS.laneYellow, lo, '차선 (황색)')
@@ -278,14 +278,14 @@ export function buildPreview(m: SiteModel): PreviewParts {
     for (const p of b.parts) {
       // 15-D: 경사 지붕 (벽은 지붕에 맞춤), 평지붕은 파라펫
       if (b.top !== null && b.roof && b.roof.kind !== 'flat') {
-        const g = gableGeometry(p, b.base, b.top, b.roof.kind)
+        const g = gableGeometry(p, b.base, b.top, b.roof.kind, b.roof.kind === 'gable' ? m.dims.pitchGable : m.dims.pitchMetal)
         if (g) {
           for (const v of g.walls) out.push(v)
           for (const v of g.roof) roofTris.push(v)
           continue
         }
       }
-      if (b.top !== null && b.roof) for (const v of parapetGeometry(p, b.top)) out.push(v)
+      if (b.top !== null && b.roof) for (const v of parapetGeometry(p, b.top, m.dims.parapetH, m.dims.parapetW)) out.push(v)
       for (const ring of [p.outer, ...p.holes])
         for (let i = 0; i < ring.length; i++) {
           const [x1, y1] = ring[i]
@@ -306,7 +306,7 @@ export function buildPreview(m: SiteModel): PreviewParts {
   {
     const out: number[] = []
     for (const w of m.fences) {
-      const h = /가드|펜스|레일/.test(w.kind) ? 0.8 : 1.5
+      const h = /가드|펜스|레일/.test(w.kind) ? m.dims.fenceGuard : m.dims.fenceWall
       const d = densify(w.pts, 3, false)
       for (let i = 0; i + 1 < d.length; i++) {
         const [x1, y1] = d[i]
@@ -338,7 +338,7 @@ export function buildPreview(m: SiteModel): PreviewParts {
     const pole: number[] = []
     const head: number[] = []
     for (const l of m.lamps) {
-      const bs = lampBoxes(l.x, l.y, l.toRoad)
+      const bs = lampBoxes(l.x, l.y, l.toRoad, m.dims)
       const g = z(l.x, l.y) + R + H
       boxTris(
         bs.filter((b) => b.part !== 'head'),
@@ -356,7 +356,7 @@ export function buildPreview(m: SiteModel): PreviewParts {
     const frame: number[] = []
     const glass: number[] = []
     for (const st of m.stops) {
-      const bs = shelterBoxes(st.x, st.y, st.along, st.toRoad)
+      const bs = shelterBoxes(st.x, st.y, st.along, st.toRoad, m.dims)
       const g = z(st.x, st.y) + R + H
       boxTris(
         bs.filter((b) => b.part !== 'glass'),
@@ -376,10 +376,10 @@ export function buildPreview(m: SiteModel): PreviewParts {
   // ── 정밀도로지도 지주·신호등·표지판·방호시설·과속방지턱 (2026-11-13)
   {
     const pole: number[] = []
-    for (const p of m.poles) boxTris(poleBoxes(p), z(p.x, p.y) + R, pole)
+    for (const p of m.poles) boxTris(poleBoxes(p, m.dims), z(p.x, p.y) + R, pole)
     addMesh(pole, COLORS.pole, {}, '지주')
     const sig: number[] = []
-    for (const s of m.signals) boxTris(signalBoxes(s), z(s.x, s.y) + R, sig)
+    for (const s of m.signals) boxTris(signalBoxes(s, m.dims), z(s.x, s.y) + R, sig)
     addMesh(sig, COLORS.signal, {}, '신호등')
     const sc: Record<SignColor, number[]> = { red: [], yellow: [], white: [], blue: [] }
     for (const s of m.signs) {
@@ -392,18 +392,18 @@ export function buildPreview(m: SiteModel): PreviewParts {
     for (const c of ['red', 'yellow', 'white', 'blue'] as SignColor[]) addMesh(sc[c], SIGN_HEX[c], { side: THREE.DoubleSide }, '교통안전표지')
     const bar: number[] = []
     for (const b of m.barriers) {
-      for (const pb of barrierPosts(b.pts)) boxTris([pb], z(pb.c[0], pb.c[1]) + R, bar)
-      sideTris(b.pts, R + BARRIER_RAIL[0], R + BARRIER_RAIL[1], bar, false)
+      for (const pb of barrierPosts(b.pts, m.dims)) boxTris([pb], z(pb.c[0], pb.c[1]) + R, bar)
+      sideTris(b.pts, R + barrierRail(m.dims)[0], R + barrierRail(m.dims)[1], bar, false)
     }
     addMesh(bar, COLORS.barrier, { side: THREE.DoubleSide }, '방호시설')
     const bump: number[] = []
-    drapedPolys(m.bumps, R + BUMP_H, 1.5, bump)
-    for (const p of m.bumps) for (const r of [p.outer, ...p.holes]) sideTris(r, R, R + BUMP_H, bump)
+    drapedPolys(m.bumps, R + m.dims.bumpH, 1.5, bump)
+    for (const p of m.bumps) for (const r of [p.outer, ...p.holes]) sideTris(r, R, R + m.dims.bumpH, bump)
     addMesh(bump, COLORS.bump, { side: THREE.DoubleSide }, '과속방지턱')
     const bs: number[] = []
     drapedPolys(
       m.bumps.flatMap((p) => hatchStripes(p)),
-      R + BUMP_H + 0.005,
+      R + m.dims.bumpH + 0.005,
       1.5,
       bs,
     )

@@ -8,6 +8,8 @@
 //    길을 따라 잰 거리 × 경사 6%로 올라 (높이 속성 또는 5m 밑 높이) + 상판 1.4m까지. 교각은 조각마다 긴 축을 따라 약 30m 간격.
 //  - 지하차도는 그리지 않음 (땅 밑).
 
+import { DEFAULT_DIMS, type ModelDims } from './modelDims'
+
 type XY = [number, number]
 interface Poly {
   outer: XY[]
@@ -132,11 +134,14 @@ function inRing([x, y]: XY, r: XY[]): boolean {
 export const inPoly = (p: XY, poly: Poly) => inRing(p, poly.outer) && !poly.holes.some((h) => inRing(p, h))
 
 /** 다리 종류마다 상판 두께·난간 높이·교각 간격 */
-function dims(sub: string, kind: 'bridge' | 'overpass'): { thick: number; rail: number; span: number } {
-  if (kind === 'overpass') return { thick: 1.4, rail: 1.0, span: 30 }
-  if (/보도/.test(sub)) return { thick: 0.5, rail: 1.1, span: 20 }
-  if (/철/.test(sub)) return { thick: 1.5, rail: 0, span: 25 }
-  return { thick: 1.2, rail: 1.0, span: 25 }
+/** 상판 치수 (어림 치수 modelDims — 기본: 고가 1.4m·난간 1.0m·교각 30m, 보도교 0.5·1.1·20, 철교 1.5·난간 없음·25, 도로교 1.2·1.0·25) */
+export type DeckDims = Pick<ModelDims, 'thickRoad' | 'thickWalk' | 'thickRail' | 'thickOver' | 'railRoad' | 'railWalk' | 'spanRoad' | 'spanWalk' | 'spanOver' | 'overH' | 'overGrade' | 'clearance'>
+
+function dims(sub: string, kind: 'bridge' | 'overpass', m: DeckDims): { thick: number; rail: number; span: number } {
+  if (kind === 'overpass') return { thick: m.thickOver, rail: m.railRoad, span: m.spanOver }
+  if (/보도/.test(sub)) return { thick: m.thickWalk, rail: m.railWalk, span: m.spanWalk }
+  if (/철/.test(sub)) return { thick: m.thickRail, rail: 0, span: m.spanRoad }
+  return { thick: m.thickRoad, rail: m.railRoad, span: m.spanRoad }
 }
 
 export interface DeckOpts {
@@ -148,6 +153,8 @@ export interface DeckOpts {
   waterAt?: (x: number, y: number) => number | null
   /** 모형 범위 반쪽 (잘린 끝 알아보기) */
   half?: number
+  /** 어림 치수 (없으면 기본값) */
+  dims?: DeckDims
 }
 
 /** 점이 고리 변에서 r m 안인지 */
@@ -332,6 +339,7 @@ export function deckZFn(s: DeckZSpec, zAt: (x: number, y: number) => number): (x
  * @param zAt 다듬은 땅 높이 (도로는 매끈한 면)
  */
 export function buildDecks(src: DeckSrc[], zAt: (x: number, y: number) => number, opts: DeckOpts = {}): Deck[] {
+  const dm: DeckDims = opts.dims ?? DEFAULT_DIMS
   const out: Deck[] = []
   // 고가차도는 같은 이름끼리 한 줄로
   const groups = new Map<string, DeckSrc[]>()
@@ -375,7 +383,7 @@ export function buildDecks(src: DeckSrc[], zAt: (x: number, y: number) => number
     }
     const at = (s2: number, t: number): XY => [c[0] + u[0] * s2 + v[0] * t, c[1] + u[1] * s2 + v[1] * t]
     const inside = (x: number, y: number) => s.polys.some((p) => inPoly([x, y], p))
-    const d = dims(s.kind, kind)
+    const d = dims(s.kind, kind, dm)
     let zSpec: DeckZSpec
     if (kind === 'bridge') {
       // 상판 높이 (2026-11-16 고침: 직선 하나 + 통째로 올리기 → 길거나 굽은 상판의 땅 위 부분이 도로보다 떠 있었음):
@@ -430,14 +438,14 @@ export function buildDecks(src: DeckSrc[], zAt: (x: number, y: number) => number
             const [x, y] = at(a, b)
             if (!inside(x, y)) continue
             const w = opts.waterAt(x, y)
-            if (w !== null) wet.push({ x, y, z: w + 0.3 + d.thick })
+            if (w !== null) wet.push({ x, y, z: w + dm.clearance + d.thick })
           }
       }
       zSpec = { t: 'idw', conn, wet }
     } else {
       // 램프: 조각들을 합친 바닥에서 길을 따라 잰 가지 끝까지의 거리 × 6% (rampField)
-      const g = 0.06
-      const hMax = (s.height && s.height > 2 && s.height < 20 ? s.height : 5) + d.thick
+      const g = dm.overGrade / 100
+      const hMax = (s.height && s.height > 2 && s.height < 20 ? s.height : dm.overH) + d.thick
       const ramp = rampField(s.polys)
       // 끝 높이: 다른 상판(다리)에 붙은 끝은 그 상판 높이, 모형 범위 가장자리에서 잘린 끝은 뺌, 나머지는 땅 (2026-11-16 고침:
       // 광암교에 이어지는 광암고가교 끝을 땅 높이로 잡아 다리와 만나는 곳에서 꺼졌다 다시 떴음)
