@@ -2,10 +2,12 @@
 // 범위를 고르면 모형을 만들어 돌려 볼 수 있는 3D로 보여 주고, 물체 수·예상 파일 크기·너무 크면 경고, 그다음 내려받기.
 // 이 화면과 3D 미리보기는 열 때만 불러온다.
 
-import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import type { DiagramData } from '../diagrams/data'
+import type { AerialTex } from '../export/aerialTexture'
 import { buildModelFor, modelStats } from '../export/modelBuild'
 import { filterModel, itemCounts, itemsOfLevel, LEVELS, MODEL_ITEMS } from '../export/modelItems'
+import { LAYER_MAT, MATERIAL_STYLES, materialSet, RENDER_HELP, texturesOf, type MaterialStyle, type MatId } from '../export/renderMaterials'
 import type { SiteModel } from '../export/siteModel'
 import { siteModelToDxf } from '../export/toDxf'
 import { downloadBlob } from '../model/project'
@@ -33,6 +35,8 @@ interface Props {
   /** 렌더링 모델 단계·항목 (프로젝트에 저장) */
   render?: RenderModelSettings
   onRender?: (s: RenderModelSettings) => void
+  /** 브이월드 키 (지형에 항공사진 입히기) */
+  vworldKey?: string
 }
 
 type Tab = 'render' | 'contour'
@@ -40,7 +44,7 @@ type Tab = 'render' | 'contour'
 const sideLabel = (h: number) => (h * 2 >= 1000 ? `${(h * 2) / 1000}km` : `${h * 2}m`)
 const fmt = (n: number, d = 0) => n.toLocaleString('ko-KR', { maximumFractionDigits: d })
 
-export default function ModelWorkbench({ data, baseName, meta, halfOptions, initialHalf, asPage = false, onClose, onExported, contour, onContour, render, onRender }: Props) {
+export default function ModelWorkbench({ data, baseName, meta, halfOptions, initialHalf, asPage = false, onClose, onExported, contour, onContour, render, onRender, vworldKey = '' }: Props) {
   const [tab, setTab] = useState<Tab>('render')
   const [half, setHalf] = useState(initialHalf)
   const [model, setModel] = useState<SiteModel | null>(null)
@@ -114,19 +118,71 @@ export default function ModelWorkbench({ data, baseName, meta, halfOptions, init
   const levelLabel = LEVELS.find((l) => l.id === rs.level)?.label ?? ''
   const name = `${baseName}_3D_${sideLabel(half)}_${levelLabel}${custom ? '_고침' : ''}`
 
+  // 렌더 재질 (2026-11-16): 방식은 학생이 고름, 항공사진은 키가 있을 때만
+  const material: MaterialStyle = rs.material ?? 'tex'
+  const hasKey = !!vworldKey.trim()
+  const aerialOn = !!rs.aerial && hasKey && material !== 'none'
+  const withTextures = material === 'tex' || aerialOn
+  // 같은 범위면 항공사진을 한 번만 받음 (.3dm과 ZIP이 같이 씀)
+  const aerialRef = useRef<{ sig: string; tex: AerialTex | null } | null>(null)
+  const getAerial = async (m: SiteModel): Promise<AerialTex | null> => {
+    if (!aerialOn) return null
+    const sig = `${m.origin.x5179.toFixed(1)},${m.origin.y5179.toFixed(1)},${m.half}`
+    if (aerialRef.current?.sig === sig && aerialRef.current.tex) return aerialRef.current.tex
+    setBusy('항공사진 타일 받는 중')
+    const { aerialForModel } = await import('../export/aerialTexture')
+    const tex = await aerialForModel(m, vworldKey, (s) => setBusy(s))
+    aerialRef.current = { sig, tex }
+    return tex
+  }
+
   const download3dm = async () => {
     if (!shown) return
     setBusy('라이노 모듈 불러오는 중')
     setMsg(null)
     try {
-      const { siteModelTo3dm } = await import('../export/to3dm')
       const t0 = performance.now()
-      const bytes = await siteModelTo3dm(shown, meta, (s) => setBusy(s))
+      const aerial = await getAerial(shown)
+      const { siteModelTo3dm } = await import('../export/to3dm')
+      const bytes = await siteModelTo3dm(shown, meta, (s) => setBusy(s), { materials: material, aerial })
       downloadBlob(`${name}.3dm`, new Blob([bytes as BlobPart], { type: 'application/octet-stream' }))
       onExported?.()
-      setMsg({ kind: 'ok', text: `라이노 파일을 내려받았습니다 — ${fmt(bytes.length / 1e6, 1)}MB, 만드는 데 ${fmt((performance.now() - t0) / 1000, 1)}초.` })
+      const miss = aerialOn && !aerial ? ' 항공사진은 받지 못해 땅 재질로 넣었습니다(키·연결 확인).' : ''
+      setMsg({ kind: miss ? 'error' : 'ok', text: `라이노 파일을 내려받았습니다 — ${fmt(bytes.length / 1e6, 1)}MB, 만드는 데 ${fmt((performance.now() - t0) / 1000, 1)}초.${miss}` })
     } catch (e) {
       setMsg({ kind: 'error', text: `만들지 못했습니다: ${e instanceof Error ? e.message : String(e)}` })
+    } finally {
+      setBusy(null)
+    }
+  }
+  /** 무늬 이미지만 따로 (D5에서 .3dm을 바로 불러와 무늬가 안 보일 때 .3dm 옆에 풀기) */
+  const downloadTextures = async () => {
+    if (!shown) return
+    setBusy('재질 무늬 그리는 중')
+    setMsg(null)
+    try {
+      const aerial = await getAerial(shown)
+      const [{ textureJpeg, TEX_FILE }, { zipSync, strToU8 }] = await Promise.all([import('../export/textures'), import('fflate')])
+      const set = materialSet(material)
+      const files: Record<string, Uint8Array> = {}
+      if (set) for (const t of texturesOf(set, Object.values(LAYER_MAT) as MatId[])) files[TEX_FILE[t]] = await textureJpeg(t)
+      if (aerial) files[aerial.file] = aerial.bytes
+      const readme = [
+        '대지해석 에이전트 — 렌더 재질 무늬 이미지',
+        '',
+        '이 이미지들은 .3dm 파일 안에도 들어 있습니다. 라이노는 열 때 알아서 꺼내 씁니다.',
+        '렌더러에서 무늬가 안 보이면 이 ZIP을 .3dm 파일과 같은 폴더에 푸세요 (라이노는 모형 폴더에서 같은 이름의 이미지를 찾습니다).',
+        '',
+        ...RENDER_HELP.map(([k, v]) => `[${k}] ${v}`),
+        '',
+        '무늬(SA_asphalt 등)는 앱이 그린 이미지입니다. SA_aerial.jpg는 브이월드 위성영상(국토교통부)입니다 — 쓸 때 출처를 밝히세요.',
+      ].join('\r\n')
+      files['읽어보기.txt'] = strToU8(readme)
+      const zip = zipSync(files, { level: 0 })
+      downloadBlob(`${name}_재질무늬.zip`, new Blob([zip as BlobPart], { type: 'application/zip' }))
+      setMsg({ kind: 'ok', text: `무늬 이미지 ${Object.keys(files).length - 1}장을 ZIP으로 내려받았습니다 — .3dm과 같은 폴더에 푸세요.` })
+    } catch (e) {
+      setMsg({ kind: 'error', text: `무늬 이미지를 만들지 못했습니다: ${e instanceof Error ? e.message : String(e)}` })
     } finally {
       setBusy(null)
     }
@@ -187,7 +243,7 @@ export default function ModelWorkbench({ data, baseName, meta, halfOptions, init
                     aria-checked={rs.level === l.id}
                     className={rs.level === l.id ? 'on' : ''}
                     disabled={!!busy}
-                    onClick={() => setRender({ level: l.id as RenderLevel, items: itemsOfLevel(l.id) })}
+                    onClick={() => setRender({ ...rs, level: l.id as RenderLevel, items: itemsOfLevel(l.id) })}
                   >
                     {l.label}
                   </button>
@@ -211,7 +267,7 @@ export default function ModelWorkbench({ data, baseName, meta, halfOptions, init
                             type="checkbox"
                             checked={on && n > 0}
                             disabled={!n || !!busy}
-                            onChange={(e) => setRender({ level: rs.level, items: e.target.checked ? [...rs.items, it.id] : rs.items.filter((x) => x !== it.id) })}
+                            onChange={(e) => setRender({ ...rs, items: e.target.checked ? [...rs.items, it.id] : rs.items.filter((x) => x !== it.id) })}
                           />
                           {it.label}
                           <span className="muted">{n ? (it.unit ? ` ${fmt(n)}${it.unit}` : '') : ' 자료 없음'}</span>
@@ -243,6 +299,8 @@ export default function ModelWorkbench({ data, baseName, meta, halfOptions, init
               {stats && (
                 <p className="small">
                   라이노 물체 약 <strong>{fmt(stats.objects)}</strong>개 · 예상 파일 약 <strong>{fmt(stats.mb, stats.mb < 10 ? 1 : 0)}MB</strong>
+                  {material === 'tex' ? ' + 무늬 이미지 약 1MB' : ''}
+                  {aerialOn ? ' + 항공사진 약 1~4MB' : ''}
                   {previewInfo && (
                     <span className="muted">
                       {' '}
@@ -255,10 +313,47 @@ export default function ModelWorkbench({ data, baseName, meta, halfOptions, init
               <p className="muted small">디테일(가로수·정류장·차선 등)은 1:1,000 수치지도·정밀도로지도를 올렸을 때 들어갑니다.</p>
             </section>
 
+            <section>
+              <h3>렌더 재질 (엔스케이프·D5)</h3>
+              <div className="segmented small" role="radiogroup" aria-label="렌더 재질">
+                {MATERIAL_STYLES.map((s) => (
+                  <button key={s.id} type="button" role="radio" aria-checked={material === s.id} className={material === s.id ? 'on' : ''} disabled={!!busy} onClick={() => setRender({ ...rs, material: s.id })}>
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+              <p className="muted small">{MATERIAL_STYLES.find((s) => s.id === material)?.note}</p>
+              <label className={`check-row small${hasKey && material !== 'none' ? '' : ' muted'}`}>
+                <input type="checkbox" checked={aerialOn} disabled={!hasKey || material === 'none' || !!busy} onChange={(e) => setRender({ ...rs, aerial: e.target.checked })} />
+                지형 면에 항공사진 입히기 (브이월드 위성영상, 약 1~4MB 더함)
+              </label>
+              {!hasKey && <p className="muted small">브이월드 키를 설정에 넣으면 고를 수 있습니다.</p>}
+              <details className="model-items">
+                <summary className="small">엔스케이프·D5에서 쓰는 법</summary>
+                <ul className="small render-help">
+                  <li>
+                    <strong>엔스케이프</strong>: 라이노에서 그대로 렌더. 레이어마다 <code>SA_</code>로 시작하는 재질이 붙어 있습니다. 잔디·물은 엔스케이프 재질 편집기에서 종류를 Grass·Water로 바꾸면 더 좋습니다.
+                  </li>
+                  <li>
+                    <strong>D5</strong>: D5 LiveSync(또는 Sync)로 라이노에서 넘기거나 D5에서 .3dm을 바로 불러옵니다. 메시마다 실제 크기 UV를 적어 두어 무늬 크기가 맞습니다. 재질 이름(<code>SA_Asphalt</code> 등)으로 D5 재질 라이브러리와 바꿔 끼우세요.
+                  </li>
+                  <li>
+                    무늬 이미지는 .3dm 안에 들어 있고 라이노가 열 때 꺼내 씁니다. 렌더러에서 무늬가 안 보이면 아래 <strong>무늬 이미지 따로 받기</strong> ZIP을 .3dm과 같은 폴더에 푸세요.
+                  </li>
+                  <li>건물 벽은 돌출 면이라 무늬 없이 색만 넣었습니다 (외벽 재질은 렌더러에서 고르는 것이 낫습니다).</li>
+                </ul>
+              </details>
+            </section>
+
             <section className="workbench-actions">
               <button type="button" className="btn primary" disabled={!shown || !!busy} onClick={() => void download3dm()}>
                 {busy ? `만드는 중… ${busy}` : '라이노 .3dm 내려받기'}
               </button>
+              {withTextures && (
+                <button type="button" className="btn small" disabled={!shown || !!busy} onClick={() => void downloadTextures()}>
+                  무늬 이미지 따로 받기 (ZIP)
+                </button>
+              )}
               <button type="button" className="btn small" disabled={!shown || !!busy} onClick={downloadDxf}>
                 DXF (평면 밑그림)
               </button>

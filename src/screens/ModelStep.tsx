@@ -123,6 +123,7 @@ export default function ModelStep({ project, update, config, keys, onGoData, onG
               data={data}
               baseName={baseName}
               meta={meta}
+              vworldKey={config.key}
               halfOptions={halfOptions}
               initialHalf={defaultHalf(halfOptions)}
               onExported={() =>
@@ -152,6 +153,11 @@ export default function ModelStep({ project, update, config, keys, onGoData, onG
               수치지도·정밀도로지도를 올렸으면 가로수(수관·줄기)·정류장 쉘터·가로등·횡단보도·담장·가드레일·차선(색·겹선·점선)·노면표시·연석·보도 면까지. 땅에 놓이는 선·면은 지형 높이를
               따라 얹었고, 라이노의 지구 위치(Earth Anchor)에 원점 경위도·해발을 넣었습니다. 건물 높이는 실측 높이가 있으면 그 값, 없으면 층수 × 용도별 층고(주거 3m·비주거 4m·공장·창고 5m)
               어림입니다(층수 모르면 발자국만).
+            </p>
+            <p className="small">
+              <strong>렌더 재질</strong>: 작업대에서 고른 방식대로 레이어마다 <code>SA_</code>로 시작하는 라이노 PBR 재질(색·거칠기·금속감·투명도)을 붙입니다. '사실적 + 무늬'는 앱이 그린
+              아스팔트·보도블록·잔디·땅·콘크리트 무늬 이미지를 파일 안에 넣고, 메시마다 실제 크기 UV를 적어 엔스케이프·D5에서 무늬 크기가 맞습니다. 항공사진을 고르면 지형 면에 브이월드
+              위성영상을 입힙니다(출처: 브이월드).
             </p>
             <p className="small">
               <strong>DXF</strong> (AutoCAD R12, 레이어 이름 영문 — 한글이 깨지지 않게): 지형은 면 대신 등고선(선마다 높이 값), 나머지는 높이 0 평면 선입니다.

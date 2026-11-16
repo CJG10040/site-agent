@@ -9,8 +9,18 @@ import { gableGeometry, parapetGeometry, ROOF_LABEL } from './roofs'
 import { WALK_EDGE } from './streetDetail'
 import { SHAPE_LABEL, SRC_LABEL, treeShapeTris, type TreeShape, type TreeSrc } from './trees'
 import { BARRIER_RAIL, barrierPosts, boxMesh, BUMP_H, densifyLine, hatchStripes, lampBoxes, poleBoxes, ribbon, shelterBoxes, signalBoxes, signPanels, STREET, type SignColor } from './streetDetail'
+import type { AerialTex } from './aerialTexture'
+import { LAYER_MAT, MATERIAL_STYLES, materialSet, RENDER_HELP, TEX_FILE, texPath, texturesOf, type MaterialStyle, type MatId } from './renderMaterials'
+import { textureJpeg } from './textures'
 
 type Rgb = [number, number, number]
+
+export interface RenderOptions {
+  /** 렌더 재질 방식 (없으면 'none' = 예전처럼 레이어 색만) */
+  materials?: MaterialStyle
+  /** 지형 면에 입힐 항공사진 (aerialTexture.ts) */
+  aerial?: AerialTex | null
+}
 
 interface LayerDef {
   key: string
@@ -92,9 +102,12 @@ export interface ExportMeta {
   collected: string
 }
 
-export async function siteModelTo3dm(m: SiteModel, meta: ExportMeta, onStep?: (s: string) => void): Promise<Uint8Array> {
+export async function siteModelTo3dm(m: SiteModel, meta: ExportMeta, onStep?: (s: string) => void, ro: RenderOptions = {}): Promise<Uint8Array> {
   onStep?.('라이노 모듈 불러오는 중')
   const rhino = await loadRhino()
+  const style = ro.materials ?? 'none'
+  const mats = materialSet(style)
+  const aerial = mats ? (ro.aerial ?? null) : null
   const doc = new rhino.File3dm()
   try {
     const st = doc.settings()
@@ -115,6 +128,42 @@ export async function siteModelTo3dm(m: SiteModel, meta: ExportMeta, onStep?: (s
     st.earthAnchorPoint = ea
     doc.applicationName = '대지해석 에이전트'
     doc.applicationUrl = 'https://cjg10040.github.io/site-agent/'
+
+    // ── 렌더 재질 (2026-11-16): 쓰는 것만 만들어 재질 표에 넣음. PBR + 옛 재질 값 함께
+    const matIdx = new Map<MatId, number>()
+    const matIndex = (id: MatId): number => {
+      const had = matIdx.get(id)
+      if (had !== undefined || !mats) return had ?? -1
+      const d = mats[id]
+      const mat = new rhino.Material()
+      mat.name = d.name
+      const [r, g, b] = d.base
+      mat.diffuseColor = { r, g, b, a: 255 } as unknown as number[]
+      if (d.opacity !== undefined) mat.transparency = 1 - d.opacity
+      mat.shine = (1 - d.rough) * 255
+      mat.reflectivity = d.metal ? 0.5 * d.metal : 0
+      mat.toPhysicallyBased()
+      const pb = mat.physicallyBased()
+      pb.baseColor = { r: r / 255, g: g / 255, b: b / 255, a: 1 }
+      pb.roughness = d.rough
+      pb.metallic = d.metal ?? 0
+      if (d.opacity !== undefined) {
+        pb.opacity = d.opacity
+        pb.opacityIOR = 1.52
+        pb.opacityRoughness = 0
+      }
+      free(pb)
+      const texFile = id === 'aerial' ? aerial?.file : d.tex ? TEX_FILE[d.tex] : undefined
+      if (texFile) mat.setBitmapTextureFilename(texPath(texFile))
+      if (d.bump) mat.setBumpTextureFilename(texPath(TEX_FILE[d.bump]))
+      const i = doc.materials().count
+      doc.materials().add(mat)
+      free(mat)
+      matIdx.set(id, i)
+      return i
+    }
+    /** 레이어의 재질 (지형 면은 항공사진을 입히면 항공사진) */
+    const layerMat = (key: string): MatId | undefined => (key === 'mesh' && aerial ? 'aerial' : LAYER_MAT[key])
 
     // 레이어 (부모를 먼저 넣고 id로 잇는다)
     const layerIndex = new Map<string, number>()
@@ -168,7 +217,9 @@ export async function siteModelTo3dm(m: SiteModel, meta: ExportMeta, onStep?: (s
             : def.name
       L.color = { r: def.color[0], g: def.color[1], b: def.color[2], a: 255 }
       if (def.parent) L.parentLayerId = layerId.get(def.parent) ?? ''
-      if (def.key === 'stopGlass')
+      const lm = mats ? layerMat(def.key) : undefined
+      if (lm) L.renderMaterialIndex = matIndex(lm)
+      else if (!mats && def.key === 'stopGlass')
         try {
           // 렌더링에서 비치게 (재질: 투명 60%)
           const mat = new rhino.Material()
@@ -186,7 +237,7 @@ export async function siteModelTo3dm(m: SiteModel, meta: ExportMeta, onStep?: (s
       layerIndex.set(def.key, idx)
       layerId.set(def.key, doc.layers().get(idx).id)
     }
-    const attrs = (key: string, name = '', user: Record<string, string> = {}, color?: Rgb) => {
+    const attrs = (key: string, name = '', user: Record<string, string> = {}, color?: Rgb, mat?: MatId) => {
       const at = new rhino.ObjectAttributes()
       at.layerIndex = layerIndex.get(key) ?? 0
       if (name) at.name = name
@@ -196,7 +247,44 @@ export async function siteModelTo3dm(m: SiteModel, meta: ExportMeta, onStep?: (s
         at.colorSource = rhino.ObjectColorSource.ColorFromObject
         at.objectColor = { r: color[0], g: color[1], b: color[2], a: 255 }
       }
+      if (mat && mats) {
+        // 레이어와 다른 재질 (표지판 색·연석 띠·과속방지턱 흰 줄·나무 수관/줄기)
+        at.materialSource = rhino.ObjectMaterialSource.MaterialFromObject
+        at.materialIndex = matIndex(mat)
+      }
       return at
+    }
+    /**
+     * 메시에 실제 크기 UV를 적음 (재질을 넣을 때만): 무늬 한 장 = tile m.
+     * 누운 면은 위에서 내려다본 x·y, 선 면(옆면·벽)은 벽을 따라 잰 길이·높이. 지형 면에 항공사진을 입히면 사진 UV.
+     */
+    const addUV = (mesh: InstanceType<typeof rhino.Mesh>, key: string, mat?: MatId) => {
+      if (!mats) return
+      const id = mat ?? layerMat(key)
+      if (!id) return
+      const vs = mesh.vertices()
+      const ns = mesh.normals()
+      const tc = mesh.textureCoordinates()
+      const n = vs.count
+      if (id === 'aerial' && aerial) {
+        for (let i = 0; i < n; i++) {
+          const p = vs.get(i)
+          const [u, v] = aerial.uv(p[0], p[1])
+          tc.add(u, v)
+        }
+        return
+      }
+      const tile = mats[id].tile ?? 1
+      const hasN = ns.count === n
+      for (let i = 0; i < n; i++) {
+        const p = vs.get(i)
+        const nv = hasN ? ns.get(i) : [0, 0, 1]
+        if (Math.abs(nv[2]) >= 0.55) tc.add(p[0] / tile, p[1] / tile)
+        else {
+          const hl = Math.hypot(nv[0], nv[1]) || 1
+          tc.add((-p[0] * nv[1] + p[1] * nv[0]) / hl / tile, p[2] / tile)
+        }
+      }
     }
     const objs = doc.objects()
     const addPolyline = (pts: number[][], key: string, name = '', user: Record<string, string> = {}) => {
@@ -228,6 +316,7 @@ export async function siteModelTo3dm(m: SiteModel, meta: ExportMeta, onStep?: (s
       }
       mesh.normals().computeNormals()
       mesh.compact()
+      addUV(mesh, key)
       const at = attrs(key, name)
       objs.addMesh(mesh, at)
       free(mesh)
@@ -242,14 +331,15 @@ export async function siteModelTo3dm(m: SiteModel, meta: ExportMeta, onStep?: (s
       const mesh = new rhino.Mesh()
       return { mesh, vs: mesh.vertices(), fs: mesh.faces() }
     }
-    const addMeshObj = (mb: MB, key: string, name: string, user: Record<string, string> = {}, color?: Rgb) => {
+    const addMeshObj = (mb: MB, key: string, name: string, user: Record<string, string> = {}, color?: Rgb, mat?: MatId) => {
       if (!mb.fs.count) {
         free(mb.mesh)
         return
       }
       mb.mesh.normals().computeNormals()
       mb.mesh.compact()
-      const at = attrs(key, name, user, color)
+      addUV(mb.mesh, key, mat)
+      const at = attrs(key, name, user, color, mat)
       objs.addMesh(mb.mesh, at)
       free(mb.mesh)
       free(at)
@@ -331,7 +421,8 @@ export async function siteModelTo3dm(m: SiteModel, meta: ExportMeta, onStep?: (s
         }
       mesh.normals().computeNormals()
       mesh.compact()
-      const at = attrs('mesh', '지형 면')
+      addUV(mesh, 'mesh')
+      const at = attrs('mesh', aerial ? '지형 면 (항공사진)' : '지형 면')
       objs.addMesh(mesh, at)
       free(mesh)
       free(at)
@@ -439,6 +530,7 @@ export async function siteModelTo3dm(m: SiteModel, meta: ExportMeta, onStep?: (s
         })
         for (let i = 0; i + 1 < pts.length; i++) fs.addQuadFace(2 * i, 2 * i + 2, 2 * i + 3, 2 * i + 1)
         mesh.normals().computeNormals()
+        addUV(mesh, 'wall')
         const at = attrs('wall', label, user)
         objs.addMesh(mesh, at)
         free(mesh)
@@ -493,7 +585,7 @@ export async function siteModelTo3dm(m: SiteModel, meta: ExportMeta, onStep?: (s
     if (m.safety.some((s) => s.kind === 'island')) {
       const mb = newMesh()
       for (const s of m.safety) if (s.kind === 'island') for (const r of [s.poly.outer, ...s.poly.holes]) addRibbon(mb, r, 0.3, R + H + 0.01, true)
-      addMeshObj(mb, 'island', '교통섬 연석', {}, [150, 147, 140])
+      addMeshObj(mb, 'island', '교통섬 연석', {}, [150, 147, 140], 'curb')
     }
     {
       const mb = newMesh()
@@ -550,6 +642,7 @@ export async function siteModelTo3dm(m: SiteModel, meta: ExportMeta, onStep?: (s
       }
       for (let i = 0; i + 1 < pts.length; i++) fs.addQuadFace(2 * i, 2 * i + 2, 2 * i + 3, 2 * i + 1)
       mesh.normals().computeNormals()
+      addUV(mesh, 'fence')
       const at = attrs('fence', w.kind)
       objs.addMesh(mesh, at)
       free(mesh)
@@ -569,8 +662,8 @@ export async function siteModelTo3dm(m: SiteModel, meta: ExportMeta, onStep?: (s
           mb.mesh.normals().computeNormals()
           mb.mesh.compact()
         }
-        const ca = attrs('treeBlock', '수관', {}, [96, 150, 80])
-        const ta = attrs('treeBlock', '줄기', {}, [120, 95, 70])
+        const ca = attrs('treeBlock', '수관', {}, [96, 150, 80], 'treeLeaves')
+        const ta = attrs('treeBlock', '줄기', {}, [120, 95, 70], 'treeBark')
         const idx = doc.instanceDefinitions().add(`나무_${SHAPE_LABEL[shape]}`, `${SHAPE_LABEL[shape]} 나무, 높이 10m 기준 (놓을 때 높이/10배) — 이 블록을 고치면 같은 모양 나무가 모두 바뀜`, '', '', [0, 0, 0], [cm.mesh, tm.mesh], [ca, ta])
         free(cm.mesh)
         free(tm.mesh)
@@ -667,7 +760,8 @@ export async function siteModelTo3dm(m: SiteModel, meta: ExportMeta, onStep?: (s
         }
       }
       const label: Record<SignColor, string> = { red: '표지판 빨강 (주의·규제 테두리)', yellow: '표지판 노랑 (주의)', white: '표지판 흰색 (규제·보조)', blue: '표지판 파랑 (지시)' }
-      for (const c of ['red', 'yellow', 'white', 'blue'] as SignColor[]) addMeshObj(by[c], 'sign', label[c], {}, SIGN_RGB[c])
+      const SIGN_MAT: Record<SignColor, MatId> = { red: 'signRed', yellow: 'signYellow', white: 'signWhite', blue: 'signBlue' }
+      for (const c of ['red', 'yellow', 'white', 'blue'] as SignColor[]) addMeshObj(by[c], 'sign', label[c], {}, SIGN_RGB[c], SIGN_MAT[c])
     }
     if (m.barriers.length) {
       const mb = newMesh()
@@ -684,7 +778,27 @@ export async function siteModelTo3dm(m: SiteModel, meta: ExportMeta, onStep?: (s
       addMeshObj(mb, 'bump', `과속방지턱 ${m.bumps.length}개`)
       const st = newMesh()
       addDraped(st, m.bumps.flatMap((p) => hatchStripes(p)), R + BUMP_H + 0.005, 1.5)
-      addMeshObj(st, 'bump', '과속방지턱 흰 줄', {}, [245, 245, 245])
+      addMeshObj(st, 'bump', '과속방지턱 흰 줄', {}, [245, 245, 245], 'paintWhite')
+    }
+
+    // ── 렌더 재질 무늬 이미지를 파일 안에 넣음 (쓴 재질 것만). 라이노가 열 때 '파일이름_embedded_files' 폴더로 풀어 씀
+    if (mats) {
+      const used = texturesOf(mats, [...matIdx.keys()].filter((id) => id !== 'aerial'))
+      if (used.length) onStep?.('재질 무늬 그리는 중')
+      const files = new Map<string, Uint8Array>()
+      for (const t of used) files.set(TEX_FILE[t], await textureJpeg(t))
+      if (aerial && matIdx.has('aerial')) files.set(aerial.file, aerial.bytes)
+      for (const [file, bytes] of files) {
+        const ef = rhino.EmbeddedFile.fromByteArray(bytes as unknown as string)
+        ef.fileName = texPath(file)
+        doc.embeddedFiles().add(ef)
+        free(ef)
+      }
+      const styleLabel = MATERIAL_STYLES.find((s) => s.id === style)?.label ?? style
+      strings.set('렌더 재질', `${styleLabel} — 재질 ${matIdx.size}개, 이름은 SA_로 시작 (레이어 재질 + 표지판·연석 띠·나무는 물체 재질). 메시마다 실제 크기 UV`)
+      if (files.size) strings.set('무늬 이미지', `${[...files.keys()].join(', ')} — 파일 안에 넣음 (라이노가 열 때 '파일이름_embedded_files' 폴더로 풂)`)
+      if (aerial) strings.set('항공사진', `브이월드 위성영상 (줌 ${aerial.z}, ${aerial.width}×${aerial.height}px${aerial.failed ? `, 타일 ${aerial.failed}/${aerial.tiles}장 못 받아 회색` : ''}) — 지형 면에만, 출처 표시: 브이월드(국토교통부)`)
+      for (const [k, v] of RENDER_HELP) strings.set(`렌더: ${k}`, v)
     }
 
     onStep?.('파일 쓰는 중')

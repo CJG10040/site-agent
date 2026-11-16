@@ -189,6 +189,10 @@ export type RenderLevel = 'light' | 'normal' | 'detail'
 export interface RenderModelSettings {
   level: RenderLevel
   items: string[]
+  /** 렌더 재질 (2026-11-16): 사실적 + 무늬 / 사실적 단색 / 흰 모형 / 없음 — 없으면 'tex' */
+  material?: 'tex' | 'flat' | 'white' | 'none'
+  /** 지형 면에 브이월드 항공사진 입히기 */
+  aerial?: boolean
 }
 
 /** 15-B 콘타 모형 도로 처리: 새김선 / 따로 자른 조각(얇은 재료) / 파내기(한 판 내려앉힘) */

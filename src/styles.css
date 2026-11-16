@@ -5033,3 +5033,12 @@ dl {
 .tree-map.tool-row {
   cursor: crosshair;
 }
+
+/* 렌더 재질 쓰는 법 (2026-11-16) */
+.render-help {
+  margin: 0.4em 0 0;
+  padding-left: 1.1em;
+}
+.render-help li {
+  margin: 0.3em 0;
+}
