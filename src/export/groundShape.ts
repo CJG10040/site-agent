@@ -22,6 +22,8 @@ export interface ShapeInput {
   /** 땅을 고르지 않을 곳 (교량 상판 밑) */
   noRoad: Poly[]
   water: Poly[]
+  /** 둔치 (하천경계) — 물가에서 둑까지 비탈을 고름 */
+  banks?: Poly[]
   /** 정밀도로지도 노면 높이 (모형 좌표 x·y, 높이는 자료 그대로) */
   hd: { x: number; y: number; z: number }[]
 }
@@ -208,8 +210,58 @@ export function shapeGround(g: TerrainGrid, inp: ShapeInput): ShapeResult {
         }
       for (const [i, q] of add) level[i] = q
     }
-    // 물 밑 땅 파기
-    for (let i = 0; i < N; i++) if (mW[i] && Number.isFinite(level[i]) && Number.isFinite(Z[i])) Z[i] = Math.min(Z[i], level[i] - WATER_DEPTH)
+    // 물 밑 땅 파기 — 물 면에 닿는 칸까지 한 칸 넓혀서 (좁은 물길은 칸 가운데가 물 면 밖이라 안 파여 땅이 물 위로 솟았음)
+    const mWc = mW.slice()
+    for (let r = 0; r < H; r++)
+      for (let c = 0; c < W; c++) {
+        const i = r * W + c
+        if (mW[i]) continue
+        if ((c > 0 && mW[i - 1]) || (c + 1 < W && mW[i + 1]) || (r > 0 && mW[i - W]) || (r + 1 < H && mW[i + W])) mWc[i] = 1
+      }
+    for (let i = 0; i < N; i++) if (mWc[i] && Number.isFinite(level[i]) && Number.isFinite(Z[i])) Z[i] = Math.min(Z[i], level[i] - (mW[i] ? WATER_DEPTH : 0.2))
+    // 둔치: 물가에서 둑 쪽으로 비탈(물 높이 + 0.4m + 거리 × 0.3)보다 높은 땅은 그 비탈까지 낮춤 — 2026-11-16: 물 면만 파서 물가가 절벽이 되고
+    // 둔치를 얹은 삼각형 사이로 땅이 뾰족하게 솟았음. 하천 바닥이 둑 높이로 메워진 자료(수치지도)에서 둔치의 볼록한 곳도 걷어 냄
+    if (inp.banks?.length) {
+      const mB = new Uint8Array(N)
+      raster(inp.banks, mB, 1)
+      // 물 높이를 둔치 칸까지 넓히고, 물에서 떨어진 거리(칸)
+      const lv = level.slice()
+      const dw = new Float32Array(N).fill(Infinity)
+      let front: number[] = []
+      for (let i = 0; i < N; i++)
+        if (mWc[i] && Number.isFinite(lv[i])) {
+          dw[i] = 0
+          front.push(i)
+        }
+      const maxPass = Math.ceil(60 / cell)
+      for (let pass = 1; pass <= maxPass && front.length; pass++) {
+        const next: number[] = []
+        for (const i of front) {
+          const r = Math.floor(i / W)
+          const c = i - r * W
+          for (const [dr, dc] of [
+            [-1, 0],
+            [1, 0],
+            [0, -1],
+            [0, 1],
+          ]) {
+            const rr = r + dr
+            const cc = c + dc
+            if (rr < 0 || cc < 0 || rr >= H || cc >= W) continue
+            const j = rr * W + cc
+            if (!mB[j] || mWc[j] || dw[j] <= pass) continue
+            dw[j] = pass
+            lv[j] = lv[i]
+            next.push(j)
+          }
+        }
+        front = next
+      }
+      for (let i = 0; i < N; i++) {
+        if (!mB[i] || mWc[i] || !Number.isFinite(dw[i]) || !Number.isFinite(lv[i]) || !Number.isFinite(Z[i])) continue
+        Z[i] = Math.min(Z[i], lv[i] + 0.4 + dw[i] * cell * 0.3)
+      }
+    }
   }
 
   // ── 도로

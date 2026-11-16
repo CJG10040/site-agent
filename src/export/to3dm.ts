@@ -591,10 +591,11 @@ export async function siteModelTo3dm(m: SiteModel, meta: ExportMeta, onStep?: (s
       for (const poly of a.polys) addPolyline(draped(poly.outer, true, 0.06), 'park', a.name)
     }
     // 하천: 둔치(땅에 얹음) 위에 물(평평한 물 높이)
-    for (const a of m.banks) drapedMesh(a.polys, 'riverbank', a.name, 0.04)
+    // 둔치·물은 잘게(3m) 얹어 비탈에서 땅이 뚫고 나오지 않게
+    for (const a of m.banks) drapedMesh(a.polys, 'riverbank', a.name, 0.04, Math.min(DRAPE_EDGE, 3))
     Z = (x, y) => m.waterAt(x, y) ?? m.zAt(x, y)
     for (const a of m.rivers) {
-      drapedMesh(a.polys, 'river', a.name, 0)
+      drapedMesh(a.polys, 'river', a.name, 0, Math.min(DRAPE_EDGE, 4))
       for (const poly of a.polys) addPolyline(draped(poly.outer, true, 0.02), 'river', a.name)
     }
     Z = m.zAt

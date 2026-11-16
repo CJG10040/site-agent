@@ -138,9 +138,9 @@ export function buildPreview(m: SiteModel): PreviewParts {
     addMesh(out, color, { polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }, name)
   }
   layer(m.parks.flatMap((a) => a.polys), COLORS.park, 0.05, '공원·녹지')
-  layer(m.banks.flatMap((a) => a.polys), COLORS.bank, 0.04, '하천 둔치')
+  layer(m.banks.flatMap((a) => a.polys), COLORS.bank, 0.04, '하천 둔치', Math.min(edge, 3))
   Z = (x, y) => m.waterAt(x, y) ?? m.zAt(x, y)
-  layer(m.rivers.flatMap((a) => a.polys), COLORS.river, 0, '하천 물')
+  layer(m.rivers.flatMap((a) => a.polys), COLORS.river, 0, '하천 물', Math.min(edge, 4))
   Z = m.zAt
   layer(
     [...m.roads, ...m.decks.filter((d) => d.kind === 'overpass').flatMap((d) => d.polys)],

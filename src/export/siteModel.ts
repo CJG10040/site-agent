@@ -720,6 +720,20 @@ export async function buildSiteModel(d: DiagramData, half: number, opts: { grid?
     else if (!vwWater.length) rivers.push({ polys: r.polys, name: r.name })
   }
 
+  // 물 면·둔치는 각각 하나로 합침 — 도엽 경계·축척이 다른 자료가 겹쳐 같은 높이에 두 번 그려지면 얼룩짐 (2026-11-16)
+  const mergeAreas = (list: ModelArea[], name: string) => {
+    if (list.length < 2) return
+    try {
+      const u = union(featureCollection(list.flatMap((a) => a.polys).map(turfOf)))
+      const polys = polysFrom(u?.geometry)
+      if (polys.length) list.splice(0, list.length, { polys, name })
+    } catch {
+      // 합치기에 실패하면 그대로
+    }
+  }
+  mergeAreas(rivers, rivers.every((r) => r.name.includes('수치지도')) ? '하천 물 (수치지도 실폭하천·호수)' : '하천 물')
+  mergeAreas(banks, '하천 둔치')
+
   // ── 다리·고가 (2026-11-16): 교량 상판 밑은 땅을 고르지 않음
   //    ① 수치지도 교량(A007)·입체교차부(A009) — 다시 올려야 있음
   //    ② 브이월드 표준노드링크 도로유형 003 교량·001 고가차도 (도로망을 수집했으면, 올리지 않아도) — 링크를 차로 수만큼 넓힌 띠와 도로 면의 겹침
@@ -908,6 +922,7 @@ export async function buildSiteModel(d: DiagramData, half: number, opts: { grid?
         roads,
         noRoad: deckSrc.filter((b) => b.deck === 'bridge').flatMap((b) => b.polys),
         water: rivers.flatMap((r) => r.polys),
+        banks: banks.flatMap((b) => b.polys),
         hd: hdPts,
       })
     : null
