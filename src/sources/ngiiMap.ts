@@ -8,12 +8,12 @@ import { unzipSync } from 'fflate'
 import type { Geometry, Position } from 'geojson'
 import { beltProjection, utmkToWgs84, wgs84ToUtmk } from '../lib/proj'
 
-export type NgiiKey = 'bldg' | 'road' | 'walk' | 'walkline' | 'contour' | 'spot' | 'wall' | 'cutfill' | 'center' | 'crosswalk' | 'safety' | 'stop' | 'tree' | 'fence' | 'lamp' | 'water'
-export const NGII_KEYS: NgiiKey[] = ['bldg', 'road', 'walk', 'walkline', 'contour', 'spot', 'wall', 'cutfill', 'center', 'crosswalk', 'safety', 'stop', 'tree', 'fence', 'lamp', 'water']
-/** 읽기 방식이 바뀌면 올린 때의 판을 올림 — ⑩에서 '다시 올리면 더 들어감' 안내 (3 = 2026-11-13: 안전지대·보도 중심선) */
-export const NGII_READER_V = 3
-/** 1:5,000 읽기 판 (4 = 2026-11-13: 도로중심선·교통섬·담장·하천 면도 읽음 — 항목별 자료 고르기) */
-export const NGII5_READER_V = 4
+export type NgiiKey = 'bldg' | 'road' | 'walk' | 'walkline' | 'contour' | 'spot' | 'wall' | 'cutfill' | 'center' | 'crosswalk' | 'safety' | 'stop' | 'tree' | 'fence' | 'lamp' | 'water' | 'bridge'
+export const NGII_KEYS: NgiiKey[] = ['bldg', 'road', 'walk', 'walkline', 'contour', 'spot', 'wall', 'cutfill', 'center', 'crosswalk', 'safety', 'stop', 'tree', 'fence', 'lamp', 'water', 'bridge']
+/** 읽기 방식이 바뀌면 올린 때의 판을 올림 — ⑩에서 '다시 올리면 더 들어감' 안내 (3 = 2026-11-13: 안전지대·보도 중심선, 4 = 2026-11-16: 교량·고가차도, 하천 물·둔치·호수 구분) */
+export const NGII_READER_V = 4
+/** 1:5,000 읽기 판 (4 = 2026-11-13: 도로중심선·교통섬·담장·하천 면도 읽음 — 항목별 자료 고르기, 5 = 2026-11-16: 교량·고가차도, 하천 물·둔치·호수 구분) */
+export const NGII5_READER_V = 5
 export const NGII_LABEL: Record<NgiiKey, string> = {
   bldg: '건물',
   road: '도로경계 면',
@@ -32,6 +32,7 @@ export const NGII_LABEL: Record<NgiiKey, string> = {
   fence: '담장·가드레일',
   lamp: '가로등',
   water: '하천·호수 면',
+  bridge: '교량·고가차도',
 }
 export const ngiiLayer = (k: NgiiKey | 'sheets') => `ngii:${k}`
 
@@ -45,6 +46,14 @@ export type Feat = { type: 'Feature'; geometry: Geometry | null; properties: Rec
 const num = (s: string | undefined): number | null => {
   const v = Number(String(s ?? '').trim())
   return String(s ?? '').trim() !== '' && Number.isFinite(v) ? v : null
+}
+
+/** 교량 속성 (1:1,000·1:5,000 같은 이름) */
+export const bridgeProps = (r: Rec): Record<string, unknown> => ({ name: r['명칭'] ?? '', kind: r['종류'] || '교량', length: num(r['연장']), width: num(r['폭']), height: null, deck: 'bridge', river: r['하천명'] ?? '' })
+/** 입체교차부 속성: 구분 = 고가차도 / 지하차도, 높이는 대개 0(모름) */
+export const crossProps = (r: Rec): Record<string, unknown> => {
+  const kind = r['구분'] || '입체교차부'
+  return { name: r['명칭'] ?? '', kind, length: num(r['연장']), width: null, height: num(r['높이']), deck: /지하/.test(kind) ? 'underpass' : 'overpass', river: '' }
 }
 
 interface Want {
@@ -117,7 +126,13 @@ const WANTS: Want[] = [
   },
   { match: (n) => n.startsWith('N3A_A005'), key: 'safety', props: (r) => ({ kind: r['구조'] ?? '', name: r['명칭'] ?? '' }), terrain: false },
   { match: (n) => n === 'N3L_B0020000', key: 'fence', props: (r) => ({ kind: r['구분'] || '담장', material: r['재질'] ?? '' }), terrain: false },
-  { match: (n) => n.startsWith('N3A_E00'), key: 'water', props: (r) => ({ name: r['명칭'] ?? '' }), terrain: false },
+  // 하천 (2026-11-16): E001 하천경계(제방 사이 전체 = 둔치 포함), E003 실폭하천(물 흐르는 면), E005 호수·저수지 — 예전엔 모두 물로 겹쳐 그림
+  { match: (n) => n.startsWith('N3A_E001'), key: 'water', props: (r) => ({ name: r['명칭'] ?? '', wkind: 'bank' }), terrain: false },
+  { match: (n) => n.startsWith('N3A_E005'), key: 'water', props: (r) => ({ name: r['명칭'] ?? '', wkind: 'lake' }), terrain: false },
+  { match: (n) => n.startsWith('N3A_E00'), key: 'water', props: (r) => ({ name: r['명칭'] ?? '', wkind: 'water' }), terrain: false },
+  // 교량(A007: 도로교·보도교·철교)·입체교차부(A009: 고가차도·지하차도) — 3D에서 상판을 띄움 (2026-11-16)
+  { match: (n) => n.startsWith('N3A_A007'), key: 'bridge', props: bridgeProps, terrain: false },
+  { match: (n) => n.startsWith('N3A_A009'), key: 'bridge', props: crossProps, terrain: false },
 ]
 
 // ───────────────────────── SHP·DBF 읽기 ─────────────────────────

@@ -146,8 +146,10 @@ export default function SourcePicker({ project, update, config }: Props) {
         )}
         {ctx.hasHd ? ' · 정밀도로지도' : ''} · 숫자 = 개수 · <span className="pick-def">기본</span> = 처음 정해진 것
       </p>
-      {ctx.old5000 && !ctx.v5000 && (
-        <p className="notice small">예전에 올린 1:5,000은 도로중심선·교통섬·담장·하천을 읽지 않았습니다. 같은 1:5,000 ZIP을 위 칸에 다시 올리면 이 항목도 {y5}년 자료로 고를 수 있습니다.</p>
+      {ctx.old5000 && (
+        <p className="notice small">
+          예전에 올린 1:5,000은 {ctx.v5000 < 4 ? '도로중심선·교통섬·담장·하천·' : ''}교량·고가차도를 읽지 않았고 하천의 물·둔치를 나누지 않았습니다. 같은 1:5,000 ZIP을 위 칸에 다시 올리면 이 항목도 {y5}년 자료로 고를 수 있습니다.
+        </p>
       )}
       <div className="pick-table" role="table" aria-label="항목별 자료">
         {PICK_GROUPS.map((g) => (
@@ -190,7 +192,7 @@ export default function SourcePicker({ project, update, config }: Props) {
                         {u.n5 > 0 ? `${dropped > 0 ? ', ' : '에 '}1:5,000 ${fmt(u.n5)}개 넣음` : ''}
                       </span>
                     )}
-                    {NEW5000.includes(k) && ctx.cover5000.length > 0 && !opts.includes('5000') && <span className="small muted">1:5,000을 다시 올리면 고를 수 있음</span>}
+                    {NEW5000[k] !== undefined && ctx.cover5000.length > 0 && !opts.includes('5000') && <span className="small muted">1:5,000을 다시 올리면 고를 수 있음</span>}
                   </div>
                 </div>
               )

@@ -19,6 +19,7 @@ export type ModelItem =
   | 'parcels'
   | 'parks'
   | 'rivers'
+  | 'bridges'
   | 'trees'
   | 'stops'
   | 'lamps'
@@ -36,7 +37,7 @@ export type ModelItem =
 
 export const LEVELS: { id: RenderLevel; label: string; note: string }[] = [
   { id: 'light', label: '가벼움', note: '지형 면 + 건물 매스 + 대지 경계' },
-  { id: 'normal', label: '보통', note: '+ 도로·인도·공원·하천·필지·등고선·옹벽' },
+  { id: 'normal', label: '보통', note: '+ 도로·인도·다리·고가·공원·하천·필지·등고선·옹벽' },
   { id: 'detail', label: '자세히', note: '+ 가로수·정류장 쉘터·가로등·횡단보도 줄무늬·교통섬·담장·차선·노면표시·연석' },
 ]
 
@@ -54,7 +55,8 @@ export const MODEL_ITEMS: { id: ModelItem; label: string; level: RenderLevel; un
   { id: 'walks', label: '인도 (수치지도)', level: 'normal', unit: '' },
   { id: 'parcels', label: '필지', level: 'normal', unit: '필' },
   { id: 'parks', label: '공원·녹지', level: 'normal', unit: '곳' },
-  { id: 'rivers', label: '하천', level: 'normal', unit: '곳' },
+  { id: 'rivers', label: '하천 (물·둔치)', level: 'normal', unit: '곳' },
+  { id: 'bridges', label: '다리·고가 (상판·난간·교각)', level: 'normal', unit: '곳' },
   { id: 'roofs', label: '지붕 모양 (박공·파라펫)', level: 'detail', unit: '동' },
   { id: 'trees', label: '나무 (가로수·공원·직접 심음)', level: 'detail', unit: '그루' },
   { id: 'stops', label: '버스정류장', level: 'detail', unit: '곳' },
@@ -95,7 +97,8 @@ export function itemCounts(m: SiteModel): Record<ModelItem, number> {
     walks: m.walks.length,
     parcels: m.parcels.length,
     parks: m.parks.length,
-    rivers: m.rivers.length,
+    rivers: m.rivers.length + m.banks.length,
+    bridges: m.decks.length,
     trees: m.trees.length,
     stops: m.stops.length,
     lamps: m.lamps.length,
@@ -130,11 +133,16 @@ export function filterModel(m: SiteModel, items: Iterable<string>): SiteModel {
     cutfill: keep('walls', m.cutfill),
     minor: keep('minor', m.minor),
     roads: keep('roads', m.roads),
+    roadsOnDeck: keep('roads', m.roadsOnDeck),
     roadCenters: keep('roadCenters', m.roadCenters),
     walks: keep('walks', m.walks),
+    walksOnDeck: keep('walks', m.walksOnDeck),
     parcels: keep('parcels', m.parcels),
     parks: keep('parks', m.parks),
     rivers: keep('rivers', m.rivers),
+    banks: keep('rivers', m.banks),
+    // 다리·고가를 끄면 구조물만 빠지고 위 도로는 상판 높이 그대로 (roadAt)
+    decks: keep('bridges', m.decks),
     trees: keep('trees', m.trees),
     stops: keep('stops', m.stops),
     lamps: keep('lamps', m.lamps),

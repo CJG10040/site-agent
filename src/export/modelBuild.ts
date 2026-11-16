@@ -64,7 +64,7 @@ export function modelStats(m: SiteModel): ModelStats {
   const cell = m.terrain?.cell ?? 10
   const terrainCells = m.terrain ? m.terrain.cols * m.terrain.rows : 0
   const drapeEdge = Math.min(6, Math.max(3, cell * 1.5))
-  const draped = [m.roads, m.walks, m.crosswalks, m.marks, m.arrows, m.hdPaths, ...m.parks.map((a) => a.polys), ...m.rivers.map((a) => a.polys)]
+  const draped = [m.roads, m.walks, m.crosswalks, m.marks, m.arrows, m.hdPaths, ...m.parks.map((a) => a.polys), ...m.rivers.map((a) => a.polys), ...m.banks.map((a) => a.polys), m.roadsOnDeck.map((o) => o.poly), m.walksOnDeck.map((o) => o.poly)]
   const drapedArea = draped.reduce((s, ps) => s + areaOf(ps), 0)
   const dashLen = m.lanes.filter((l) => l.dashed).reduce((s, l) => s + lenOf(l.pts) * (l.double ? 2 : 1), 0)
   const lanePieces = m.lanes.filter((l) => !l.dashed).reduce((s, l) => s + (l.double ? 2 : 1), 0) + Math.ceil(dashLen / 8)
@@ -73,6 +73,7 @@ export function modelStats(m: SiteModel): ModelStats {
     1 + (m.terrain ? 1 : 0) + m.contours.length + bldParts + m.mapContours.length + m.spots.length + m.walls.length * 2 + m.cutfill.length + m.minor.length +
     draped.filter((ps) => ps.length).length + m.roadCenters.length + m.parcels.reduce((s, p) => s + p.polys.length, 0) +
     m.parks.reduce((s, a) => s + a.polys.length, 0) + m.rivers.reduce((s, a) => s + a.polys.length, 0) + m.site.length +
+    m.decks.length * 2 + m.roadsOnDeck.length + m.walksOnDeck.length + m.banks.reduce((s, a) => s + a.polys.length, 0) +
     (m.curbs.length ? 1 : 0) + new Set(m.lanes.map((l) => l.color)).size + m.fences.length + m.trees.length + m.stops.length * 3 + (m.lamps.length ? 1 : 0) +
     new Set(m.safety.map((s) => s.kind)).size + (m.poles.length ? 1 : 0) + (m.signals.length ? 1 : 0) + (m.signs.length ? 4 : 0) + (m.barriers.length ? 1 : 0) + (m.bumps.length ? 2 : 0) + (m.yellowMarks.length ? 1 : 0)
   // 크기: 지형 칸당 약 92B, 얹은 면 1㎡당 약 (2/드레이프 변²)개 삼각형 × 65B, 물체마다 약 420B (300·600·800m 실측에 맞춰 조금 넉넉히), 건물 꼭짓점·선 점은 물체 몫에 포함
@@ -80,6 +81,8 @@ export function modelStats(m: SiteModel): ModelStats {
   const ribbonLen = m.lanes.reduce((s, l) => s + lenOf(l.pts) * (l.double ? 2 : 1), 0) + m.curbs.reduce((s, c) => s + lenOf(c) * 3, 0)
   const bytes =
     terrainCells * 92 + drapedArea * (2 / (drapeEdge * drapeEdge)) * 65 + objects * 420 + m.trees.length * 470 + (m.trees.length ? 20000 : 0) + ribbonLen * 45 + m.lamps.length * 900 + m.stops.length * 3000 +
+    // 다리·고가: 상판 넓이 1㎡당 약 6B + 난간·교각 (2026-11-16 어림)
+    m.decks.reduce((s, d) => s + d.L * d.W * 4 * 6 + d.L * 2 * 400 + d.piers.length * 600, 0) +
     m.poles.length * 400 + m.signals.length * 300 + m.signs.length * 1800 + m.barriers.reduce((s, b) => s + lenOf(b.pts), 0) * 180 + m.bumps.length * 9000 + m.arrows.length * 280 +
     // 15-D 지붕: 파라펫(꼭짓점마다 약 160B)·경사 지붕(벽 메시 + 지붕 면, 꼭짓점마다 약 260B)
     m.buildings.reduce((s, b) => s + (b.roof ? b.parts.reduce((t, p) => t + p.outer.length, 0) * (b.roof.kind === 'flat' ? 160 : 260) : 0), 0)
@@ -89,6 +92,7 @@ export function modelStats(m: SiteModel): ModelStats {
     { label: '건물', n: m.buildings.length, unit: '동' },
     { label: '등고선', n: m.contours.length + m.mapContours.length, unit: '줄' },
     { label: '도로·인도·공원·하천 면', n: Math.round(drapedArea / 100) * 100, unit: '㎡' },
+    { label: '다리·고가', n: m.decks.length, unit: `곳 (교각 ${m.decks.reduce((s, d) => s + d.piers.length, 0)}개)` },
     { label: '옹벽·석축·제방', n: m.walls.length, unit: '곳' },
     { label: '나무 (블록)', n: m.trees.length, unit: '그루' },
     { label: '정류장', n: m.stops.length, unit: '곳' },

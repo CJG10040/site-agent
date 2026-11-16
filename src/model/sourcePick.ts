@@ -17,7 +17,7 @@ export type PickKey = Exclude<NgiiKey, 'walkline'>
 export const PICK_GROUPS: { title: string; keys: PickKey[] }[] = [
   { title: '지형', keys: ['contour', 'spot', 'wall', 'cutfill'] },
   { title: '건물', keys: ['bldg'] },
-  { title: '도로', keys: ['road', 'walk', 'center', 'crosswalk', 'safety'] },
+  { title: '도로', keys: ['road', 'walk', 'center', 'crosswalk', 'safety', 'bridge'] },
   { title: '가로 시설', keys: ['stop', 'tree', 'lamp', 'fence'] },
   { title: '물', keys: ['water'] },
 ]
@@ -26,10 +26,10 @@ export const PICK_LABEL: Record<PickKey, string> = { ...NGII_LABEL, walk: '인�
 
 /** 1:5,000에서 처음부터 읽은 항목 */
 const BASE5000: PickKey[] = ['contour', 'spot', 'wall', 'cutfill', 'bldg', 'road', 'walk']
-/** 1:5,000에서 2026-11-13부터 읽는 항목 (그 전에 올린 1:5,000에는 없음 — 다시 올려야) */
-export const NEW5000: PickKey[] = ['center', 'safety', 'fence', 'water']
+/** 1:5,000에서 나중에 읽기 시작한 항목과 그 읽기 판 (그 전에 올린 1:5,000에는 없음 — 다시 올려야): 판 4 = 2026-11-13, 판 5 = 2026-11-16 교량·고가차도 */
+export const NEW5000: Partial<Record<PickKey, number>> = { center: 4, safety: 4, fence: 4, water: 4, bridge: 5 }
 /** 새 1:5,000이 있으면 기본으로 1:5,000 */
-const PREFER_NEW: PickKey[] = ['contour', 'spot', 'wall', 'cutfill', 'bldg', 'road', 'walk', 'center', 'water']
+const PREFER_NEW: PickKey[] = ['contour', 'spot', 'wall', 'cutfill', 'bldg', 'road', 'walk', 'center', 'water', 'bridge']
 /** 이보다 큰 면은 바뀐 곳이라도 바꾸지 않음 (도로경계처럼 여러 블록에 걸친 면) */
 const BIG_AREA = 5000
 
@@ -41,8 +41,8 @@ export interface PickCtx {
   year5000: string | null
   /** 1:5,000이 1:1,000보다 새 것 */
   newer5000: boolean
-  /** 1:5,000을 새 읽기(판 4)로 올림 → 도로중심선·교통섬·담장·하천도 있음 */
-  v5000: boolean
+  /** 올린 1:5,000 중 가장 새 읽기 판 (4 = 도로중심선·교통섬·담장·하천, 5 = 교량·고가차도·하천 구분), 없으면 0 */
+  v5000: number
   /** 예전에 올린 1:5,000이 있음 (다시 올리면 도로중심선 등이 더 들어감) */
   old5000: boolean
   hasHd: boolean
@@ -65,7 +65,7 @@ export function pickCtx(project: Project): PickCtx {
     year1000: y1.join('·') || null,
     year5000: y5.join('·') || null,
     newer5000: Number.isFinite(max1) && Number.isFinite(min5) && min5 > max1,
-    v5000: s5.some((p) => Number(p.v ?? 0) >= NGII5_READER_V),
+    v5000: Math.max(0, ...s5.map((p) => Number(p.v ?? 0))),
     old5000: s5.some((p) => Number(p.v ?? 0) < NGII5_READER_V),
     hasHd: (project.collected['hd:files']?.features.length ?? 0) > 0,
   }
@@ -75,7 +75,8 @@ export function pickCtx(project: Project): PickCtx {
 export function sourcesFor(key: PickKey, ctx: PickCtx): SourceId[] {
   const out: SourceId[] = []
   if (ctx.cover1000.length) out.push('1000')
-  if (ctx.cover5000.length && (BASE5000.includes(key) || (NEW5000.includes(key) && ctx.v5000))) out.push('5000')
+  const since = NEW5000[key]
+  if (ctx.cover5000.length && (BASE5000.includes(key) || (since !== undefined && ctx.v5000 >= since))) out.push('5000')
   if (key === 'crosswalk' && ctx.hasHd) out.push('hd')
   out.push(key === 'bldg' ? 'vworld' : 'off')
   return out

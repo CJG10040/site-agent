@@ -17,7 +17,9 @@ export const DXF_LAYERS: { name: string; color: number; label: string }[] = [
   { name: 'PARCEL', color: 151, label: '필지' },
   { name: 'PARCEL-TEXT', color: 151, label: '지번 숫자' },
   { name: 'PARK', color: 3, label: '공원·녹지' },
-  { name: 'RIVER', color: 4, label: '하천' },
+  { name: 'RIVER', color: 4, label: '하천 물 면' },
+  { name: 'RIVER-BANK', color: 94, label: '하천 둔치 (하천경계)' },
+  { name: 'BRIDGE', color: 9, label: '다리·고가 (수치지도 교량·고가차도)' },
   { name: 'CONTOUR', color: 34, label: '등고선 (높이 = 대지 중심 지면 기준)' },
   { name: 'CONTOUR-MAJOR', color: 30, label: '계곡선 (굵은 등고선)' },
   { name: 'CONTOUR-TEXT', color: 30, label: '계곡선 높이 숫자' },
@@ -210,11 +212,13 @@ export function siteModelToDxf(m: SiteModel, meta: { title: string; address: str
     if (w.h && w.pts.length > 1) text('WALL', w.pts[Math.floor(w.pts.length / 2)], 1.2, `H${w.h}`)
   }
   for (const c of m.cutfill) polyline('CUTFILL', c.pts, false)
-  polys('WALK', m.walks)
+  polys('WALK', [...m.walks, ...m.walksOnDeck.map((o) => o.poly)])
   polys('BLDG-MINOR', m.minor)
   for (const a of m.parks) polys('PARK', a.polys)
   for (const a of m.rivers) polys('RIVER', a.polys)
-  polys('ROAD-EDGE', m.roads)
+  for (const a of m.banks) polys('RIVER-BANK', a.polys)
+  for (const d of m.decks) polys('BRIDGE', d.polys)
+  polys('ROAD-EDGE', [...m.roads, ...m.roadsOnDeck.map((o) => o.poly)])
   for (const r of m.roadCenters) polyline('ROAD-CENTER', r.pts, false)
   for (const b of m.buildings) {
     const layer = b.top === null ? 'BLDG-NOFLOOR' : b.onSite ? 'BLDG-SITE' : 'BLDG'

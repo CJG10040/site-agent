@@ -6,7 +6,7 @@
 
 import type { Geometry, Position } from 'geojson'
 import { beltProjection, utmkToWgs84, wgs84ToUtmk } from '../lib/proj'
-import { NGII_KEYS, type Feat, type NgiiKey, type NgiiSheet, type Rec } from './ngiiMap'
+import { bridgeProps, crossProps, NGII_KEYS, type Feat, type NgiiKey, type NgiiSheet, type Rec } from './ngiiMap'
 
 const SITE_MARGIN = 60
 const TERRAIN_MARGIN = 300
@@ -81,7 +81,13 @@ const WANTS: Want[] = [
   { match: /^B002/, key: 'fence', kinds: ['line'], props: (r) => ({ kind: r['구분'] || '담장', material: r['재질'] ?? '' }) },
   { match: /^C053/, key: 'fence', kinds: ['line'], props: (r) => ({ kind: r['명칭'] || '가드레일', material: r['재질'] ?? '' }) },
   { match: /^C022/, key: 'lamp', kinds: ['point'], props: (r) => ({ kind: r['구분'] ?? '' }) },
-  { match: /^E0/, key: 'water', kinds: ['polygon'], props: (r) => ({ name: r['명칭'] ?? '' }) },
+  // 하천 (2026-11-16): E001 하천경계(둔치 포함) / E005 호수·저수지 / 그 밖(E003 실폭하천 등) 물
+  { match: /^E001/, key: 'water', kinds: ['polygon'], props: (r) => ({ name: r['명칭'] ?? '', wkind: 'bank' }) },
+  { match: /^E005/, key: 'water', kinds: ['polygon'], props: (r) => ({ name: r['명칭'] ?? '', wkind: 'lake' }) },
+  { match: /^E00[^15]/, key: 'water', kinds: ['polygon'], props: (r) => ({ name: r['명칭'] ?? '', wkind: 'water' }) },
+  // 교량·입체교차부 (2026-11-16)
+  { match: /^A007/, key: 'bridge', kinds: ['polygon'], props: bridgeProps },
+  { match: /^A009/, key: 'bridge', kinds: ['polygon'], props: crossProps },
 ]
 
 interface NgiRec {

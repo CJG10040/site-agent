@@ -68,7 +68,7 @@ export function contourInputOf(m: SiteModel, s: ContourSettings): ContourInput {
     half,
     n,
     z,
-    roads: m.roads,
+    roads: [...m.roads, ...m.roadsOnDeck.map((o) => o.poly)],
     buildings,
     site: m.site.flatMap((p) => [p.outer, ...p.holes]),
     scale: s.scale,

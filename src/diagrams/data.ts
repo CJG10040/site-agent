@@ -143,7 +143,10 @@ export interface NgiiData {
   trees: { lon: number; lat: number; kind: string; species: string; h: number | null }[]
   fences: { geom: Lines; kind: string }[]
   lamps: { lon: number; lat: number; kind: string }[]
-  water: Areal[]
+  /** 하천 (2026-11-16): water = 실폭하천(물 흐르는 면), bank = 하천경계(제방 사이, 둔치 포함), lake = 호수·저수지, '' = 예전에 올려 모름 */
+  water: { geom: Areal; kind: 'water' | 'bank' | 'lake' | '' }[]
+  /** 교량(A007)·입체교차부(A009) — deck: bridge 교량 / overpass 고가차도 / underpass 지하차도 */
+  bridges: { geom: Areal; name: string; kind: string; length: number | null; width: number | null; height: number | null; deck: 'bridge' | 'overpass' | 'underpass'; river: string }[]
   /** ④ 항목별로 고른 자료 (model/sourcePick) — 도엽이 겹칠 때 어느 축척을 썼는지 */
   pick: Picks
   /** 고른 자료·바뀐 곳 자동의 서명 (지형 캐시 열쇠) */
@@ -171,6 +174,8 @@ export interface HdData {
   posts: { lon: number; lat: number; pid: string }[]
   barriers: { geom: Lines; central: boolean }[]
   bumps: Areal[]
+  /** 노면 실측 높이 (2026-11-16, 5m 칸 중앙값, 해발이 아닐 수 있어 지형과 견줘 맞춤) — 3D 도로 면 기준점 */
+  ground: { lon: number; lat: number; z: number }[]
 }
 
 /** 정밀도로지도 노면표시가 횡단보도인지: C-ITS 형식 종류 532x(5321 등), 2026 형식 유형 200 (2026-11-13, 도형 크기 약 9×4m로 확인) */
@@ -406,7 +411,8 @@ export interface DiagramData {
   zoning: Area[]
   districts: Area[]
   facilities: Area<{ type: string }>[]
-  parks: Area<{ kind: 'park' | 'river' }>[]
+  /** src (하천): wkmstrm = 브이월드 하천망(물 면), upis = 도시계획 하천(구역) */
+  parks: Area<{ kind: 'park' | 'river'; src?: 'wkmstrm' | 'upis' }>[]
   stations: Pt[]
   stops: Pt[]
   statsAreas: Area<{ density: number | null; year: number | null }>[]
@@ -629,7 +635,27 @@ export function buildDiagramData(project: Project): DiagramData | null {
       }),
       fences: lines('ngii:fence').map((f) => ({ geom: f.geometry as Lines, kind: str(f.properties.kind) })),
       lamps: pts('ngii:lamp').map(({ c, p }) => ({ lon: c[0], lat: c[1], kind: str(p.kind) })),
-      water: nfeats('ngii:water').filter((f) => isAreal(f.geometry)).map((f) => f.geometry as Areal),
+      water: nfeats('ngii:water')
+        .filter((f) => isAreal(f.geometry))
+        .map((f) => {
+          const k = str(f.properties.wkind)
+          return { geom: f.geometry as Areal, kind: (k === 'water' || k === 'bank' || k === 'lake' ? k : '') as 'water' | 'bank' | 'lake' | '' }
+        }),
+      bridges: nfeats('ngii:bridge')
+        .filter((f) => isAreal(f.geometry))
+        .map((f) => {
+          const deck = str(f.properties.deck)
+          return {
+            geom: f.geometry as Areal,
+            name: str(f.properties.name),
+            kind: str(f.properties.kind),
+            length: num(f.properties.length),
+            width: num(f.properties.width),
+            height: num(f.properties.height),
+            deck: (deck === 'overpass' || deck === 'underpass' ? deck : 'bridge') as 'bridge' | 'overpass' | 'underpass',
+            river: str(f.properties.river),
+          }
+        }),
       pick: st.picks,
       pickSig: pickSig(project),
       terrainYear: (() => {
@@ -732,6 +758,9 @@ export function buildDiagramData(project: Project): DiagramData | null {
         .filter((f) => isLinear(f.geometry))
         .map((f) => ({ geom: f.geometry as Lines, central: !!f.properties.central })),
       bumps: feats('hd:bump').filter((f) => isAreal(f.geometry)).map((f) => f.geometry as Areal),
+      ground: feats('hd:ground').flatMap((f) =>
+        f.geometry?.type === 'MultiPoint' ? f.geometry.coordinates.filter((c) => c.length > 2 && Number.isFinite(c[2])).map((c) => ({ lon: c[0], lat: c[1], z: c[2] })) : [],
+      ),
     }
   }
 
@@ -841,11 +870,11 @@ export function buildDiagramData(project: Project): DiagramData | null {
     parks.push({ geom: f.geometry, name: name || '공원·녹지', layer: 'park', extra: { kind: 'park' } })
   }
   for (const f of feats('LT_C_WKMSTRM')) {
-    if (isAreal(f.geometry)) parks.push({ geom: f.geometry, name: str(f.properties.riv_nm) || '하천', layer: 'river', extra: { kind: 'river' } })
+    if (isAreal(f.geometry)) parks.push({ geom: f.geometry, name: str(f.properties.riv_nm) || '하천', layer: 'river', extra: { kind: 'river', src: 'wkmstrm' } })
   }
   for (const f of feats('LT_C_UPISUQ156')) {
     const name = str(f.properties.dgm_nm)
-    if (isAreal(f.geometry) && /하천|천$|강$/.test(name)) parks.push({ geom: f.geometry, name, layer: 'river', extra: { kind: 'river' } })
+    if (isAreal(f.geometry) && /하천|천$|강$/.test(name)) parks.push({ geom: f.geometry, name, layer: 'river', extra: { kind: 'river', src: 'upis' } })
   }
 
   const pointOf = (g: Geometry | null) => (g && g.type === 'Point' ? g.coordinates : null)

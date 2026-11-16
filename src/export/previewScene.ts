@@ -7,6 +7,8 @@ import { dashesOf, densify, offsetLine, triangulate, type Poly, type SiteModel, 
 import { gableGeometry, parapetGeometry } from './roofs'
 import { WALK_EDGE } from './streetDetail'
 import { SHAPE_LABEL, treeShapeTris, type TreeShape } from './trees'
+import { deckZ } from './bridges'
+import { deckTris } from './bridgeMesh'
 
 const TREE_COLOR: Record<TreeShape, string> = { cone: '#5c8c4c', broad: '#6f9d5a', round: '#82ad66' }
 import { BARRIER_RAIL, barrierPosts, boxMesh, BUMP_H, densifyLine, hatchStripes, lampBoxes, poleBoxes, ribbon, shelterBoxes, signalBoxes, signPanels, STREET, type Box, type SignColor } from './streetDetail'
@@ -29,6 +31,9 @@ const COLORS = {
   hdPath: '#d3c6ae',
   park: '#93bd7f',
   river: '#82b4d8',
+  bank: '#a9c98f',
+  deck: '#c9c5bd',
+  rail: '#e2dfd8',
   contour: '#a9865c',
   wall: '#6f6a64',
   fence: '#b9b1a5',
@@ -84,7 +89,9 @@ export function buildPreview(m: SiteModel): PreviewParts {
     ls.name = name
     group.add(ls)
   }
-  const z = (x: number, y: number) => m.zAt(x, y)
+  /** 얹는 높이 (구간마다 바꿈: 땅 zAt / 도로 roadAt / 물 waterAt / 상판) */
+  let Z: (x: number, y: number) => number = m.zAt
+  const z = (x: number, y: number) => Z(x, y)
   /** 선 → 선분 쌍 (지형에 얹음) */
   const drapedSegs = (pts: XY[], lift: number, out: number[], closed = false) => {
     const d = densify(pts, 4, closed)
@@ -131,8 +138,38 @@ export function buildPreview(m: SiteModel): PreviewParts {
     addMesh(out, color, { polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }, name)
   }
   layer(m.parks.flatMap((a) => a.polys), COLORS.park, 0.05, '공원·녹지')
-  layer(m.rivers.flatMap((a) => a.polys), COLORS.river, 0.05, '하천')
-  layer(m.roads, COLORS.road, 0.08, '도로 면')
+  layer(m.banks.flatMap((a) => a.polys), COLORS.bank, 0.04, '하천 둔치')
+  Z = (x, y) => m.waterAt(x, y) ?? m.zAt(x, y)
+  layer(m.rivers.flatMap((a) => a.polys), COLORS.river, 0, '하천 물')
+  Z = m.zAt
+  layer(
+    [...m.roads, ...m.decks.filter((d) => d.kind === 'overpass').flatMap((d) => d.polys)],
+    COLORS.road,
+    0.08,
+    '도로 면',
+  )
+  {
+    // 다리·고가 위 도로 면 (상판 높이)
+    const out: number[] = []
+    for (const o of m.roadsOnDeck) {
+      Z = (x, y) => deckZ(o.deck, x, y)
+      drapedPolys([o.poly], 0.08, edge, out)
+    }
+    Z = m.zAt
+    addMesh(out, COLORS.road, { polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }, '도로 면 (다리·고가 위)')
+    // 상판·교각·난간
+    const slab: number[] = []
+    const rail: number[] = []
+    for (const d of m.decks) {
+      const g = deckTris(d, m.zAt)
+      // 큰 배열을 펼쳐 넘기면 호출 스택을 넘음 (2026-11-16 동운고가 425m)
+      for (const v of g.slab) slab.push(v)
+      for (const v of g.piers) slab.push(v)
+      for (const v of g.rail) rail.push(v)
+    }
+    addMesh(slab, COLORS.deck, { side: THREE.DoubleSide }, '다리·고가 상판·교각')
+    addMesh(rail, COLORS.rail, { side: THREE.DoubleSide }, '다리·고가 난간')
+  }
   // ── 거리 디테일 (2026-11-13): 인도·교통섬 단차, 횡단보도 줄무늬, 안전지대 빗금, 차선·연석 띠
   const R = STREET.roadLift
   const H = STREET.curbH
@@ -170,6 +207,12 @@ export function buildPreview(m: SiteModel): PreviewParts {
     addMesh(out, color, { side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }, name)
   }
   raised(m.walks, COLORS.walk, '인도', WALK_EDGE)
+  for (const o of m.walksOnDeck) {
+    Z = (x, y) => deckZ(o.deck, x, y)
+    raised([o.poly], COLORS.walk, '인도 (다리 위)', WALK_EDGE)
+  }
+  // 도로 위 디테일은 다리·고가 위면 상판 높이로
+  Z = m.roadAt
   raised(m.hdPaths, COLORS.hdPath, '보도 면', WALK_EDGE)
   raised(
     m.safety.filter((s) => s.kind === 'island').map((s) => s.poly),
@@ -224,6 +267,7 @@ export function buildPreview(m: SiteModel): PreviewParts {
     }
   }
 
+  Z = m.zAt
   // ── 건물 (벽 + 지붕), 층수 모르면 납작한 발자국
   const walls: Record<'bldg' | 'bldgSite' | 'bldgUnknown', number[]> = { bldg: [], bldgSite: [], bldgUnknown: [] }
   const roofTris: number[] = []
@@ -288,6 +332,7 @@ export function buildPreview(m: SiteModel): PreviewParts {
     addLines(site, COLORS.site, '대지 경계')
   }
 
+  Z = m.roadAt
   // ── 가로등 (기둥 + 도로 쪽 팔 + 등 머리), 정류장 쉘터 (지붕·기둥·의자·표지 + 유리)
   {
     const pole: number[] = []
@@ -365,6 +410,7 @@ export function buildPreview(m: SiteModel): PreviewParts {
     addMesh(bs, COLORS.crosswalk, { polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }, '과속방지턱 줄')
   }
 
+  Z = m.zAt
   // ── 나무 (수관 + 줄기), 정류장 쉘터 — 같은 모양을 여러 번 (InstancedMesh)
   const dummy = new THREE.Object3D()
   // 15-E 나무: 모양(원뿔형·넓은형·둥근형)마다 높이 10m 모양 하나를 h/10배로 여러 번

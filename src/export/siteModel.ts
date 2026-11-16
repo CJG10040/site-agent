@@ -4,7 +4,7 @@
 // 사용자 결정(2026-11-11): 원점은 대지 중심, 파일에 원점의 실제 좌표를 적는다. 지형은 지금의 10m 격자로 먼저 만들고,
 // 나중에 더 정밀한 지형(1·5m DEM, 현황측량)을 구하면 terrainAround 자리만 바꿔 끼운다.
 
-import { featureCollection, intersect, polygon as turfPolygon, union } from '@turf/turf'
+import { bboxClip, difference, featureCollection, intersect, polygon as turfPolygon, union } from '@turf/turf'
 import { contours } from 'd3-contour'
 import earcut from 'earcut'
 import type { Position } from 'geojson'
@@ -18,6 +18,8 @@ import { centroidOf } from '../diagrams/frame'
 import { parcelFinder } from '../lib/parcelFind'
 import type { RoofTitle } from '../sources/buildingRegister'
 import { pitchedFits, roofKindOf, ruleRoof, type ModelRoof } from './roofs'
+import { buildDecks, deckAt, inPoly as polyHas, type Deck, type DeckSrc } from './bridges'
+import { shapeGround } from './groundShape'
 
 export type XY = [number, number]
 
@@ -87,7 +89,17 @@ export interface SiteModel {
   roadSource: 'map' | 'centerline' | 'mixed'
   roadCenters: { pts: XY[]; width: number | null }[]
   parks: ModelArea[]
+  /** 물 면 (실폭하천·호수, 브이월드 하천망) — 높이는 waterAt */
   rivers: ModelArea[]
+  /** 하천 둔치 (하천경계에서 물을 뺀 곳 — 물 면 아래에 깔고 위에 물) */
+  banks: ModelArea[]
+  /** 다리·고가 상판 (2026-11-16) */
+  decks: Deck[]
+  /** 상판 위에 놓인 도로 면·인도 (그 상판 높이로 얹음) — roads·walks에서 빼 둔 조각 */
+  roadsOnDeck: { poly: Poly; deck: Deck }[]
+  walksOnDeck: { poly: Poly; deck: Deck }[]
+  /** 땅 다듬기 결과 (groundShape.ts) */
+  shapeInfo: { roadCells: number; waterCells: number; hdCells: number; hdOffset: number | null } | null
   /** 아래는 수치지도를 올렸을 때만 (없으면 빈 배열) */
   walks: Poly[]
   /** 무벽건물(지붕만)·가건물 발자국 */
@@ -134,8 +146,12 @@ export interface SiteModel {
   yellowMarks: Poly[]
   hdPaths: Poly[]
   curbs: XY[][]
-  /** 지형 면 위의 높이 (메시와 같은 삼각형으로 보간, 자료 없으면 0) */
+  /** 지형 면 위의 높이 (메시와 같은 삼각형으로 보간, 자료 없으면 0) — 도로 면은 매끈하게 다듬은 뒤 */
   zAt: (x: number, y: number) => number
+  /** 도로 위 높이: 다리·고가 상판 위면 상판 윗면, 아니면 zAt — 차선·노면표시·연석·신호등 등을 얹을 때 */
+  roadAt: (x: number, y: number) => number
+  /** 물 높이 (평평하게 고른 물 면), 물 근처가 아니면 null */
+  waterAt: (x: number, y: number) => number | null
 }
 
 // ───────────────────────── 도형 도우미 ─────────────────────────
@@ -532,6 +548,7 @@ export async function buildSiteModel(d: DiagramData, half: number, opts: { grid?
   const [nx, ny] = f([lon, lat + 0.01])
   const trueNorthDeg = (Math.atan2(nx, ny) * 180) / Math.PI
 
+
   const grid = opts.grid !== undefined ? opts.grid : await terrainAround(lon, lat, d.R).catch(() => null)
   let z0 = 0
   let elev: number | null = null
@@ -542,11 +559,157 @@ export async function buildSiteModel(d: DiagramData, half: number, opts: { grid?
       elev = raw
     }
   }
-  const zAt = grid ? makeZAt(grid, X0, Y0, z0) : () => 0
-  const terrain = grid ? terrainSubset(grid, X0, Y0, z0, half) : null
-  const { step, lines } = terrain ? contourLinesOf(terrain) : { step: 1, lines: [] }
-
   const inSquare = ([x, y]: XY) => Math.abs(x) <= half && Math.abs(y) <= half
+
+  const centers = d.roads.flatMap((r) => {
+    const parts = r.geom.type === 'LineString' ? [r.geom.coordinates] : r.geom.coordinates
+    return parts.map((c) => ({ pts: c.map(f), width: r.width }))
+  })
+  const roadCenters = centers.flatMap((c) => clipLine(c.pts, half).map((pts) => ({ pts, width: c.width })))
+
+  // ── 수치지도: 도엽 안 도로는 측량한 도로경계 면을 합쳐 쓰고, 도엽 밖만 도로중심선으로
+  const n = d.ngii
+  const lonlatOf = ([x, y]: XY): [number, number] => {
+    // 원점 주변 1차식 (범위 몇 km 안에서 충분)
+    const kx = 111320 * Math.cos((lat * Math.PI) / 180)
+    const t = (trueNorthDeg * Math.PI) / 180
+    const ex = x * Math.cos(t) - y * Math.sin(t)
+    const ny2 = x * Math.sin(t) + y * Math.cos(t)
+    return [lon + ex / kx, lat + ny2 / 110574]
+  }
+  const covered = (p: XY) => {
+    const [lo, la] = lonlatOf(p)
+    return inNgii(n, lo, la)
+  }
+  let roads: Poly[]
+  let roadSource: SiteModel['roadSource'] = 'centerline'
+  if (n && n.roads.length) {
+    const pieces = clipPolys(
+      n.roads.flatMap((g) => polysOf(g, f)),
+      half,
+    )
+    const close = (r: XY[]) => [...r, r[0]]
+    let merged: Poly[] = pieces
+    try {
+      const u = pieces.length > 1 ? union(featureCollection(pieces.map((p) => turfPolygon([close(p.outer), ...p.holes.map(close)])))) : null
+      if (u) {
+        const g = u.geometry
+        merged = (g.type === 'Polygon' ? [g.coordinates] : g.coordinates).map((q) => toPoly(q.map((r) => r.map(([x, y]) => [x, y] as XY)))).filter((p): p is Poly => !!p)
+      }
+    } catch {
+      // 합치기에 실패하면 조각 그대로
+    }
+    const corners: XY[] = [
+      [-half, -half],
+      [half, -half],
+      [half, half],
+      [-half, half],
+    ]
+    const full = corners.every(covered)
+    const outside = full ? [] : centers.filter((c) => c.pts.length && !covered(c.pts[Math.floor(c.pts.length / 2)]))
+    roads = [...merged, ...(outside.length ? roadSurfaces(outside, half) : [])]
+    roadSource = outside.length ? 'mixed' : 'map'
+  } else roads = roadSurfaces(centers, half)
+
+
+  // ── 하천 (2026-11-16): 같은 하천을 자료 여럿이 겹쳐 그리던 것을 물(실폭하천·호수) / 둔치(하천경계에서 물을 뺀 곳)로 나눔.
+  //    수치지도가 있으면 그 도엽 안 브이월드 하천(하천망·도시계획 하천)은 뺌. 예전에 올려 종류를 모르는 수치지도 하천은 다른 하천 면을 품은 큰 면을 둔치로.
+  const parks: ModelArea[] = []
+  const rivers: ModelArea[] = []
+  const banks: ModelArea[] = []
+  const ngWater = n ? n.water.map((w) => ({ polys: clipPolys(polysOf(w.geom, f), half), kind: w.kind })).filter((w) => w.polys.length) : []
+  const repOf = (p: Poly): XY => {
+    const o = p.outer
+    return [o.reduce((a, q) => a + q[0], 0) / o.length, o.reduce((a, q) => a + q[1], 0) / o.length]
+  }
+  const areaOf = (ps: Poly[]) => ps.reduce((a, p) => a + Math.abs(ringArea(p.outer)), 0)
+  const innerPt = (p: Poly): XY => {
+    const c = repOf(p)
+    if (polyHas(c, p)) return c
+    // 오목한 면: 가운데 가로줄에서 안쪽 점
+    const ys = p.outer.map((q) => q[1])
+    const y = (Math.min(...ys) + Math.max(...ys)) / 2
+    const xs: number[] = []
+    for (let i = 0, j = p.outer.length - 1; i < p.outer.length; j = i++) {
+      const [ax, ay] = p.outer[j]
+      const [bx, by] = p.outer[i]
+      if (ay > y !== by > y) xs.push(ax + ((y - ay) * (bx - ax)) / (by - ay))
+    }
+    xs.sort((a, b) => a - b)
+    return xs.length >= 2 ? [(xs[0] + xs[1]) / 2, y] : c
+  }
+  for (const w of ngWater) {
+    let kind = w.kind
+    if (!kind) {
+      const others = ngWater.filter((o) => o !== w && areaOf(o.polys) * 1.5 < areaOf(w.polys))
+      kind = others.some((o) => o.polys.some((q) => w.polys.some((p) => polyHas(innerPt(q), p)))) ? 'bank' : 'water'
+    }
+    ;(kind === 'bank' ? banks : rivers).push({ polys: w.polys, name: kind === 'bank' ? '하천 둔치 (수치지도 하천경계)' : kind === 'lake' ? '호수·저수지 (수치지도)' : '하천 물 (수치지도 실폭하천)' })
+  }
+  const vwRivers: { polys: Poly[]; name: string; src: string }[] = []
+  for (const a of d.parks) {
+    const polys = clipPolys(polysOf(a.geom, f), half)
+    if (!polys.length) continue
+    if (a.extra.kind !== 'river') {
+      parks.push({ polys, name: a.name })
+      continue
+    }
+    // 수치지도 도엽 안이면 뺌 (수치지도 하천이 있을 때)
+    if (ngWater.length && polys.every((p) => covered(innerPt(p)))) continue
+    vwRivers.push({ polys, name: a.name, src: a.extra.src ?? 'wkmstrm' })
+  }
+  const vwWater = vwRivers.filter((r) => r.src !== 'upis')
+  for (const r of vwRivers) {
+    if (r.src !== 'upis') rivers.push({ polys: r.polys, name: r.name })
+    // 도시계획 하천(구역)은 하천망 물을 품으면 둔치, 아니면 물
+    else if (vwWater.some((w) => w.polys.some((q) => r.polys.some((p) => polyHas(innerPt(q), p))))) banks.push({ polys: r.polys, name: `${r.name} 둔치 (도시계획 하천)` })
+    else if (!vwWater.length) rivers.push({ polys: r.polys, name: r.name })
+  }
+
+  // ── 다리·고가 (2026-11-16): 교량 상판 밑은 땅을 고르지 않음
+  const deckSrc: DeckSrc[] = n
+    ? n.bridges
+        .map((b) => ({ polys: clipPolys(polysOf(b.geom, f), half), name: b.name, kind: b.kind, deck: b.deck, length: b.length, height: b.height }))
+        .filter((b) => b.polys.length)
+    : []
+
+  // ── 땅 다듬기 (groundShape.ts): 물 밑을 파고 물 높이를 고르게, 도로 면을 매끈하게 (정밀도로지도 노면 높이가 있으면 기준점으로)
+  const hdPts = (d.hd?.ground ?? []).map((g) => {
+    const [x, y] = f([g.lon, g.lat])
+    return { x, y, z: g.z }
+  })
+  const shaped = grid
+    ? shapeGround(grid, {
+        X0,
+        Y0,
+        half,
+        roads,
+        noRoad: deckSrc.filter((b) => b.deck === 'bridge').flatMap((b) => b.polys),
+        water: rivers.flatMap((r) => r.polys),
+        hd: hdPts,
+      })
+    : null
+  const sg = shaped?.grid ?? null
+  const zAt = sg ? makeZAt(sg, X0, Y0, z0) : () => 0
+  const terrain = sg ? terrainSubset(sg, X0, Y0, z0, half) : null
+  const { step, lines } = terrain ? contourLinesOf(terrain) : { step: 1, lines: [] }
+  const waterAt = (x: number, y: number): number | null => {
+    const l = shaped?.waterLevel(x, y)
+    return l === null || l === undefined ? null : l - z0
+  }
+  // 상판 높이: 정밀도로지도 노면 높이(지형과의 기준 차이를 뺀 것) → 둘레에서 이어지는 도로 높이 → 양 끝 땅
+  const roadBoxes = roads.map((p) => ({ p, b: bboxOf(p.outer) }))
+  const onRoad = (x: number, y: number) => roadBoxes.some(({ p, b }) => x >= b[0] && x <= b[2] && y >= b[1] && y <= b[3] && polyHas([x, y], p))
+  const hdOff = shaped?.stats.hdOffset
+  const decks = buildDecks(deckSrc, zAt, {
+    onRoad,
+    hd: hdOff === null || hdOff === undefined ? [] : hdPts.map((q) => ({ x: q.x, y: q.y, z: q.z - hdOff - z0 })),
+    waterAt,
+  })
+  const roadAt = (x: number, y: number): number => {
+    const dk = deckAt(decks, x, y)
+    return dk ? dk.zTop(x, y) : zAt(x, y)
+  }
 
   // ── 15-D 지붕: 건물이 놓인 필지의 건축물대장 지붕 구조 → 모양, 없으면 규칙
   const roofsBy = d.roofs ?? {}
@@ -601,62 +764,6 @@ export async function buildSiteModel(d: DiagramData, half: number, opts: { grid?
     const polys = clipPolys(polysOf(p.geom, f), half)
     if (polys.length) parcels.push({ polys, name: p.jibun, jibun: p.jibun, jimok: p.jimok, onSite: p.onSite })
   }
-  const parks: ModelArea[] = []
-  const rivers: ModelArea[] = []
-  for (const a of d.parks) {
-    const polys = clipPolys(polysOf(a.geom, f), half)
-    if (polys.length) (a.extra.kind === 'river' ? rivers : parks).push({ polys, name: a.name })
-  }
-
-  const centers = d.roads.flatMap((r) => {
-    const parts = r.geom.type === 'LineString' ? [r.geom.coordinates] : r.geom.coordinates
-    return parts.map((c) => ({ pts: c.map(f), width: r.width }))
-  })
-  const roadCenters = centers.flatMap((c) => clipLine(c.pts, half).map((pts) => ({ pts, width: c.width })))
-
-  // ── 수치지도: 도엽 안 도로는 측량한 도로경계 면을 합쳐 쓰고, 도엽 밖만 도로중심선으로
-  const n = d.ngii
-  const lonlatOf = ([x, y]: XY): [number, number] => {
-    // 원점 주변 1차식 (범위 몇 km 안에서 충분)
-    const kx = 111320 * Math.cos((lat * Math.PI) / 180)
-    const t = (trueNorthDeg * Math.PI) / 180
-    const ex = x * Math.cos(t) - y * Math.sin(t)
-    const ny2 = x * Math.sin(t) + y * Math.cos(t)
-    return [lon + ex / kx, lat + ny2 / 110574]
-  }
-  const covered = (p: XY) => {
-    const [lo, la] = lonlatOf(p)
-    return inNgii(n, lo, la)
-  }
-  let roads: Poly[]
-  let roadSource: SiteModel['roadSource'] = 'centerline'
-  if (n && n.roads.length) {
-    const pieces = clipPolys(
-      n.roads.flatMap((g) => polysOf(g, f)),
-      half,
-    )
-    const close = (r: XY[]) => [...r, r[0]]
-    let merged: Poly[] = pieces
-    try {
-      const u = pieces.length > 1 ? union(featureCollection(pieces.map((p) => turfPolygon([close(p.outer), ...p.holes.map(close)])))) : null
-      if (u) {
-        const g = u.geometry
-        merged = (g.type === 'Polygon' ? [g.coordinates] : g.coordinates).map((q) => toPoly(q.map((r) => r.map(([x, y]) => [x, y] as XY)))).filter((p): p is Poly => !!p)
-      }
-    } catch {
-      // 합치기에 실패하면 조각 그대로
-    }
-    const corners: XY[] = [
-      [-half, -half],
-      [half, -half],
-      [half, half],
-      [-half, half],
-    ]
-    const full = corners.every(covered)
-    const outside = full ? [] : centers.filter((c) => c.pts.length && !covered(c.pts[Math.floor(c.pts.length / 2)]))
-    roads = [...merged, ...(outside.length ? roadSurfaces(outside, half) : [])]
-    roadSource = outside.length ? 'mixed' : 'map'
-  } else roads = roadSurfaces(centers, half)
 
   const linesOfGeom = (g: { type: string; coordinates: unknown }) =>
     (g.type === 'LineString' ? [g.coordinates as Position[]] : (g.coordinates as Position[][])).map((c) => c.map(f))
@@ -823,10 +930,6 @@ export async function buildSiteModel(d: DiagramData, half: number, opts: { grid?
   const barriers = hdd ? hdd.barriers.flatMap((b) => linesOfGeom(b.geom).flatMap((q) => clipLine(q, half)).map((pts) => ({ pts, central: b.central }))) : []
   const bumps = hdd ? clipPolys(hdd.bumps.flatMap((g) => polysOf(g, f)), half) : []
   const fences = n ? n.fences.flatMap((w) => linesOfGeom(w.geom).flatMap((l) => clipLine(l, half)).map((pts) => ({ pts, kind: w.kind }))) : []
-  if (n) for (const w of n.water) {
-    const polys = clipPolys(polysOf(w, f), half)
-    if (polys.length) rivers.push({ polys, name: '하천·호수 (1:1,000 수치지도)' })
-  }
   const h = d.hd
   const lanes = h ? h.lanes.flatMap((l) => linesOfGeom(l.geom).flatMap((q) => clipLine(q, half)).map((pts) => ({ pts, color: l.color, dashed: l.dashed, double: l.double }))) : []
   const arrows: Poly[] = []
@@ -845,6 +948,52 @@ export async function buildSiteModel(d: DiagramData, half: number, opts: { grid?
   const marks = h ? [...clipPolys(h.marks.flatMap((g) => polysOf(g, f)), half), ...plainMarks] : []
   const hdPaths = h ? clipPolys(h.paths.flatMap((g) => polysOf(g, f)), half) : []
   const curbs = h ? h.borders.flatMap((g) => linesOfGeom(g).flatMap((q) => clipLine(q, half))) : []
+
+  // ── 상판 위 도로 면·인도를 따로 (상판 높이로 얹음 — 한 면에 섞으면 삼각형이 상판에서 땅으로 비스듬히 걸침)
+  const close = (r: XY[]) => [...r, r[0]]
+  const toTurf = (p: Poly) => turfPolygon([close(p.outer), ...p.holes.map(close)])
+  const fromGeom = (g: { type: string; coordinates: unknown }): Poly[] =>
+    (g.type === 'Polygon' ? [g.coordinates as Position[][]] : (g.coordinates as Position[][][])).map((q) => toPoly(q.map((r) => r.map(([x, y]) => [x, y] as XY)))).filter((p): p is Poly => !!p)
+  // 도로 면마다 겹치는 상판을 한 번에 빼고(차), 상판마다 겹친 조각을 따로 (2026-11-16: 상판마다 되풀이해 빼면 1,500m 범위에서 117초 걸렸음)
+  const splitOnDecks = (polys: Poly[]): { ground: Poly[]; on: { poly: Poly; deck: Deck }[] } => {
+    if (!decks.length) return { ground: polys, on: [] }
+    const deckPolys = decks.flatMap((dk) => dk.polys.map((p) => ({ p, dk, b: bboxOf(p.outer) })))
+    const ground: Poly[] = []
+    const on: { poly: Poly; deck: Deck }[] = []
+    for (const poly of polys) {
+      const [a, b, c, e] = bboxOf(poly.outer)
+      const hits = deckPolys.filter(({ b: [a2, b2, c2, e2] }) => !(c2 < a || a2 > c || e2 < b || b2 > e))
+      if (!hits.length) {
+        ground.push(poly)
+        continue
+      }
+      try {
+        const tp = toTurf(poly)
+        const cutter = hits.length === 1 ? toTurf(hits[0].p) : union(featureCollection(hits.map((h) => toTurf(h.p))))
+        if (!cutter) {
+          ground.push(poly)
+          continue
+        }
+        const left = difference(featureCollection([tp, cutter]))
+        if (left) ground.push(...fromGeom(left.geometry))
+        for (const h of hits) {
+          // 큰 도로 면은 상판 둘레 사각형만 먼저 잘라 겹침 계산 (빠르게)
+          const local = bboxClip(tp, [h.b[0] - 2, h.b[1] - 2, h.b[2] + 2, h.b[3] + 2])
+          const part = intersect(featureCollection([local as ReturnType<typeof toTurf>, toTurf(h.p)]))
+          if (part) for (const q of fromGeom(part.geometry)) if (Math.abs(ringArea(q.outer)) > 0.5) on.push({ poly: q, deck: h.dk })
+        }
+      } catch {
+        ground.push(poly)
+      }
+    }
+    return { ground, on }
+  }
+  const rs = splitOnDecks(roads)
+  const roadsGround = rs.ground
+  const roadsOnDeck = rs.on
+  const ws = splitOnDecks(walks)
+  const walksGround = ws.ground
+  const walksOnDeck = ws.on
 
   const spots = n
     ? n.spots
@@ -866,12 +1015,17 @@ export async function buildSiteModel(d: DiagramData, half: number, opts: { grid?
     site: polysOf(d.boundary, f),
     buildings,
     parcels,
-    roads,
+    roads: roadsGround,
     roadSource,
     roadCenters,
     parks,
     rivers,
-    walks,
+    banks,
+    decks,
+    roadsOnDeck,
+    walksOnDeck,
+    shapeInfo: shaped?.stats ?? null,
+    walks: walksGround,
     minor,
     walls,
     cutfill,
@@ -900,6 +1054,8 @@ export async function buildSiteModel(d: DiagramData, half: number, opts: { grid?
     hdPaths,
     curbs,
     zAt,
+    roadAt,
+    waterAt,
   }
 }
 
@@ -939,6 +1095,24 @@ export function modelNotes(m: SiteModel, meta: { title: string; address: string;
           : '국토지리정보원 도로중심선을 도로 폭(rvwd)만큼 넓혀 합친 면 (폭 없는 길은 4m로 봄)',
     ],
     ['필지·공원·하천', '연속지적도, 도시계획(공원·녹지·광장), 하천망 — 참고용이며 법적 효력 없음'],
+    [
+      '도로 높이',
+      m.shapeInfo?.roadCells
+        ? `도로 면 안 높이를 약 18m 범위로 평균해 매끈하게 고르고 도로 밖 4m는 원래 땅으로 이음${m.shapeInfo.hdCells ? ` — 정밀도로지도 노면 실측 높이 ${m.shapeInfo.hdCells}칸을 기준점으로(지형과 높이 기준 차이 ${f(m.shapeInfo.hdOffset ?? 0, 2)}m를 뺌)` : ''}`
+        : '지형 그대로',
+    ],
+    [
+      '하천',
+      `물 면 ${m.rivers.length}곳(평평하게 고른 물 높이, 물 밑 땅은 0.6m 파냄)${m.banks.length ? `, 둔치 ${m.banks.length}곳(하천경계 — 물 면 아래)` : ''} — 수치지도가 있으면 그 도엽 안 브이월드 하천은 뺌`,
+    ],
+    ...(m.decks.length
+      ? ([
+          [
+            '다리·고가',
+            `${m.decks.length}곳 (${[...new Set(m.decks.map((d) => d.sub))].join('·')}) — 교량은 양 끝 도로 높이를 곧게 이은 상판, 고가차도는 양 끝에서 경사 6%로 올라 5m 밑 높이 + 상판. 상판 두께·난간·교각 간격은 어림(실측 아님)`,
+          ],
+        ] as [string, string][])
+      : []),
     ...(m.map1000 || m.lanes.length
       ? ([
           [

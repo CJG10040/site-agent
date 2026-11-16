@@ -26,8 +26,8 @@ import type { Position } from 'geojson'
 import { beltProjection, utmkToWgs84, wgs84ToUtmk } from '../lib/proj'
 import { epsgOf, readDbf, readShp, toGeometry, type Feat, type Rec, type ShpRec } from './ngiiMap'
 
-export type HdKey = 'lane' | 'mark' | 'border' | 'path' | 'light' | 'sign' | 'post' | 'barrier' | 'bump'
-export const HD_KEYS: HdKey[] = ['lane', 'mark', 'border', 'path', 'light', 'sign', 'post', 'barrier', 'bump']
+export type HdKey = 'lane' | 'mark' | 'border' | 'path' | 'light' | 'sign' | 'post' | 'barrier' | 'bump' | 'ground'
+export const HD_KEYS: HdKey[] = ['lane', 'mark', 'border', 'path', 'light', 'sign', 'post', 'barrier', 'bump', 'ground']
 export const HD_LABEL: Record<HdKey, string> = {
   lane: '차선',
   mark: '노면표시',
@@ -38,10 +38,11 @@ export const HD_LABEL: Record<HdKey, string> = {
   post: '지주',
   barrier: '방호시설',
   bump: '과속방지턱',
+  ground: '노면 높이 (실측)',
 }
 export const hdLayer = (k: HdKey | 'files') => `hd:${k}`
-/** 읽기 방식 판 (2 = 2026-11-13: 신호등·표지판·지주·방호시설·과속방지턱, 화살표 방향) */
-export const HD_READER_V = 2
+/** 읽기 방식 판 (2 = 2026-11-13: 신호등·표지판·지주·방호시설·과속방지턱, 화살표 방향, 3 = 2026-11-16: 노면 높이 — 차선·도로 경계 Z를 5m 칸 중앙값으로) */
+export const HD_READER_V = 3
 
 const MARGIN = 80
 
@@ -354,6 +355,22 @@ export function readHdZip(name: string, data: Uint8Array, center: [number, numbe
       list.push({ type: 'Feature', geometry, properties: props })
     }
   }
-  for (const k of Object.keys(out.features) as HdKey[]) out.counts[k] = out.features[k]!.length
+  // ── 노면 높이 (2026-11-16): 3D 모형에서 도로 면을 실측 높이에 맞추는 기준점. 대지 반경 + 여유 안의 5m 칸마다 중앙값 하나
+  {
+    const [ccx, ccy] = wgs84ToUtmk(center[0], center[1])
+    const R = radiusM + MARGIN
+    const coords: number[][] = []
+    for (const [k, zs] of ground) {
+      const [ix, iy] = k.split(',').map(Number)
+      const ux = (ix + 0.5) * 5
+      const uy = (iy + 0.5) * 5
+      if (Math.abs(ux - ccx) > R || Math.abs(uy - ccy) > R) continue
+      const sorted = [...zs].sort((a, b) => a - b)
+      const [lo, la] = utmkToWgs84(ux, uy)
+      coords.push([round8(lo), round8(la), round2(sorted[Math.floor(sorted.length / 2)])])
+    }
+    if (coords.length) out.features.ground = [{ type: 'Feature', geometry: { type: 'MultiPoint', coordinates: coords }, properties: { id: `ground@${name}`, n: coords.length } }]
+  }
+  for (const k of Object.keys(out.features) as HdKey[]) out.counts[k] = k === 'ground' ? (out.features.ground?.[0]?.properties.n as number) ?? 0 : out.features[k]!.length
   return out
 }

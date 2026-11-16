@@ -51,7 +51,7 @@ export default function ModelStep({ project, update, config, keys, onGoData, onG
   // ④ 항목별 자료 (두 축척이 겹칠 때)
   const ps = useMemo(() => pickState(project), [project])
   const mixed = ps.ctx.cover1000.length > 0 && ps.ctx.cover5000.length > 0
-  const old5000 = mixed && ps.ctx.old5000
+  const old5000 = ps.ctx.old5000
 
   return (
     <div className="form-page wide model-page">
@@ -104,9 +104,9 @@ export default function ModelStep({ project, update, config, keys, onGoData, onG
             {(old1000 || oldHd || old5000) && (
               <p className="notice">
                 예전에 올린 파일이 있습니다 — 원본 파일은 저장하지 않아 <strong>다시 올려야</strong> 새로 읽는 것이 들어갑니다.
-                {old1000 && ' 1:1,000 수치지도: 교통섬·안전지대·어린이보호구역, 보도(폭만큼 15cm 단차).'}
+                {old1000 && ' 1:1,000 수치지도: 교량·고가차도, 하천 물·둔치 구분 (더 예전 것이면 교통섬·안전지대·보도 단차도).'}
                 {oldHd && ' 정밀도로지도: 신호등·표지판·지주·방호시설·과속방지턱 (화살표 진행 방향은 다시 올리지 않아도 중앙선으로 맞춤).'}
-                {old5000 && ' 1:5,000 수치지도: 도로중심선·교통섬·담장·하천 면(④ 항목별 자료에서 새 자료로 고를 수 있게).'} 아래 '올리기'에서 같은 파일을 다시 끌어다 놓으세요.
+                {old5000 && ' 1:5,000 수치지도: 교량·고가차도, 하천 물·둔치 구분 (더 예전 것이면 도로중심선·교통섬·담장·하천 면도).'} 아래 '올리기'에서 같은 파일을 다시 끌어다 놓으세요.
               </p>
             )}
             <details open={old1000 || oldHd || old5000 || undefined}>

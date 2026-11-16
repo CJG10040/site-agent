@@ -12,6 +12,8 @@ import { BARRIER_RAIL, barrierPosts, boxMesh, BUMP_H, densifyLine, hatchStripes,
 import type { AerialTex } from './aerialTexture'
 import { LAYER_MAT, MATERIAL_STYLES, materialSet, RENDER_HELP, TEX_FILE, texPath, texturesOf, type MaterialStyle, type MatId } from './renderMaterials'
 import { textureJpeg } from './textures'
+import { deckZ } from './bridges'
+import { deckTris } from './bridgeMesh'
 
 type Rgb = [number, number, number]
 
@@ -60,7 +62,12 @@ const LAYERS: LayerDef[] = [
   { key: 'treePark', name: '공원·녹지 규칙 (격자)', color: [90, 150, 100], parent: 'treeGroup' },
   { key: 'treeUser', name: '직접 심은 나무 (⑩ 지도)', color: [60, 130, 60], parent: 'treeGroup' },
   { key: 'treeBlock', name: '나무 블록 정의 (수관·줄기)', color: [96, 150, 80], parent: 'treeGroup' },
-  { key: 'river', name: '하천', color: [70, 140, 200] },
+  { key: 'river', name: '하천 물 (평평하게, 물 밑 땅은 0.6m 파냄)', color: [70, 140, 200] },
+  { key: 'riverbank', name: '하천 둔치 (하천경계 — 물 면 아래)', color: [120, 165, 95] },
+  // 2026-11-16 다리·고가: 수치지도 교량(A007)·고가차도(A009), 높이는 양 끝 도로 높이·경사 6% 어림
+  { key: 'bridgeGroup', name: '다리·고가 (수치지도 교량·고가차도, 높이 어림)', color: [150, 150, 150] },
+  { key: 'bridgeDeck', name: '상판·교각', color: [175, 172, 165], parent: 'bridgeGroup' },
+  { key: 'bridgeRail', name: '난간 (높이 1.0~1.1m)', color: [200, 198, 192], parent: 'bridgeGroup' },
   // 15-F 1:1,000 수치지도·정밀도로지도 디테일 (자료가 있을 때만)
   { key: 'detail', name: '디테일 (1:1,000 수치지도·정밀도로지도)', color: [110, 110, 110] },
   { key: 'stop', name: '정류장 쉘터 (어림 3.6×1.5×2.55m, 도로 쪽이 열림)', color: [70, 80, 95], parent: 'detail' },
@@ -181,6 +188,8 @@ export async function siteModelTo3dm(m: SiteModel, meta: ExportMeta, onStep?: (s
         treeUser: m.trees.some((t) => t.src === 'user'),
       }
       if (def.key in treeHas && !treeHas[def.key]) continue
+      if (def.key === 'riverbank' && !m.banks.length) continue
+      if (def.key.startsWith('bridge') && !m.decks.length) continue
       const detailHas: Record<string, boolean> = {
         stop: m.stops.length > 0,
         stopGlass: m.stops.length > 0,
@@ -295,8 +304,10 @@ export async function siteModelTo3dm(m: SiteModel, meta: ExportMeta, onStep?: (s
       free(c)
       free(at)
     }
+    /** 얹는 높이 (구간마다 바꿈: 땅 zAt / 도로 roadAt / 물 waterAt / 상판) */
+    let Z: (x: number, y: number) => number = m.zAt
     const draped = (pts: XY[], closed: boolean, lift: number) => {
-      const d = densify(pts, 4, closed).map(([x, y]) => [x, y, m.zAt(x, y) + lift])
+      const d = densify(pts, 4, closed).map(([x, y]) => [x, y, Z(x, y) + lift])
       if (closed && d.length) d.push([...d[0]])
       return d
     }
@@ -311,7 +322,7 @@ export async function siteModelTo3dm(m: SiteModel, meta: ExportMeta, onStep?: (s
       for (const p of polys) {
         const { pts, tris } = triangulate(p, maxEdge)
         const base = vs.count
-        for (const [x, y] of pts) vs.add(x, y, m.zAt(x, y) + lift)
+        for (const [x, y] of pts) vs.add(x, y, Z(x, y) + lift)
         for (let i = 0; i < tris.length; i += 3) fs.addTriFace(base + tris[i], base + tris[i + 1], base + tris[i + 2])
       }
       mesh.normals().computeNormals()
@@ -351,8 +362,8 @@ export async function siteModelTo3dm(m: SiteModel, meta: ExportMeta, onStep?: (s
       const { left, right } = ribbon(d, w)
       const base = mb.vs.count
       for (let i = 0; i < d.length; i++) {
-        mb.vs.add(left[i][0], left[i][1], m.zAt(left[i][0], left[i][1]) + lift)
-        mb.vs.add(right[i][0], right[i][1], m.zAt(right[i][0], right[i][1]) + lift)
+        mb.vs.add(left[i][0], left[i][1], Z(left[i][0], left[i][1]) + lift)
+        mb.vs.add(right[i][0], right[i][1], Z(right[i][0], right[i][1]) + lift)
       }
       for (let i = 0; i + 1 < d.length; i++) mb.fs.addQuadFace(base + 2 * i, base + 2 * i + 1, base + 2 * i + 3, base + 2 * i + 2)
     }
@@ -361,7 +372,7 @@ export async function siteModelTo3dm(m: SiteModel, meta: ExportMeta, onStep?: (s
       const d = densifyLine(ring, 2, closed)
       const base = mb.vs.count
       for (const [x, y] of d) {
-        const z = m.zAt(x, y)
+        const z = Z(x, y)
         mb.vs.add(x, y, z + lo)
         mb.vs.add(x, y, z + hi)
       }
@@ -372,7 +383,7 @@ export async function siteModelTo3dm(m: SiteModel, meta: ExportMeta, onStep?: (s
       for (const p of polys) {
         const { pts, tris } = triangulate(p, maxEdge)
         const base = mb.vs.count
-        for (const [x, y] of pts) mb.vs.add(x, y, m.zAt(x, y) + lift)
+        for (const [x, y] of pts) mb.vs.add(x, y, Z(x, y) + lift)
         for (let i = 0; i < tris.length; i += 3) mb.fs.addTriFace(base + tris[i], base + tris[i + 1], base + tris[i + 2])
       }
     }
@@ -551,19 +562,54 @@ export async function siteModelTo3dm(m: SiteModel, meta: ExportMeta, onStep?: (s
 
     // ── 도로·필지·공원·하천·대지
     onStep?.('도로·필지')
+    // 도로 면은 매끈하게 다듬은 땅 위 (groundShape.ts), 다리·고가 위 조각은 그 상판 높이로
     drapedMesh(m.roads, 'roadSurf', '도로 면', 0.08)
+    // 고가 밑도 도로 (상판 위 도로 면과 따로)
+    drapedMesh(
+      m.decks.filter((d) => d.kind === 'overpass').flatMap((d) => d.polys),
+      'roadSurf',
+      '고가 밑 도로 면',
+      0.08,
+    )
     // 인도·보도 윗면은 좁고 길어 삼각형을 8m까지 (3m면 가는 띠가 잘게 쪼개져 파일이 몇 MB 커짐 — 2026-11-13 측정)
     addRaised(m.walks, 'walk', '인도 (15cm 단차)', WALK_EDGE)
+    for (const o of m.roadsOnDeck) {
+      Z = (x, y) => deckZ(o.deck, x, y)
+      drapedMesh([o.poly], 'roadSurf', `도로 면 (${o.deck.name || o.deck.sub} 위)`, 0.08)
+    }
+    for (const o of m.walksOnDeck) {
+      Z = (x, y) => deckZ(o.deck, x, y)
+      addRaised([o.poly], 'walk', `인도 (${o.deck.name || o.deck.sub} 위)`, WALK_EDGE)
+    }
+    Z = m.roadAt
     for (const r of m.roadCenters) addPolyline(draped(r.pts, false, 0.12), 'roadCenter', r.width ? `폭 ${r.width}m` : '폭 모름')
+    Z = m.zAt
     for (const p of m.parcels)
       for (const poly of p.polys) addPolyline(draped(poly.outer, true, 0.04), 'parcel', p.jibun, { 지번: p.jibun, 지목: p.jimok })
     for (const a of m.parks) {
       drapedMesh(a.polys, 'park', a.name, 0.05)
       for (const poly of a.polys) addPolyline(draped(poly.outer, true, 0.06), 'park', a.name)
     }
+    // 하천: 둔치(땅에 얹음) 위에 물(평평한 물 높이)
+    for (const a of m.banks) drapedMesh(a.polys, 'riverbank', a.name, 0.04)
+    Z = (x, y) => m.waterAt(x, y) ?? m.zAt(x, y)
     for (const a of m.rivers) {
-      drapedMesh(a.polys, 'river', a.name, 0.05)
-      for (const poly of a.polys) addPolyline(draped(poly.outer, true, 0.06), 'river', a.name)
+      drapedMesh(a.polys, 'river', a.name, 0)
+      for (const poly of a.polys) addPolyline(draped(poly.outer, true, 0.02), 'river', a.name)
+    }
+    Z = m.zAt
+    // 다리·고가: 상판·교각 + 난간
+    for (const d of m.decks) {
+      const g = deckTris(d, m.zAt)
+      const label = [d.name, d.sub].filter(Boolean).join(' ')
+      const user: Record<string, string> = { 종류: d.sub, '길이(m)': (2 * d.L).toFixed(1), '폭(m)': (2 * d.W).toFixed(1), '상판 높이(m, 어림)': `${d.zTop(d.c[0] - d.u[0] * d.L, d.c[1] - d.u[1] * d.L).toFixed(1)} → ${d.zTop(d.c[0], d.c[1]).toFixed(1)} → ${d.zTop(d.c[0] + d.u[0] * d.L, d.c[1] + d.u[1] * d.L).toFixed(1)}` }
+      if (d.name) user['이름'] = d.name
+      const mb = newMesh()
+      addTris(mb, [...g.slab, ...g.piers])
+      addMeshObj(mb, 'bridgeDeck', `${label} 상판${d.piers.length ? `·교각 ${d.piers.length}개` : ''}`, user)
+      const rb = newMesh()
+      addTris(rb, g.rail)
+      addMeshObj(rb, 'bridgeRail', `${label} 난간`, user)
     }
     for (const p of m.site) {
       addPolyline(draped(p.outer, true, 0.15), 'site', '대지 경계')
@@ -572,6 +618,8 @@ export async function siteModelTo3dm(m: SiteModel, meta: ExportMeta, onStep?: (s
 
     // ── 1:1,000 수치지도·정밀도로지도 디테일 (15-F)
     if (m.crosswalks.length || m.marks.length || m.hdPaths.length || m.lanes.length || m.trees.length || m.fences.length || m.stops.length || m.lamps.length || m.curbs.length) onStep?.('디테일 (나무·차선·횡단보도 등)')
+    // 도로 위 디테일은 다리·고가 위면 상판 높이로
+    Z = m.roadAt
     addRaised(m.hdPaths, 'hdPath', '보도 면 (15cm 단차)', WALK_EDGE)
     // 횡단보도: 줄무늬 (줄무늬를 못 만든 것은 면 그대로)
     drapedMesh(m.zebra.length ? m.zebra : m.crosswalks, 'crosswalk', '횡단보도 줄무늬', R + 0.03, Math.min(DRAPE_EDGE, 3))
@@ -706,7 +754,7 @@ export async function siteModelTo3dm(m: SiteModel, meta: ExportMeta, onStep?: (s
       }
     }
     for (const st of m.stops) {
-      const z0 = m.zAt(st.x, st.y) + R + H
+      const z0 = m.roadAt(st.x, st.y) + R + H
       const boxes = shelterBoxes(st.x, st.y, st.along, st.toRoad)
       const label = [st.name, st.use].filter(Boolean).join(' · ') || '정류장'
       const user = { 이름: st.name, 용도: st.use }
@@ -731,26 +779,26 @@ export async function siteModelTo3dm(m: SiteModel, meta: ExportMeta, onStep?: (s
     // 가로등: 기둥 + 도로 쪽 팔 + 등 머리 (모두 메시 하나)
     if (m.lamps.length) {
       const mb = newMesh()
-      for (const l of m.lamps) addBoxes(mb, lampBoxes(l.x, l.y, l.toRoad), m.zAt(l.x, l.y) + R + H)
+      for (const l of m.lamps) addBoxes(mb, lampBoxes(l.x, l.y, l.toRoad), m.roadAt(l.x, l.y) + R + H)
       addMeshObj(mb, 'lamp', `가로등 ${m.lamps.length}개`)
     }
 
     // ── 정밀도로지도 신호등·지주·표지판·방호시설·과속방지턱 (2026-11-13). 높이는 땅(지형 + 도로 면) 위
     if (m.poles.length) {
       const mb = newMesh()
-      for (const p of m.poles) addBoxes(mb, poleBoxes(p), m.zAt(p.x, p.y) + R)
+      for (const p of m.poles) addBoxes(mb, poleBoxes(p), m.roadAt(p.x, p.y) + R)
       addMeshObj(mb, 'pole', `지주 ${m.poles.length}개`)
     }
     if (m.signals.length) {
       const mb = newMesh()
-      for (const s of m.signals) addBoxes(mb, signalBoxes(s), m.zAt(s.x, s.y) + R)
+      for (const s of m.signals) addBoxes(mb, signalBoxes(s), m.roadAt(s.x, s.y) + R)
       addMeshObj(mb, 'signal', `신호등 ${m.signals.length}개 (차량 ${m.signals.filter((s) => s.vehicle).length} · 보행 ${m.signals.filter((s) => !s.vehicle).length})`)
     }
     if (m.signs.length) {
       const SIGN_RGB: Record<SignColor, Rgb> = { red: [200, 50, 42], yellow: [242, 194, 48], white: [244, 244, 242], blue: [42, 91, 176] }
       const by: Record<SignColor, MB> = { red: newMesh(), yellow: newMesh(), white: newMesh(), blue: newMesh() }
       for (const s of m.signs) {
-        const g = m.zAt(s.x, s.y) + R
+        const g = m.roadAt(s.x, s.y) + R
         for (const pan of signPanels(s)) {
           const mb = by[pan.color]
           const base = mb.vs.count
@@ -769,7 +817,7 @@ export async function siteModelTo3dm(m: SiteModel, meta: ExportMeta, onStep?: (s
     if (m.barriers.length) {
       const mb = newMesh()
       for (const b of m.barriers) {
-        for (const pb of barrierPosts(b.pts)) addBoxes(mb, [pb], m.zAt(pb.c[0], pb.c[1]) + R)
+        for (const pb of barrierPosts(b.pts)) addBoxes(mb, [pb], m.roadAt(pb.c[0], pb.c[1]) + R)
         addSides(mb, b.pts, R + BARRIER_RAIL[0], R + BARRIER_RAIL[1], false)
       }
       addMeshObj(mb, 'barrier', `방호시설 ${m.barriers.length}줄 (중앙 ${m.barriers.filter((b) => b.central).length})`)
@@ -806,7 +854,18 @@ export async function siteModelTo3dm(m: SiteModel, meta: ExportMeta, onStep?: (s
 
     onStep?.('파일 쓰는 중')
     return doc.toByteArray()
+  } catch (e) {
+    // wasm 메모리를 넘으면 Aborted() — 모듈이 죽으니 다음엔 새로 불러오고, 알아듣게 (2026-11-16: 1,000m 범위 자세히 + 무늬 재질에서 확인)
+    if (/Aborted|memory/i.test(String(e))) {
+      rhinoP = null
+      throw new Error("파일이 너무 커서 라이노 모듈 메모리를 넘었습니다 — 범위를 줄이거나 디테일 단계를 낮추거나 재질을 '재질 없음'으로 바꿔 다시 해 보세요")
+    }
+    throw e
   } finally {
-    free(doc)
+    try {
+      free(doc)
+    } catch {
+      // 죽은 모듈의 물체는 풀 수 없음
+    }
   }
 }

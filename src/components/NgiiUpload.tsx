@@ -40,7 +40,7 @@ export default function NgiiUpload({ project, update, config }: Props) {
   const codes1 = [...have.entries()].filter(([, p]) => Number(p.scale) === 1000).map(([c]) => c).sort()
   const hdFiles = (project.collected[hdLayer('files')]?.features ?? []).map((f) => f.properties)
   const hdSections = [...new Set(hdFiles.flatMap((p) => (p.sections as string[]) ?? []))].sort()
-  const hdCounts = HD_KEYS.map((k) => [k, project.collected[hdLayer(k)]?.features.length ?? 0] as const).filter(([, n]) => n > 0)
+  const hdCounts = HD_KEYS.filter((k) => k !== 'ground').map((k) => [k, project.collected[hdLayer(k)]?.features.length ?? 0] as const).filter(([, n]) => n > 0)
 
   /** 환경 계산을 이미 했으면 새 건물·지형으로 다시 */
   const recomputeEnv = async (after: Project | null) => {
