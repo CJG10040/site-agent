@@ -782,6 +782,11 @@ export async function buildSiteModel(d: DiagramData, half: number, opts: { grid?
       const onRoad = roadsIn(m)
       const polys = clipPolys(onRoad.length ? onRoad : [m], half)
       if (!polys.length) continue
+      // 짧은 '고가차도' 링크(연결로 일부 등)는 땅 높이 도로로 둠 — 고가는 대개 100m를 넘음
+      if (deck === 'overpass') {
+        const [x0b, y0b, x1b, y1b] = bboxOf(m.outer)
+        if (Math.hypot(x1b - x0b, y1b - y0b) < 80) continue
+      }
       // 이 조각에 든 링크의 도로 이름만
       const names = [...new Set(stripName.filter((s) => s.name && polyHas(innerPt(s.p), m)).map((s) => s.name))]
       deckSrc.push({ polys, name: `${names.join('·') || kind} (표준노드링크)`, kind, deck, length: null, height: null })
@@ -922,6 +927,7 @@ export async function buildSiteModel(d: DiagramData, half: number, opts: { grid?
     onRoad,
     hd: hdOff === null || hdOff === undefined ? [] : hdPts.map((q) => ({ x: q.x, y: q.y, z: q.z - hdOff - z0 })),
     waterAt,
+    half,
   })
   const roadAt = (x: number, y: number): number => {
     const dk = deckAt(decks, x, y)

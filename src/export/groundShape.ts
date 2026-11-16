@@ -1,6 +1,6 @@
 // 3D 모형 땅 다듬기 (2026-11-16 사용자 결정 — 하천: 물·둔치 나누기, 도로: 매끈한 면 + 땅 맞춤).
 // 지형 격자(해발, EPSG:5179) 사본에서 모형 범위만 고친다. 도판·환경 계산이 쓰는 원래 지형은 그대로.
-//  - 물: 물 면 안 칸마다 가까운(6m) 가장 낮은 땅 → 하천을 따라 넓게(12m) 고르게 한 것이 물 높이. 물 밑 땅은 물 높이 - 0.6m로 파냄
+//  - 물: 물 면 안 칸마다 가까운(40m) 물가 땅 중 가장 낮은 곳 → 하천을 따라 넓게(12m) 고르게 한 것이 물 높이. 물 밑 땅은 물 높이 - 0.6m로 파냄
 //    (예전: 물 면을 울퉁불퉁한 하천 바닥에 그대로 얹어 둑을 넘나들었고, 같은 하천을 자료 4개가 겹쳐 그림)
 //  - 도로: 도로 면 안 높이를 넓게(약 18m) 평균한 매끈한 면으로 바꾸고, 도로 밖 4m는 원래 땅으로 서서히 이음.
 //    정밀도로지도 노면 실측 높이(5m 칸)가 있으면 그 칸은 6배 무게 — 지형과의 높이 기준 차이(중앙값)를 먼저 빼고, 2.5m 넘게 어긋난 점(고가·지하차도)은 뺌.
@@ -125,10 +125,17 @@ export function shapeGround(g: TerrainGrid, inp: ShapeInput): ShapeResult {
   for (let i = 0; i < N; i++) if (mW[i] && Number.isFinite(Z0[i])) waterCells++
   const level = new Float32Array(N).fill(NaN)
   if (waterCells) {
-    // 가까운 가장 낮은 땅 (가로·세로 최솟값 거르기, 물 칸만)
-    const rad = Math.max(1, Math.round(6 / cell))
+    // 물 높이 = 가까운(40m) 물가 땅(물 면 바로 바깥 칸) 중 가장 낮은 곳 — 2026-11-16 고침: 수치지도에는 하천 바닥 등고선이 없어
+    // 물 면 안 지형이 둑 높이로 메워져 있어(광암교: 물 0.1~0.5m, 바로 옆 둔치·도로 -1.7~-2.1m) 물 안 가장 낮은 땅을 쓰면 물이 둔치보다 높았음
+    const rad = Math.max(1, Math.round(40 / cell))
     const a = new Float32Array(N).fill(Infinity)
-    for (let i = 0; i < N; i++) if (mW[i] && Number.isFinite(Z0[i])) a[i] = Z0[i]
+    for (let r = 0; r < H; r++)
+      for (let c = 0; c < W; c++) {
+        const i = r * W + c
+        if (mW[i] || !Number.isFinite(Z0[i])) continue
+        // 물 칸과 맞닿은 물가 칸
+        if ((c > 0 && mW[i - 1]) || (c + 1 < W && mW[i + 1]) || (r > 0 && mW[i - W]) || (r + 1 < H && mW[i + W])) a[i] = Z0[i]
+      }
     const b = new Float32Array(N).fill(Infinity)
     for (let r = 0; r < H; r++)
       for (let c = 0; c < W; c++) {
@@ -155,6 +162,24 @@ export function shapeGround(g: TerrainGrid, inp: ShapeInput): ShapeResult {
     const bw = boxBlur(boxBlur(w, W, H, rs), W, H, rs)
     const bv = boxBlur(boxBlur(v, W, H, rs), W, H, rs)
     for (let i = 0; i < N; i++) if (mW[i] && bw[i] > 1e-6) level[i] = bv[i] / bw[i]
+    // 넓은 하천 가운데(물가에서 40m 넘게)는 이웃 물 칸 값으로 채움
+    for (let pass = 0; pass < 80; pass++) {
+      const add: [number, number][] = []
+      for (let r = 0; r < H; r++)
+        for (let c = 0; c < W; c++) {
+          const i = r * W + c
+          if (!mW[i] || Number.isFinite(level[i])) continue
+          let s2 = 0
+          let n2 = 0
+          if (c > 0 && Number.isFinite(level[i - 1])) (s2 += level[i - 1]), n2++
+          if (c + 1 < W && Number.isFinite(level[i + 1])) (s2 += level[i + 1]), n2++
+          if (r > 0 && Number.isFinite(level[i - W])) (s2 += level[i - W]), n2++
+          if (r + 1 < H && Number.isFinite(level[i + W])) (s2 += level[i + W]), n2++
+          if (n2) add.push([i, s2 / n2])
+        }
+      if (!add.length) break
+      for (const [i, q] of add) level[i] = q
+    }
     // 물 면 가장자리 꼭짓점도 값을 갖게 둘레 몇 칸 넓힘
     for (let pass = 0; pass < 3; pass++) {
       const add: [number, number][] = []
