@@ -167,9 +167,10 @@ export default function ModelWorkbench({ data, baseName, meta, halfOptions, init
     try {
       const t0 = performance.now()
       const aerial = await getAerial(shown)
-      const { siteModelTo3dm } = await import('../export/to3dm')
+      // 2026-11-17: 일꾼(Web Worker)에서 만들어 파일 쓰는 동안에도 화면이 멈추지 않음
+      const { siteModelTo3dmInWorker } = await import('../export/model3dmJob')
       const base = aerialOn ? 0.2 : 0
-      const bytes = await siteModelTo3dm(
+      const bytes = await siteModelTo3dmInWorker(
         shown,
         meta,
         (s, f) => {
@@ -394,7 +395,7 @@ export default function ModelWorkbench({ data, baseName, meta, halfOptions, init
                     {frac !== null && <strong> · {Math.round(frac * 100)}%</strong>}
                     {startedAt !== null && <span className="muted"> · {Math.floor((Date.now() - startedAt) / 1000)}초 지남</span>}
                   </p>
-                  <p className="muted small">범위가 넓거나 '자세히'면 1분 넘게 걸릴 수 있습니다. 막대 위 빛이 움직이면 진행 중입니다 — 마지막 '파일 쓰는 중'은 숫자가 멈춰도 빛은 움직입니다.</p>
+                  <p className="muted small">범위가 넓거나 '자세히'면 1분 넘게 걸릴 수 있습니다. 막대 위 빛이 움직이고 지난 시간이 늘면 진행 중입니다 — 마지막 '파일 쓰는 중'은 퍼센트가 한동안 그대로입니다.</p>
                 </div>
               )}
               {withTextures && (

@@ -14,6 +14,7 @@ import { LAYER_MAT, MATERIAL_STYLES, materialSet, RENDER_HELP, TEX_FILE, texPath
 import { textureJpeg } from './textures'
 import { deckZ } from './bridges'
 import { deckTris } from './bridgeMesh'
+import { aerialUv } from './samplers'
 
 type Rgb = [number, number, number]
 
@@ -117,6 +118,8 @@ export type ExportStep = (label: string, frac?: number) => void
  * 만드는 동안 쉬지 않고 계산해 진행 글이 한 번도 안 바뀌었음). 탭이 가려져 그리기가 멈춰도 50ms면 넘어감
  */
 export function yieldUi(): Promise<void> {
+  // 일꾼(Web Worker) 안에서는 그릴 화면이 없음 — 진행 알림은 메시지로 바로 감 (2026-11-17)
+  if (typeof document === 'undefined') return Promise.resolve()
   return new Promise((resolve) => {
     let done = false
     const go = () => {
@@ -314,7 +317,7 @@ export async function siteModelTo3dm(m: SiteModel, meta: ExportMeta, onStep?: Ex
       if (id === 'aerial' && aerial) {
         for (let i = 0; i < n; i++) {
           const p = vs.get(i)
-          const [u, v] = aerial.uv(p[0], p[1])
+          const [u, v] = aerialUv(aerial.grid, p[0], p[1])
           tc.add(u, v)
         }
         return
@@ -899,7 +902,7 @@ export async function siteModelTo3dm(m: SiteModel, meta: ExportMeta, onStep?: Ex
       for (const [k, v] of RENDER_HELP) strings.set(`렌더: ${k}`, v)
     }
 
-    await step('파일 쓰는 중 — 라이노 모듈이 한 번에 써서 화면이 잠시 멈출 수 있음', 0.93)
+    await step('파일 쓰는 중 — 라이노 모듈이 한 번에 써서 퍼센트가 한동안 그대로일 수 있음', 0.93)
     return doc.toByteArray()
   } catch (e) {
     // wasm 메모리를 넘으면 Aborted() — 모듈이 죽으니 다음엔 새로 불러오고, 알아듣게 (2026-11-16: 1,000m 범위 자세히 + 무늬 재질에서 확인)

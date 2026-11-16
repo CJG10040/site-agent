@@ -7,6 +7,7 @@
 //    교량 상판 밑은 고르지 않음 (하천 바닥이 그대로 보이게).
 
 import type { TerrainGrid } from '../lib/terrain'
+import { waterLevelFn, type WaterData } from './samplers'
 
 type XY = [number, number]
 interface Poly {
@@ -32,6 +33,8 @@ export interface ShapeResult {
   grid: TerrainGrid
   /** 물 높이 (해발). 물 면 근처가 아니면 null */
   waterLevel: (x: number, y: number) => number | null
+  /** 같은 물 높이의 자료 (일꾼에 넘길 때 — samplers.ts), 물이 없으면 null */
+  water: WaterData | null
   stats: { roadCells: number; waterCells: number; hdCells: number; hdOffset: number | null }
 }
 
@@ -100,7 +103,7 @@ export function shapeGround(g: TerrainGrid, inp: ShapeInput): ShapeResult {
   const W = c1 - c0 + 1
   const H = r1 - r0 + 1
   // 늘 사본 (모형 만들기에서 다리 밑을 파는 등 고쳐 써도 지형 캐시가 바뀌지 않게)
-  const none: ShapeResult = { grid: { ...g, z: g.z.slice() }, waterLevel: () => null, stats: { roadCells: 0, waterCells: 0, hdCells: 0, hdOffset: null } }
+  const none: ShapeResult = { grid: { ...g, z: g.z.slice() }, waterLevel: () => null, water: null, stats: { roadCells: 0, waterCells: 0, hdCells: 0, hdOffset: null } }
   if (W < 3 || H < 3) return none
   const N = W * H
   // 칸 가운데 (모형 좌표)
@@ -436,32 +439,7 @@ export function shapeGround(g: TerrainGrid, inp: ShapeInput): ShapeResult {
 
   const z = g.z.slice()
   for (let r = 0; r < H; r++) for (let c = 0; c < W; c++) z[(r0 + r) * g.nx + c0 + c] = Z[r * W + c]
-  const waterLevel = (x: number, y: number): number | null => {
-    if (!waterCells) return null
-    const fc = colOf(x)
-    const fr = rowOf(y)
-    const c = Math.floor(fc)
-    const r = Math.floor(fr)
-    const u = fc - c
-    const v = fr - r
-    let s = 0
-    let n = 0
-    for (const [dc, dr, wt] of [
-      [0, 0, (1 - u) * (1 - v)],
-      [1, 0, u * (1 - v)],
-      [0, 1, (1 - u) * v],
-      [1, 1, u * v],
-    ]) {
-      const cc = c + dc
-      const rr = r + dr
-      if (cc < 0 || rr < 0 || cc >= W || rr >= H) continue
-      const q = level[rr * W + cc]
-      if (Number.isFinite(q)) {
-        s += q * wt
-        n += wt
-      }
-    }
-    return n > 1e-6 ? s / n : null
-  }
-  return { grid: { ...g, z }, waterLevel, stats: { roadCells, waterCells, hdCells, hdOffset } }
+  // 물 높이: 자료로 두고 계산식은 samplers.ts (colOf·rowOf와 같은 칸 위치)
+  const water: WaterData | null = waterCells ? { level, W, H, cell, ox: X0 - g.x0, oy: g.y0 - Y0, c0, r0 } : null
+  return { grid: { ...g, z }, waterLevel: waterLevelFn(water), water, stats: { roadCells, waterCells, hdCells, hdOffset } }
 }

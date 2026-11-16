@@ -6,6 +6,7 @@ import { utmkToWgs84 } from '../lib/proj'
 import { tileUrl } from '../sources/vworld'
 import type { SiteModel } from './siteModel'
 import { imageToJpeg } from './textures'
+import type { AerialGrid } from './samplers'
 
 export const AERIAL_FILE = 'SA_aerial.jpg'
 const MAX_PX = 4096
@@ -14,8 +15,8 @@ const MARGIN = 10
 export interface AerialTex {
   file: string
   bytes: Uint8Array
-  /** 모형 좌표 (m) → 사진 UV (0~1, v는 북쪽이 1) */
-  uv: (x: number, y: number) => [number, number]
+  /** 모형 좌표 (m) → 사진 UV 격자 (계산은 samplers.aerialUv — 일꾼에 넘길 수 있게 자료로) */
+  grid: AerialGrid
   z: number
   width: number
   height: number
@@ -114,16 +115,5 @@ export async function aerialForModel(m: Pick<SiteModel, 'origin' | 'half'>, vwor
       gu[j * (N + 1) + i] = ((mx - mx0) * scale) / width
       gv[j * (N + 1) + i] = 1 - ((my - my0) * scale) / height
     }
-  const uv = (x: number, y: number): [number, number] => {
-    const fi = Math.min(N - 1e-9, Math.max(0, (x + h) / step))
-    const fj = Math.min(N - 1e-9, Math.max(0, (y + h) / step))
-    const i = Math.floor(fi)
-    const j = Math.floor(fj)
-    const a = fi - i
-    const b = fj - j
-    const k = j * (N + 1) + i
-    const lerp = (arr: Float64Array) => arr[k] * (1 - a) * (1 - b) + arr[k + 1] * a * (1 - b) + arr[k + N + 1] * (1 - a) * b + arr[k + N + 2] * a * b
-    return [lerp(gu), lerp(gv)]
-  }
-  return { file: AERIAL_FILE, bytes, uv, z, width, height, tiles: ok.length, failed }
+  return { file: AERIAL_FILE, bytes, grid: { N, h, gu, gv }, z, width, height, tiles: ok.length, failed }
 }

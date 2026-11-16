@@ -18,8 +18,9 @@ import { centroidOf } from '../diagrams/frame'
 import { parcelFinder } from '../lib/parcelFind'
 import type { RoofTitle } from '../sources/buildingRegister'
 import { pitchedFits, roofKindOf, ruleRoof, type ModelRoof } from './roofs'
-import { buildDecks, deckAt, inPoly as polyHas, type Deck, type DeckSrc } from './bridges'
+import { buildDecks, deckAt, inPoly as polyHas, roadAtFn, type Deck, type DeckSrc } from './bridges'
 import { shapeGround } from './groundShape'
+import { groundZ, waterAtFn, type GroundData, type WaterData } from './samplers'
 
 export type XY = [number, number]
 
@@ -152,6 +153,8 @@ export interface SiteModel {
   roadAt: (x: number, y: number) => number
   /** 물 높이 (평평하게 고른 물 면), 물 근처가 아니면 null */
   waterAt: (x: number, y: number) => number | null
+  /** 위 높이 함수들의 자료 (일꾼에 넘겨 다시 만들 때 — modelTransfer.ts). decks는 항목을 꺼도 그대로 (roadAt이 씀) */
+  samp: { ground: GroundData | null; water: WaterData | null; z0: number; decks: Deck[] }
 }
 
 // ───────────────────────── 도형 도우미 ─────────────────────────
@@ -404,30 +407,6 @@ export function triangulate(p: Poly, maxEdge: number): { pts: XY[]; tris: number
 
 // ───────────────────────── 지형 ─────────────────────────
 
-/** 지형 격자 위 높이: 메시와 같은 대각선(북서–남동)으로 나눈 삼각형 안에서 보간 */
-function makeZAt(g: TerrainGrid, X0: number, Y0: number, z0: number) {
-  const at = (c: number, r: number) => (c < 0 || r < 0 || c >= g.nx || r >= g.ny ? NaN : g.z[r * g.nx + c])
-  return (x: number, y: number): number => {
-    const fc = (x + X0 - g.x0) / g.cell - 0.5
-    const fr = (g.y0 - (y + Y0)) / g.cell - 0.5
-    const c = Math.floor(fc)
-    const r = Math.floor(fr)
-    const u = fc - c
-    const v = fr - r
-    const tl = at(c, r)
-    const tr = at(c + 1, r)
-    const bl = at(c, r + 1)
-    const br = at(c + 1, r + 1)
-    let z = v >= u ? tl + v * (bl - tl) + u * (br - bl) : tl + u * (tr - tl) + v * (br - tr)
-    if (!Number.isFinite(z)) {
-      // 자료 없는 칸 옆: 가장 가까운 값
-      const near = [tl, tr, bl, br].filter(Number.isFinite)
-      z = near.length ? near.reduce((s, t) => s + t, 0) / near.length : NaN
-    }
-    return Number.isFinite(z) ? z - z0 : 0
-  }
-}
-
 function terrainSubset(g: TerrainGrid, X0: number, Y0: number, z0: number, half: number): ModelTerrain | null {
   const c0 = Math.max(0, Math.ceil((X0 - half - g.x0) / g.cell - 0.5))
   const c1 = Math.min(g.nx - 1, Math.floor((X0 + half - g.x0) / g.cell - 0.5))
@@ -553,7 +532,7 @@ export async function buildSiteModel(d: DiagramData, half: number, opts: { grid?
   let z0 = 0
   let elev: number | null = null
   if (grid) {
-    const raw = makeZAt(grid, X0, Y0, 0)(0, 0)
+    const raw = groundZ({ g: grid, X0, Y0, z0: 0 })(0, 0)
     if (raw !== 0) {
       z0 = raw
       elev = raw
@@ -927,11 +906,10 @@ export async function buildSiteModel(d: DiagramData, half: number, opts: { grid?
       })
     : null
   const sg = shaped?.grid ?? null
-  const zAt = sg ? makeZAt(sg, X0, Y0, z0) : () => 0
-  const waterAt = (x: number, y: number): number | null => {
-    const l = shaped?.waterLevel(x, y)
-    return l === null || l === undefined ? null : l - z0
-  }
+  // 높이 함수는 자료 + 계산식 (samplers.ts) — 라이노 파일을 일꾼(Web Worker)에서 쓸 때 자료만 넘김
+  const ground: GroundData | null = sg ? { g: sg, X0, Y0, z0 } : null
+  const zAt = groundZ(ground)
+  const waterAt = waterAtFn(shaped?.water ?? null, z0)
   // 상판 높이: 정밀도로지도 노면 높이(지형과의 기준 차이를 뺀 것) → 둘레에서 이어지는 도로 높이 → 양 끝 땅
   const roadBoxes = roads.map((p) => ({ p, b: bboxOf(p.outer) }))
   const onRoad = (x: number, y: number) => roadBoxes.some(({ p, b }) => x >= b[0] && x <= b[2] && y >= b[1] && y <= b[3] && polyHas([x, y], p))
@@ -964,10 +942,7 @@ export async function buildSiteModel(d: DiagramData, half: number, opts: { grid?
     }
   const terrain = sg ? terrainSubset(sg, X0, Y0, z0, half) : null
   const { step, lines } = terrain ? contourLinesOf(terrain) : { step: 1, lines: [] }
-  const roadAt = (x: number, y: number): number => {
-    const dk = deckAt(decks, x, y)
-    return dk ? dk.zTop(x, y) : zAt(x, y)
-  }
+  const roadAt = roadAtFn(decks, zAt)
 
   // ── 15-D 지붕: 건물이 놓인 필지의 건축물대장 지붕 구조 → 모양, 없으면 규칙
   const roofsBy = d.roofs ?? {}
@@ -1319,6 +1294,7 @@ export async function buildSiteModel(d: DiagramData, half: number, opts: { grid?
     zAt,
     roadAt,
     waterAt,
+    samp: { ground, water: shaped?.water ?? null, z0, decks },
   }
 }
 

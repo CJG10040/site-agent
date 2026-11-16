@@ -35,8 +35,10 @@ export interface Deck {
   v: XY
   L: number
   W: number
-  /** 상판 윗면 높이 (모형 높이) */
+  /** 상판 윗면 높이 (모형 높이) — zSpec과 땅 높이로 만든 함수 (deckZFn) */
   zTop: (x: number, y: number) => number
+  /** 상판 높이 자료 (일꾼에 넘길 때 이것으로 zTop을 다시 만듦) */
+  zSpec: DeckZSpec
   thick: number
   /** 난간 높이 (0 = 없음) */
   rail: number
@@ -168,7 +170,36 @@ function nearRing([x, y]: XY, r: XY[], d: number): boolean {
  * 가장 가까운 끝까지의 거리(길을 따라) × 경사로 높이를 정한다. 조각 이음매·나란한 상하행 조각에 흔들리지 않게.
  * 끝 = 한쪽 끝에서 가장 먼 칸 A + A에서 잰 거리가 둘레 25m 안에서 가장 큰 칸(가지 끝)들.
  */
-function rampField(polys: Poly[], cell = 2): { tips: XY[]; dist: (k: number, x: number, y: number) => number } | null {
+/** 고가 바닥 격자와 가지 끝마다 길을 따라 잰 칸 거리 (칸 거리 2 = 칸 하나, 못 가는 칸 -1) */
+export interface RampData {
+  x0: number
+  y0: number
+  cell: number
+  W: number
+  H: number
+  tips: XY[]
+  Es: Int32Array[]
+}
+
+/** 가지 끝 k에서 길을 따라 잰 거리 (m) */
+function rampDist(rd: RampData, k: number, x: number, y: number): number {
+  const { x0, y0, cell, W, H } = rd
+  const E = rd.Es[k]
+  const c = Math.max(0, Math.min(W - 1, Math.floor((x - x0) / cell)))
+  const r = Math.max(0, Math.min(H - 1, Math.floor((y - y0) / cell)))
+  let best = Infinity
+  for (let dr = -1; dr <= 1; dr++)
+    for (let dc = -1; dc <= 1; dc++) {
+      const rr = r + dr
+      const cc = c + dc
+      if (rr < 0 || cc < 0 || rr >= H || cc >= W) continue
+      const v = E[rr * W + cc]
+      if (v >= 0) best = Math.min(best, (v / 2) * cell + Math.hypot(dr, dc) * cell)
+    }
+  return best
+}
+
+function rampField(polys: Poly[], cell = 2): RampData | null {
   const [x0, y0, x1, y1] = bboxOf(polys)
   const W = Math.ceil((x1 - x0) / cell) + 1
   const H = Math.ceil((y1 - y0) / cell) + 1
@@ -250,23 +281,51 @@ function rampField(polys: Poly[], cell = 2): { tips: XY[]; dist: (k: number, x: 
     const c = t - r * W
     return [x0 + (c + 0.5) * cell, y0 + (r + 0.5) * cell]
   })
-  // 길을 따라 잰 m (칸 거리 2 = 칸 하나)
-  const dist = (k: number, x: number, y: number) => {
-    const E = Es[k]
-    const c = Math.max(0, Math.min(W - 1, Math.floor((x - x0) / cell)))
-    const r = Math.max(0, Math.min(H - 1, Math.floor((y - y0) / cell)))
-    let best = Infinity
-    for (let dr = -1; dr <= 1; dr++)
-      for (let dc = -1; dc <= 1; dc++) {
-        const rr = r + dr
-        const cc = c + dc
-        if (rr < 0 || cc < 0 || rr >= H || cc >= W) continue
-        const v = E[rr * W + cc]
-        if (v >= 0) best = Math.min(best, (v / 2) * cell + Math.hypot(dr, dc) * cell)
+  return { x0, y0, cell, W, H, tips: tipXY, Es }
+}
+
+/** 상판 높이 자료: 다리 = 이어지는 도로 높이 점(거리 4제곱 반비례) + 물 위 여유 점, 고가 = 가지 끝에서 길을 따라 경사, 바닥 격자가 없으면 긴 축 양 끝에서 경사 */
+export type DeckZSpec =
+  | { t: 'idw'; conn: { x: number; y: number; z: number }[]; wet: { x: number; y: number; z: number }[] }
+  | { t: 'ramp'; ramp: RampData; ends: { k: number; z: number }[]; hMax: number; g: number }
+  | { t: 'line'; c: XY; u: XY; L: number; hMax: number; g: number }
+
+/** 상판 윗면 높이 함수 (모형 높이) — 자료 + 땅 높이 */
+export function deckZFn(s: DeckZSpec, zAt: (x: number, y: number) => number): (x: number, y: number) => number {
+  if (s.t === 'idw') {
+    const { conn, wet } = s
+    return (x, y) => {
+      let sw = 0
+      let sz = 0
+      for (const q of conn) {
+        const d2 = (x - q.x) ** 2 + (y - q.y) ** 2
+        if (d2 < 0.01) return Math.max(q.z, ...wet.map((w) => w.z - 0.08 * Math.hypot(x - w.x, y - w.y)))
+        // 거리 4제곱에 반비례 — 끝에서는 바로 옆 도로 높이를 따름 (다리 위 실측 노면 점이 촘촘해도)
+        const wt = 1 / (d2 * d2)
+        sw += wt
+        sz += wt * q.z
       }
-    return best
+      let z = sw ? sz / sw : zAt(x, y)
+      for (const w of wet) {
+        const c = w.z - 0.08 * Math.hypot(x - w.x, y - w.y)
+        if (c > z) z = c
+      }
+      return z
+    }
   }
-  return { tips: tipXY, dist }
+  if (s.t === 'ramp') {
+    const { ramp, ends, hMax, g } = s
+    return (x, y) => {
+      let h = hMax
+      for (const e of ends) h = Math.min(h, e.z + g * rampDist(ramp, e.k, x, y))
+      return zAt(x, y) + Math.max(0, h)
+    }
+  }
+  const { c, u, L, hMax, g } = s
+  return (x, y) => {
+    const q = Math.max(-L, Math.min(L, (x - c[0]) * u[0] + (y - c[1]) * u[1]))
+    return zAt(x, y) + Math.max(0, Math.min(hMax, g * (q + L), g * (L - q)))
+  }
 }
 
 /**
@@ -315,10 +374,9 @@ export function buildDecks(src: DeckSrc[], zAt: (x: number, y: number) => number
       }
     }
     const at = (s2: number, t: number): XY => [c[0] + u[0] * s2 + v[0] * t, c[1] + u[1] * s2 + v[1] * t]
-    const sOf = (x: number, y: number) => (x - c[0]) * u[0] + (y - c[1]) * u[1]
     const inside = (x: number, y: number) => s.polys.some((p) => inPoly([x, y], p))
     const d = dims(s.kind, kind)
-    let zTop: (x: number, y: number) => number
+    let zSpec: DeckZSpec
     if (kind === 'bridge') {
       // 상판 높이 (2026-11-16 고침: 직선 하나 + 통째로 올리기 → 길거나 굽은 상판의 땅 위 부분이 도로보다 떠 있었음):
       //  - 이어지는 높이: 상판 위 정밀도로지도 노면 높이 + 상판 둘레 바로 밖(3m) 도로 높이 — 거리 4제곱에 반비례해 섞음
@@ -375,24 +433,7 @@ export function buildDecks(src: DeckSrc[], zAt: (x: number, y: number) => number
             if (w !== null) wet.push({ x, y, z: w + 0.3 + d.thick })
           }
       }
-      zTop = (x, y) => {
-        let sw = 0
-        let sz = 0
-        for (const q of conn) {
-          const d2 = (x - q.x) ** 2 + (y - q.y) ** 2
-          if (d2 < 0.01) return Math.max(q.z, ...wet.map((w) => w.z - 0.08 * Math.hypot(x - w.x, y - w.y)))
-          // 거리 4제곱에 반비례 — 끝에서는 바로 옆 도로 높이를 따름 (다리 위 실측 노면 점이 촘촘해도)
-          const wt = 1 / (d2 * d2)
-          sw += wt
-          sz += wt * q.z
-        }
-        let z = sw ? sz / sw : zAt(x, y)
-        for (const w of wet) {
-          const c = w.z - 0.08 * Math.hypot(x - w.x, y - w.y)
-          if (c > z) z = c
-        }
-        return z
-      }
+      zSpec = { t: 'idw', conn, wet }
     } else {
       // 램프: 조각들을 합친 바닥에서 길을 따라 잰 가지 끝까지의 거리 × 6% (rampField)
       const g = 0.06
@@ -408,17 +449,9 @@ export function buildDecks(src: DeckSrc[], zAt: (x: number, y: number) => number
           // 끝에서 땅 위 높이 (땅에 닿는 끝 0, 다리에 붙은 끝은 다리 상판이 땅에서 뜬 만큼)
           ends.push({ k, z: near ? Math.max(0, near.zTop(tx, ty) - zAt(tx, ty)) : 0 })
         })
-      zTop = ramp
-        ? (x, y) => {
-            let h = hMax
-            for (const e of ends) h = Math.min(h, e.z + g * ramp.dist(e.k, x, y))
-            return zAt(x, y) + Math.max(0, h)
-          }
-        : (x, y) => {
-            const q = Math.max(-L, Math.min(L, sOf(x, y)))
-            return zAt(x, y) + Math.max(0, Math.min(hMax, g * (q + L), g * (L - q)))
-          }
+      zSpec = ramp ? { t: 'ramp', ramp, ends, hMax, g } : { t: 'line', c, u, L, hMax, g }
     }
+    const zTop = deckZFn(zSpec, zAt)
     // 교각: 조각마다 긴 축을 따라 (상판 밑이 땅에서 1.5m 넘게 뜬 곳만)
     const piers: Deck['piers'] = []
     const th = /보도/.test(s.kind) ? 0.3 : 0.6
@@ -458,7 +491,7 @@ export function buildDecks(src: DeckSrc[], zAt: (x: number, y: number) => number
           railSegs.push([a, b])
         }
       }
-    out.push({ kind, sub: kind === 'overpass' ? s.kind || '고가차도' : s.kind || '교량', name: s.name, polys: s.polys, c, u, v, L, W, zTop, thick: d.thick, rail: d.rail, piers, railSegs, bbox: bboxOf(s.polys) })
+    out.push({ kind, sub: kind === 'overpass' ? s.kind || '고가차도' : s.kind || '교량', name: s.name, polys: s.polys, c, u, v, L, W, zTop, zSpec, thick: d.thick, rail: d.rail, piers, railSegs, bbox: bboxOf(s.polys) })
   }
   return out
 }
@@ -475,3 +508,11 @@ export function deckAt(decks: Deck[], x: number, y: number): Deck | null {
 
 /** 상판 위 높이 */
 export const deckZ = (d: Deck, x: number, y: number) => d.zTop(x, y)
+
+/** 도로 위 높이: 상판 위면 상판 윗면, 아니면 땅 */
+export function roadAtFn(decks: Deck[], zAt: (x: number, y: number) => number): (x: number, y: number) => number {
+  return (x, y) => {
+    const dk = deckAt(decks, x, y)
+    return dk ? dk.zTop(x, y) : zAt(x, y)
+  }
+}

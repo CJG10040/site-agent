@@ -5,6 +5,8 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   base: './',
+  // 일꾼(Web Worker)을 ES 모듈로 묶음 — 라이노 .3dm 일꾼이 라이노 모듈(wasm)을 나중에 불러옴 (2026-11-17)
+  worker: { format: 'es' },
   build: {
     chunkSizeWarningLimit: 1500,
     rolldownOptions: {

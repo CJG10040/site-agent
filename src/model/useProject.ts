@@ -61,6 +61,16 @@ export function useProject(id: string | null) {
       const { collected, ...rest } = current
       const draft = { ...structuredClone(rest), collected } as Project
       fn(draft)
+      // 고치지 않은 항목은 예전 것을 그대로 (2026-11-17): 복사본은 내용이 같아도 새 물건이라, 그 항목을 보는 화면이 매번 다시 계산했음 —
+      // 모형 작업대는 내려받기·항목 켜고 끄기마다 대지 자료가 바뀐 줄 알고 모형을 처음부터 다시 만들어 2km에서 약 4초 멈췄음
+      const draftRec = draft as unknown as Record<string, unknown>
+      const curRec = current as unknown as Record<string, unknown>
+      for (const k of Object.keys(draftRec)) {
+        if (k === 'collected') continue
+        const a = draftRec[k]
+        const b = curRec[k]
+        if (a !== b && a && b && typeof a === 'object' && typeof b === 'object' && JSON.stringify(a) === JSON.stringify(b)) draftRec[k] = b
+      }
       draft.updatedAt = nowIso()
       latest.current = draft
       setProject(draft)
