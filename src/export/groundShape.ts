@@ -27,6 +27,8 @@ export interface ShapeInput {
   banks?: Poly[]
   /** 정밀도로지도 노면 높이 (모형 좌표 x·y, 높이는 자료 그대로) */
   hd: { x: number; y: number; z: number }[]
+  /** 하천 깊이 강조 (2026-11-17 사용자 결정: 막대로 조절, 렌더링·콘타 모형 같은 값): 0 = 자료 그대로(물가 땅 높이), 1 = 처음 어림, 1.5 = 더 깊게. 없으면 1 */
+  depthScale?: number
 }
 
 export interface ShapeResult {
@@ -177,6 +179,8 @@ export function shapeGround(g: TerrainGrid, inp: ShapeInput): ShapeResult {
         for (let k = Math.max(0, r - rad); k <= Math.min(H - 1, r + rad); k++) m = Math.min(m, b[k * W + c])
         lo[r * W + c] = m
       }
+    // 하천 깊이 강조 (2026-11-17): 사용자가 막대로 0~150% 조절, 0이면 아래 깊이 어림을 건너뜀
+    const depthK = Math.max(0, Math.min(1.5, inp.depthScale ?? 1))
     // 하천 깊이 어림 (2026-11-16 사용자 결정): 수치지도에는 하천 바닥 높이가 없어(물 면 약 15만㎡ 안에 표고점 998개 중 7개)
     // 물가 땅이 둑 높이에 가깝게 나와 도로와 물 높이 차가 1~2.5m뿐이었음(실제 도심 하천은 둑 위 도로가 물보다 4~6m 높음) → 다리 밑이 낮아 교각도 안 섰음.
     // 물 높이를 '둑 마루(하천경계 바로 바깥 칸, 둔치 자료가 없으면 물가 칸)의 둘레 평균 - 깊이'보다 높지 않게:
@@ -235,8 +239,8 @@ export function shapeGround(g: TerrainGrid, inp: ShapeInput): ShapeResult {
       for (let i = 0; i < N; i++) {
         if (!mW[i] || !Number.isFinite(lo[i]) || !Number.isFinite(crestMin[i])) continue
         const width = 2 * halfW[i] * cell
-        const depth = Math.min(4.5, 1.5 + 0.06 * width) * (hasBanks ? 1 : 0.5)
-        lo[i] = Math.max(lo[i] - 6, Math.min(lo[i], crestMin[i] - depth))
+        const depth = Math.min(4.5, 1.5 + 0.06 * width) * (hasBanks ? 1 : 0.5) * depthK
+        lo[i] = Math.max(lo[i] - 6 * depthK, Math.min(lo[i], crestMin[i] - depth))
       }
     }
     // 하천을 따라 고르게 (물 칸끼리만 평균)

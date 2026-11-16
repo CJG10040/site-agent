@@ -5087,3 +5087,15 @@ dl {
     transform: translateX(340%);
   }
 }
+
+/* 하천 깊이 강조 막대 (2026-11-17) */
+.river-depth {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+}
+.river-depth input[type='range'] {
+  flex: 1 1 140px;
+  min-width: 0;
+}

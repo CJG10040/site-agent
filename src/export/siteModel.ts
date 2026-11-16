@@ -153,6 +153,8 @@ export interface SiteModel {
   roadAt: (x: number, y: number) => number
   /** 물 높이 (평평하게 고른 물 면), 물 근처가 아니면 null */
   waterAt: (x: number, y: number) => number | null
+  /** 하천 깊이 강조 (0 = 자료 그대로 ~ 1 = 처음 어림 ~ 1.5) */
+  riverDepth: number
   /** 위 높이 함수들의 자료 (일꾼에 넘겨 다시 만들 때 — modelTransfer.ts). decks는 항목을 꺼도 그대로 (roadAt이 씀) */
   samp: { ground: GroundData | null; water: WaterData | null; z0: number; decks: Deck[] }
 }
@@ -515,7 +517,7 @@ function roadSurfaces(lines: { pts: XY[]; width: number | null }[], half: number
 /**
  * @param opts.grid 지형 격자를 직접 줄 때 (나중에 더 정밀한 DEM·현황측량을 올려 쓰는 자리). 주지 않으면 10m 지형 타일을 읽는다.
  */
-export async function buildSiteModel(d: DiagramData, half: number, opts: { grid?: TerrainGrid | null } = {}): Promise<SiteModel> {
+export async function buildSiteModel(d: DiagramData, half: number, opts: { grid?: TerrainGrid | null; riverDepth?: number } = {}): Promise<SiteModel> {
   const [lon, lat] = d.center
   const [X0, Y0] = wgs84ToUtmk(lon, lat)
   const [x5186, y5186] = wgs84To5186(lon, lat)
@@ -888,6 +890,7 @@ export async function buildSiteModel(d: DiagramData, half: number, opts: { grid?
         deckSrc.push({ polys, name: '', kind: '도로교(자동: 도로가 물을 건넘)', deck: 'bridge', length: null, height: null })
       }
 
+  const riverDepth = Math.max(0, Math.min(1.5, opts.riverDepth ?? 1))
   // ── 땅 다듬기 (groundShape.ts): 물 밑을 파고 물 높이를 고르게, 도로 면을 매끈하게 (정밀도로지도 노면 높이가 있으면 기준점으로)
   const hdPts = (d.hd?.ground ?? []).map((g) => {
     const [x, y] = f([g.lon, g.lat])
@@ -903,6 +906,7 @@ export async function buildSiteModel(d: DiagramData, half: number, opts: { grid?
         water: rivers.flatMap((r) => r.polys),
         banks: banks.flatMap((b) => b.polys),
         hd: hdPts,
+        depthScale: riverDepth,
       })
     : null
   const sg = shaped?.grid ?? null
@@ -1295,6 +1299,7 @@ export async function buildSiteModel(d: DiagramData, half: number, opts: { grid?
     roadAt,
     waterAt,
     samp: { ground, water: shaped?.water ?? null, z0, decks },
+    riverDepth,
   }
 }
 
@@ -1342,7 +1347,7 @@ export function modelNotes(m: SiteModel, meta: { title: string; address: string;
     ],
     [
       '하천',
-      `물 면 ${m.rivers.length}곳 — 수치지도에 하천 바닥 높이가 없어 물 높이는 어림: 물가 땅과 '둑 마루 평균 - 깊이(물 폭 10m 2.1m ~ 50m 이상 4.5m)' 중 낮은 쪽, 물 밑 땅은 0.6m 파냄${m.banks.length ? `, 둔치 ${m.banks.length}곳(하천경계 — 물가에서 둑 쪽으로 30% 비탈)` : ''}, 다리 밑 땅은 상판 밑 1m 아래까지. 수치지도가 있으면 그 도엽 안 브이월드 하천은 뺌`,
+      `물 면 ${m.rivers.length}곳 — 수치지도에 하천 바닥 높이가 없어 물 높이는 어림: ${m.riverDepth > 0 ? `물가 땅과 '둑 마루 평균 - 깊이(물 폭 10m ${f(2.1 * m.riverDepth, 1)}m ~ 50m 이상 ${f(4.5 * m.riverDepth, 1)}m, 깊이 강조 ${Math.round(m.riverDepth * 100)}%)' 중 낮은 쪽` : '가까운 물가 땅 중 가장 낮은 높이 그대로(깊이 강조 0%)'}, 물 밑 땅은 0.6m 파냄${m.banks.length ? `, 둔치 ${m.banks.length}곳(하천경계 — 물가에서 둑 쪽으로 30% 비탈)` : ''}, 다리 밑 땅은 상판 밑 1m 아래까지. 수치지도가 있으면 그 도엽 안 브이월드 하천은 뺌`,
     ],
     ...(m.decks.length
       ? ([

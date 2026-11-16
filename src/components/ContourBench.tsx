@@ -17,6 +17,7 @@ import {
   THICK_OPTIONS,
 } from '../export/contourJob'
 import { buildModelFor, siteFarOf } from '../export/modelBuild'
+import RiverDepthControl from './RiverDepthControl'
 import type { SiteModel } from '../export/siteModel'
 import { downloadBlob } from '../model/project'
 import type { ContourSettings } from '../model/types'
@@ -31,6 +32,9 @@ interface Props {
   settings?: ContourSettings
   onSettings?: (s: ContourSettings) => void
   onExported?: () => void
+  /** 하천 깊이 강조 (렌더링 모델과 같은 값) */
+  riverDepth?: number
+  onRiverDepth?: (v: number) => void
 }
 
 const fmt = (n: number, d = 0) => n.toLocaleString('ko-KR', { maximumFractionDigits: d })
@@ -65,7 +69,7 @@ function NumField({ value, min, max, step = 1, onCommit, label, suffix }: { valu
   )
 }
 
-export default function ContourBench({ data, baseName, meta, settings, onSettings, onExported }: Props) {
+export default function ContourBench({ data, baseName, meta, settings, onSettings, onExported, riverDepth = 1, onRiverDepth }: Props) {
   const [local, setLocal] = useState<ContourSettings>(() => contourSettingsOf(settings))
   // 저장된 설정이 바뀌면 (다른 탭·되돌리기) 따라감
   useEffect(() => {
@@ -94,7 +98,8 @@ export default function ContourBench({ data, baseName, meta, settings, onSetting
   const [frac, setFrac] = useState<number | null>(null)
   const [msg, setMsg] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
 
-  // 범위가 바뀌면 대지 모형(지형·도로·건물)을 다시
+  // 범위·하천 깊이가 바뀌면 대지 모형(지형·도로·건물)을 다시
+  const [riverN, setRiverN] = useState(0)
   useEffect(() => {
     if (half === null) return
     let alive = true
@@ -105,8 +110,11 @@ export default function ContourBench({ data, baseName, meta, settings, onSetting
     void (async () => {
       await new Promise((r) => setTimeout(r, 30))
       try {
-        const m = await buildModelFor(data, half)
-        if (alive) setModel(m)
+        const m = await buildModelFor(data, half, { riverDepth })
+        if (alive) {
+          setModel(m)
+          setRiverN(m.rivers.length)
+        }
       } catch (e) {
         if (alive) {
           setErr(`모형 자료를 만들지 못했습니다: ${e instanceof Error ? e.message : String(e)}`)
@@ -117,7 +125,7 @@ export default function ContourBench({ data, baseName, meta, settings, onSetting
     return () => {
       alive = false
     }
-  }, [data, half])
+  }, [data, half, riverDepth])
 
   // 판 계산 (작업자 스레드, 설정을 바꾸면 앞 계산은 멈춤)
   useEffect(() => {
@@ -245,6 +253,8 @@ export default function ContourBench({ data, baseName, meta, settings, onSetting
           </div>
           <p className="muted small">{ROAD_MODE_NOTE[s.roads]}. 건물은 자리만 새김.</p>
         </section>
+
+        {riverN > 0 && onRiverDepth && <RiverDepthControl value={riverDepth} onChange={onRiverDepth} />}
 
         <section>
           <h3>만들어지는 것</h3>

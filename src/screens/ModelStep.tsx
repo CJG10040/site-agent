@@ -137,6 +137,12 @@ export default function ModelStep({ project, update, config, keys, onGoData, onG
                   d.renderModel = r
                 })
               }
+              riverDepth={project.riverDepth ?? 1}
+              onRiverDepth={(v) =>
+                update((d) => {
+                  d.riverDepth = v
+                })
+              }
               contour={project.contour}
               onContour={(c) =>
                 update((d) => {
