@@ -263,7 +263,7 @@ export interface Project {
   feedback?: Feedback[]
   /** 도판에서 학생이 고친 것 (2026-11-12): 잘못된 자료 빼기, 도판 위 표기 옮기기·숨기기 */
   edits?: ProjectEdits
-  /** ⑩ 3D 모형 하천 깊이 강조 (2026-11-17): 0 = 자료 그대로 ~ 1 = 처음 어림 ~ 1.5, 렌더링 모델·콘타 모형 같은 값. 없으면 1 */
+  /** (예전) ⑩ 3D 모형 하천 깊이 강조 막대 (2026-11-17, 0~1.5) — 2026-11-18부터 어림 치수 modelDims.riverDepth(%)로. 읽기만(projectDims) */
   riverDepth?: number
   /** ⑩ 3D 모형 어림 치수 (2026-11-17): 기본값과 다르게 고친 것만 (키는 export/modelDims.ts DIM_DEFS) — 3D 모형에만 씀 */
   modelDims?: Partial<Record<string, number>>

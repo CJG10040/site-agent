@@ -32,15 +32,15 @@ export function defaultHalf(opts: number[]): number {
 }
 
 /** 범위(정사각 반쪽)에 맞춘 지형 격자로 대지 모형을 만든다. 수치지도를 올렸으면 대지 주변 2m + 그 밖 10m를 섞은 격자 (범위가 크면 칸을 키움) */
-/** @param opts.riverDepth 하천 깊이 강조 (0~1.5, 없으면 1) — 렌더링 모델·콘타 모형이 같은 값 */
-export async function buildModelFor(data: DiagramData, half: number, opts: { riverDepth?: number; dims?: Partial<Record<string, number>> | null } = {}): Promise<SiteModel> {
+/** @param opts.dims 어림 치수 (고친 것만, 하천 깊이 강조 포함) — 렌더링 모델·콘타 모형이 같은 값 */
+export async function buildModelFor(data: DiagramData, half: number, opts: { dims?: Partial<Record<string, number>> | null } = {}): Promise<SiteModel> {
   let grid: TerrainGrid | null | undefined
   if (data.ngii) {
     const fine = fineTerrainCached(data.ngii, data.center, fineHalfFor(data.R))
     const base = await terrainAround(data.center[0], data.center[1], data.R).catch(() => null)
     grid = compositeGrid(base, fine, data.center, half + 20, half <= 300 ? 2 : half <= 600 ? 4 : 5)
   }
-  const o = { riverDepth: opts.riverDepth, dims: opts.dims }
+  const o = { dims: opts.dims }
   return buildSiteModel(data, half, grid !== undefined ? { grid, ...o } : o)
 }
 

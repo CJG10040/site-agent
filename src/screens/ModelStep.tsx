@@ -6,6 +6,7 @@ import NgiiUpload from '../components/NgiiUpload'
 import RoofLookup from '../components/RoofLookup'
 import TreePanel from '../components/TreePanel'
 import { buildDiagramData } from '../diagrams/data'
+import { projectDims } from '../export/modelDims'
 import { collectedDate } from '../diagrams/render'
 import { defaultHalf, halfOptionsFor } from '../export/modelBuild'
 import { DXF_LAYERS } from '../export/toDxf'
@@ -137,17 +138,13 @@ export default function ModelStep({ project, update, config, keys, onGoData, onG
                   d.renderModel = r
                 })
               }
-              modelDims={project.modelDims}
+              modelDims={projectDims(project)}
               onModelDims={(v) =>
                 update((d) => {
                   if (Object.keys(v).length) d.modelDims = v
                   else delete d.modelDims
-                })
-              }
-              riverDepth={project.riverDepth ?? 1}
-              onRiverDepth={(v) =>
-                update((d) => {
-                  d.riverDepth = v
+                  // 예전 하천 깊이 막대 값은 이제 어림 치수 안에 (2026-11-18)
+                  delete d.riverDepth
                 })
               }
               contour={project.contour}

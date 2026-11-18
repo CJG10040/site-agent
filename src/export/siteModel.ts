@@ -520,7 +520,7 @@ function roadSurfaces(lines: { pts: XY[]; width: number | null }[], half: number
 /**
  * @param opts.grid 지형 격자를 직접 줄 때 (나중에 더 정밀한 DEM·현황측량을 올려 쓰는 자리). 주지 않으면 10m 지형 타일을 읽는다.
  */
-export async function buildSiteModel(d: DiagramData, half: number, opts: { grid?: TerrainGrid | null; riverDepth?: number; dims?: Partial<Record<string, number>> | null } = {}): Promise<SiteModel> {
+export async function buildSiteModel(d: DiagramData, half: number, opts: { grid?: TerrainGrid | null; dims?: Partial<Record<string, number>> | null } = {}): Promise<SiteModel> {
   // 어림 치수 (modelDims.ts) — 고친 값 + 기본값
   const dm = dimsOf(opts.dims)
   const [lon, lat] = d.center
@@ -895,7 +895,8 @@ export async function buildSiteModel(d: DiagramData, half: number, opts: { grid?
         deckSrc.push({ polys, name: '', kind: '도로교(자동: 도로가 물을 건넘)', deck: 'bridge', length: null, height: null })
       }
 
-  const riverDepth = Math.max(0, Math.min(1.5, opts.riverDepth ?? 1))
+  // 하천 깊이 강조 (어림 치수 %, 기본 100%)
+  const riverDepth = Math.max(0, Math.min(1.5, dm.riverDepth / 100))
   // ── 땅 다듬기 (groundShape.ts): 물 밑을 파고 물 높이를 고르게, 도로 면을 매끈하게 (정밀도로지도 노면 높이가 있으면 기준점으로)
   const hdPts = (d.hd?.ground ?? []).map((g) => {
     const [x, y] = f([g.lon, g.lat])

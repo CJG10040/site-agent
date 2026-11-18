@@ -12,6 +12,7 @@ interface Props {
 }
 
 const fmt = (v: number) => String(Math.round(v * 1000) / 1000)
+const fmt1 = (v: number) => v.toLocaleString('ko-KR', { maximumFractionDigits: 1 })
 
 /** 숫자 칸: 입력하는 동안은 그대로, 칸을 벗어나거나 Enter일 때 반영 (범위 밖이면 되돌림) */
 function DimField({ def, value, onCommit, disabled }: { def: DimDef; value: number; onCommit: (v: number) => void; disabled?: boolean }) {
@@ -105,6 +106,13 @@ export default function ModelDimsPanel({ value, onChange, disabled }: Props) {
               {n > 0 && <span className="model-dims-badge"> 고친 것 {n}</span>}
             </summary>
             {g.note && <p className="muted small">{g.note}</p>}
+            {g.id === 'river' && (
+              <p className="muted small">
+                {d.riverDepth > 0
+                  ? `지금 깊이 강조 ${d.riverDepth}%: 둑에서 물 면까지 — 물 폭 10m 약 ${fmt1(2.1 * (d.riverDepth / 100))}m · 30m 약 ${fmt1(3.3 * (d.riverDepth / 100))}m · 50m 넘으면 약 ${fmt1(4.5 * (d.riverDepth / 100))}m (둔치 자료가 없으면 절반)`
+                  : '지금 깊이 강조 0%: 물 면을 가까운 물가 땅 중 가장 낮은 높이에 둠'}
+              </p>
+            )}
             <table className="model-dims-table">
               <tbody>
                 {defs.map((def) => {

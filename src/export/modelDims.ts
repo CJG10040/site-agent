@@ -10,7 +10,7 @@ export type DimGroup = 'bld' | 'road' | 'river' | 'street' | 'tree'
 export const DIM_GROUPS: { id: DimGroup; label: string; note?: string }[] = [
   { id: 'bld', label: '건물·지붕', note: '층고는 실측 높이가 없는 건물에만 (층수 × 층고). 3D 모형에만 쓰고 도판·환경 계산은 그대로' },
   { id: 'road', label: '도로·바닥' },
-  { id: 'river', label: '하천·다리', note: '하천 깊이는 위 막대로' },
+  { id: 'river', label: '하천·다리', note: '하천 깊이 강조: 0% 자료 그대로(물 면 = 가까운 물가 땅 중 가장 낮은 높이) · 100% 처음 값 · 150% 더 깊게. 하천 치수는 콘타 모형의 땅 모양에도 들어감' },
   { id: 'street', label: '가로 시설' },
   { id: 'tree', label: '나무 (수종별 보통 높이)', note: '그루마다 ±12% 다르게' },
 ]
@@ -50,6 +50,7 @@ export type DimKey =
   | 'hatchEdge'
   | 'bumpH'
   | 'roadLift'
+  | 'riverDepth'
   | 'waterCarve'
   | 'bankStep'
   | 'bankSlope'
@@ -112,7 +113,8 @@ export const DIM_DEFS: DimDef[] = [
   D('hatchEdge', 'road', '안전지대 테두리 폭', 'm', 0.15, 0.05, 0.5, 0.01),
   D('bumpH', 'road', '과속방지턱 높이', 'm', 0.08, 0.02, 0.3, 0.01),
   D('roadLift', 'road', '도로 면 띄움 (지형 위, 겹쳐 깜빡이지 않게)', 'm', 0.08, 0, 0.5, 0.01),
-  // 하천·다리
+  // 하천·다리 — 하천 깊이 강조 (2026-11-17 막대 → 2026-11-18 사용자 요청으로 여기로): 둑 마루에서 빼는 깊이 어림에 곱함
+  D('riverDepth', 'river', '하천 깊이 강조', '%', 100, 0, 150, 10),
   D('waterCarve', 'river', '물 밑 땅 파기 (물 면 아래)', 'm', 0.6, 0, 3, 0.1),
   D('bankStep', 'river', '둔치가 물보다 높은 만큼 (물가)', 'm', 0.4, 0, 3, 0.1),
   D('bankSlope', 'river', '둔치 비탈 (물가 → 둑)', '%', 30, 5, 100, 1),
@@ -176,6 +178,13 @@ export function changedDims(d: ModelDims): Partial<ModelDims> {
   const out: Partial<ModelDims> = {}
   for (const def of DIM_DEFS) if (Math.abs(d[def.key] - def.def) > 1e-9) out[def.key] = d[def.key]
   return out
+}
+
+/** 예전에 따로 저장한 하천 깊이(project.riverDepth, 0~1.5)를 어림 치수로 (2026-11-18: 막대를 어림 치수 안으로 옮김) */
+export function projectDims(p: { modelDims?: Partial<Record<string, number>>; riverDepth?: number }): Partial<Record<string, number>> | undefined {
+  const old = p.riverDepth
+  if (old === undefined || !Number.isFinite(old) || Math.abs(old - 1) < 1e-9 || (p.modelDims && 'riverDepth' in p.modelDims)) return p.modelDims
+  return { riverDepth: Math.round(old * 100), ...(p.modelDims ?? {}) }
 }
 
 /** 수종 → 치수 키 */
