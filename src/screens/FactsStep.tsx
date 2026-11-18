@@ -17,7 +17,7 @@ const FILTERS: { id: Filter; label: string }[] = [
   { id: 'all', label: '전체' },
   { id: 'confirmed', label: '확인됨' },
   { id: 'rejected', label: '제외' },
-  // 확인 전: 정성 조사(챗봇) 카드 (2026-11-18) + 이전 버전에서 만든 검토 대기 카드
+  // 확인 전: 이전 버전에서 만든 검토 대기 카드 · 2026-11-18 하루 동안 '확인 전'으로 넣었던 정성 조사 카드
   { id: 'draft', label: '확인 전' },
 ]
 
@@ -341,8 +341,9 @@ export default function FactsStep({ project, update, onGoData }: Props) {
   const observedBy = useMemo(() => linksByFact(project), [project])
 
   const cards = project.cards.filter((c) => c.type === 'FACT' || c.type === 'UNKNOWN')
-  // 이전 버전의 검토 대기 카드 (정성 조사 카드는 학생이 하나씩 확인하므로 빼고)
-  const legacyDraft = cards.filter((c) => c.status === 'draft' && !isResearchCard(c)).length
+  // 확인 전 카드: 이전 버전의 검토 대기 카드 + 예전에 '확인 전'으로 넣은 정성 조사 카드 (2026-11-18부터 정성 조사는 처음부터 확인됨)
+  const legacyDraft = cards.filter((c) => c.status === 'draft').length
+  const researchDraft = cards.filter((c) => c.status === 'draft' && isResearchCard(c)).length
   const counts = {
     draft: cards.filter((c) => c.status === 'draft').length,
     confirmed: cards.filter((c) => c.status === 'confirmed').length,
@@ -420,7 +421,7 @@ export default function FactsStep({ project, update, onGoData }: Props) {
         </p>
       </header>
 
-      <ResearchPanel project={project} update={update} onImported={() => setFilter('draft')} />
+      <ResearchPanel project={project} update={update} onImported={() => setFilter('all')} />
 
       <div className="fact-summary">
         <div className={`meter${confirmedFacts >= 5 ? ' done' : ''}`}>
@@ -448,7 +449,7 @@ export default function FactsStep({ project, update, onGoData }: Props) {
         <>
           {legacyDraft > 0 && (
             <div className="notice">
-              이전 버전에서 만든 검토 대기 카드가 {legacyDraft}개 있습니다.{' '}
+              {researchDraft === legacyDraft ? `예전에 '확인 전'으로 넣은 정성 조사 카드가 ${legacyDraft}개 있습니다.` : `확인 전 카드가 ${legacyDraft}개 있습니다 (이전 버전의 검토 대기${researchDraft ? `·정성 조사 ${researchDraft}개` : ''}).`}{' '}
               <button
                 type="button"
                 className="btn small"
@@ -456,7 +457,7 @@ export default function FactsStep({ project, update, onGoData }: Props) {
                   update((d) => {
                     const t = nowIso()
                     for (const c of d.cards) {
-                      if ((c.type === 'FACT' || c.type === 'UNKNOWN') && c.status === 'draft' && !isResearchCard(c)) {
+                      if ((c.type === 'FACT' || c.type === 'UNKNOWN') && c.status === 'draft') {
                         c.status = 'confirmed'
                         c.updated_at = t
                       }

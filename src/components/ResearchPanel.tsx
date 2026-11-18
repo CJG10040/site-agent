@@ -1,4 +1,4 @@
-// ⑤ 사실 카드 맨 위 '정성 조사' (2026-11-18 사용자 요청·인터뷰): 챗봇에게 보낼 조사 명령어 만들기 → 답 붙여 넣기 → 출처가 붙은 '확인 전' 사실 카드.
+// ⑤ 사실 카드 맨 위 '정성 조사' (2026-11-18 사용자 요청·인터뷰): 챗봇에게 보낼 조사 명령어 만들기 → 답 붙여 넣기 → 출처가 붙은 사실 카드(처음부터 확인됨, 틀린 것은 제외).
 
 import { useState } from 'react'
 import { buildResearchPrompt, importResearch, isResearchCard, ISSUE_YEARS, parseResearch, RESEARCH_SCALES, RESEARCH_THEMES, type ResearchItem } from '../model/research'
@@ -7,7 +7,7 @@ import type { Project } from '../model/types'
 interface Props {
   project: Project
   update: (fn: (draft: Project) => void) => void
-  /** 카드로 넣은 뒤 (목록을 '확인 전'으로) */
+  /** 카드로 넣은 뒤 */
   onImported?: () => void
 }
 
@@ -38,11 +38,11 @@ export default function ResearchPanel({ project, update, onImported }: Props) {
       <h3>정성 조사 (챗봇)</h3>
       <p className="help">
         통계에 없는 것 — 최근 {ISSUE_YEARS}년의 <strong>이슈·갈등·개발 계획</strong>, <strong>역사·장소의 기억</strong>, <strong>지역 문화·생활</strong> — 을 웹 검색이 되는 챗봇에게 조사시킵니다.
-        대한민국 → 광역 → 시·군·구 → 동 → 대지 주변 다섯 스케일마다 주요 이슈를 출처와 함께 받습니다. 답을 붙여 넣으면 <strong>확인 전</strong> 카드로 들어오고, 출처를 열어 확인한 것만 해석·가설의 근거와 ⑥ 도판 '스케일별 주요 이슈'에 쓰입니다.
+        대한민국 → 광역 → 시·군·구 → 동 → 대지 주변 다섯 스케일마다 주요 이슈를 출처와 함께 받습니다. 답을 붙여 넣으면 사실 카드로 <strong>확인된 채</strong> 들어옵니다. 출처를 열어 보고 틀리거나 필요 없는 것만 <strong>제외</strong>하세요 — 제외하지 않은 것이 해석·가설의 근거와 ⑥ 도판 '스케일별 주요 이슈'에 쓰입니다.
       </p>
       {mine.length > 0 && (
         <p className="small">
-          정성 조사 카드 {mine.length}개 — 확인 {nOk}개{nWait ? ` · 확인 전 ${nWait}개` : ''}
+          정성 조사 카드 {mine.length}개 — 확인됨 {nOk}개{nWait ? ` · 확인 전 ${nWait}개` : ''}{mine.length - nOk - nWait ? ` · 제외 ${mine.length - nOk - nWait}개` : ''}
         </p>
       )}
 
@@ -99,7 +99,7 @@ export default function ResearchPanel({ project, update, onImported }: Props) {
               update((d) => {
                 r = importResearch(d, parsed.items)
               })
-              setMsg(`${r.added}개를 '확인 전' 카드로 넣었습니다${r.skipped ? ` (이미 있는 ${r.skipped}개는 건너뜀)` : ''}. 아래에서 출처를 열어 보고 '확인' 또는 '제외'하세요.`)
+              setMsg(`${r.added}개를 사실 카드로 넣었습니다(확인됨)${r.skipped ? ` — 이미 있는 ${r.skipped}개는 건너뜀` : ''}. 아래 '정성 조사' 묶음에서 출처를 열어 보고 틀리거나 필요 없는 것은 '제외'하세요.`)
               setAnswer('')
               setParsed(null)
               onImported?.()

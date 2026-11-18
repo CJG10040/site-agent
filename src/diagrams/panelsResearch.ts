@@ -1,5 +1,5 @@
 // 스케일별 주요 이슈 (2026-11-18 사용자 요청·인터뷰: 거시 → 미시 — 대한민국 → 광역 → 시·군·구 → 동 → 대지 주변 — 각 관점의 주요 이슈를
-// 다이어그램으로, ⑥ 도판에만). 자료: ⑤ 사실 카드의 정성 조사(챗봇 웹 조사) 중 학생이 출처를 확인한 카드.
+// 다이어그램으로, ⑥ 도판에만). 자료: ⑤ 사실 카드의 정성 조사(챗봇 웹 조사) 중 학생이 제외하지 않은 카드.
 // 지도가 아닌 그림: 위에서 아래로 한 단씩 안쪽으로 들어가는 계단 — 단마다 스케일·지역 이름과 이슈(주제 색 점 + 제목 + 시점).
 
 import { ISSUE_YEARS, RESEARCH_THEMES } from '../model/researchScales'
@@ -29,11 +29,11 @@ export const RESEARCH_PANEL: PanelDef = {
   id: 'scaleIssues',
   title: '스케일별 주요 이슈 (대한민국 → 대지 주변)',
   group: '사회·경제',
-  needs: "⑤ 사실 카드 맨 위 '정성 조사'에서 챗봇 답을 붙여 넣고, 출처를 열어 확인한 카드가 있어야 그립니다.",
+  needs: "⑤ 사실 카드 맨 위 '정성 조사'에서 챗봇 답을 붙여 넣으면 그립니다 (제외한 카드는 빠짐).",
   render: (c): PanelOutput => {
     const tiers = c.d.research ?? []
     const total = tiers.reduce((s, t) => s + t.items.length, 0)
-    if (!total) return { layers: [], legend: [], summary: [], caption: '', empty: "확인한 정성 조사 카드가 없습니다 — ⑤ 사실 카드의 '정성 조사'에서 받아 확인하세요", noFrame: true, hideBase: true, noScale: true }
+    if (!total) return { layers: [], legend: [], summary: [], caption: '', empty: "정성 조사 카드가 없습니다 — ⑤ 사실 카드의 '정성 조사'에서 챗봇 답을 붙여 넣으세요", noFrame: true, hideBase: true, noScale: true }
     const pal = c.pal
     // 주제 색: 범주색 중 서로 잘 갈리는 셋 (이슈 = 파랑 계열 · 역사 = 주황 계열 · 문화 = 청록 계열, 묶음마다 다름)
     const THEME_CAT = [3, 1, 4]
@@ -66,7 +66,7 @@ export const RESEARCH_PANEL: PanelDef = {
       const rw = X1 - rx - 16
       const shown = t.items.slice(0, MAX_ITEMS)
       const lh = Math.min(34, (H - 24) / Math.max(1, shown.length + (t.items.length > MAX_ITEMS ? 1 : 0)))
-      if (!shown.length) parts.push(`<text x="${rx}" y="${y + 36}" font-family="${FONT}" font-size="16" fill="${pal.subtle}">확인한 조사 없음</text>`)
+      if (!shown.length) parts.push(`<text x="${rx}" y="${y + 36}" font-family="${FONT}" font-size="16" fill="${pal.subtle}">조사 없음</text>`)
       shown.forEach((it, k) => {
         const ty = y + 30 + k * lh
         const when = it.when && it.when !== '모름' ? ` (${it.when})` : ''
@@ -77,7 +77,7 @@ export const RESEARCH_PANEL: PanelDef = {
         )
       })
       if (t.items.length > MAX_ITEMS) parts.push(`<text x="${rx + 20}" y="${y + 30 + shown.length * lh}" font-family="${FONT}" font-size="14" fill="${pal.subtle}">외 ${t.items.length - MAX_ITEMS}개</text>`)
-      lines.push(`${t.scale}${t.place ? `(${t.place})` : ''}: ${t.items.length ? t.items.map((it) => it.title).join(' · ') : '확인한 조사 없음'}`)
+      lines.push(`${t.scale}${t.place ? `(${t.place})` : ''}: ${t.items.length ? t.items.map((it) => it.title).join(' · ') : '조사 없음'}`)
     })
     const used = RESEARCH_THEMES.filter((th) => tiers.some((t) => t.items.some((it) => it.theme === th)))
     const legend: LegendItem[] = used.map((th) => ({ color: themeColor(th), label: th }))
@@ -86,8 +86,8 @@ export const RESEARCH_PANEL: PanelDef = {
       layers: [{ id: '스케일별 주요 이슈', svg: parts.join(''), noClip: true }],
       legend,
       legendTitle: '주제',
-      summary: [`확인한 정성 조사 ${total}건 (${ids.join(', ')})`, ...lines],
-      caption: `자료: 챗봇 웹 조사 중 학생이 출처를 열어 확인한 ${total}건 — 출처는 사실 카드마다 · 이슈·갈등·개발 계획은 최근 ${ISSUE_YEARS}년 · 정성 자료라 빠진 이슈가 있을 수 있음`,
+      summary: [`정성 조사 ${total}건 (${ids.join(', ')})`, ...lines],
+      caption: `자료: 챗봇 웹 조사 ${total}건 (학생이 제외한 것은 뺌) — 출처는 사실 카드마다 · 이슈·갈등·개발 계획은 최근 ${ISSUE_YEARS}년 · 정성 자료라 빠진 이슈가 있을 수 있음`,
       noFrame: true,
       hideBase: true,
       noScale: true,

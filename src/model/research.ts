@@ -1,7 +1,7 @@
 // 정성 조사 (2026-11-18 사용자 요청: 통계뿐 아니라 프로젝트 당시 이슈·지역 문화 같은 정성적인 부분까지 챗봇이 조사하게).
 // 인터뷰: 주제 = 이슈·갈등·개발 계획(최근 3년) · 역사·장소의 기억 · 지역 문화·생활, 거시→미시 5단계(대한민국 → 광역 → 시·군·구 → 동 → 대지 주변)
-// 마다 주요 이슈. ⑤ 사실 카드 맨 위에서 명령어를 만들어 챗봇에 보내고 답을 붙여 넣으면 출처가 붙은 '확인 전' 사실 카드로 들어옴.
-// 학생이 출처를 열어 확인한 것만 해석·가설 단계의 근거가 되고, ⑥ 도판 '스케일별 주요 이슈'에 그려짐.
+// 마다 주요 이슈. ⑤ 사실 카드 맨 위에서 명령어를 만들어 챗봇에 보내고 답을 붙여 넣으면 출처가 붙은 사실 카드로 들어옴 — 처음부터 확인됨
+// (2026-11-18 사용자 요청: 하나하나 확인을 누르지 않고, 틀리거나 필요 없는 것만 '제외'). 제외하지 않은 것이 해석·가설의 근거와 ⑥ 도판 '스케일별 주요 이슈'에 쓰임.
 
 import { makeCard, nextNumber, nowIso } from './project'
 import { contextBlock } from './prompts'
@@ -20,7 +20,7 @@ export function buildResearchPrompt(project: Project, now = new Date()): string 
   const R = project.site.radiusM
   const hints = [project.site.address?.road, project.site.address?.parcel, project.site.parcels[0]?.addr].filter((s): s is string => !!s && !!s.trim())
   return [
-    `당신은 건축학과 학생의 대지 조사를 돕는 리서처입니다. 아래 대지와 과제에 대해 **웹 검색으로** 정성적인 맥락 — 진행 중인 이슈·갈등·개발 계획, 역사와 장소의 기억, 지역 문화와 생활 — 을 조사해 주세요. 학생은 출처를 하나씩 열어 확인한 뒤 사실 카드로 씁니다. 통계 수치는 학생이 공공데이터로 따로 모았으니, 여기서는 숫자보다 사건·계획·이야기·사람들의 생활을 찾아 주세요.`,
+    `당신은 건축학과 학생의 대지 조사를 돕는 리서처입니다. 아래 대지와 과제에 대해 **웹 검색으로** 정성적인 맥락 — 진행 중인 이슈·갈등·개발 계획, 역사와 장소의 기억, 지역 문화와 생활 — 을 조사해 주세요. 학생은 출처를 열어 보고 틀리거나 필요 없는 것은 빼고 사실 카드로 씁니다. 통계 수치는 학생이 공공데이터로 따로 모았으니, 여기서는 숫자보다 사건·계획·이야기·사람들의 생활을 찾아 주세요.`,
     contextBlock(project),
     [
       '## 조사 기준',
@@ -186,7 +186,7 @@ const hash = (s: string) => {
   return (h >>> 0).toString(36)
 }
 
-/** 조사 항목을 '확인 전' 사실 카드로 (같은 항목은 다시 넣지 않음). draft를 직접 고침 — update() 안에서 부르기 */
+/** 조사 항목을 사실 카드로 — 처음부터 확인됨, 학생이 '제외'로 뺌 (같은 항목은 다시 넣지 않음). draft를 직접 고침 — update() 안에서 부르기 */
 export function importResearch(d: Project, items: ResearchItem[]): { added: number; skipped: number } {
   let added = 0
   let skipped = 0
@@ -213,7 +213,7 @@ export function importResearch(d: Project, items: ResearchItem[]): { added: numb
       normalized_value: null,
       unit: null,
       license: '',
-      limitations: '챗봇이 웹에서 찾은 내용 — 출처를 열어 학생이 확인해야 함',
+      limitations: '챗봇이 웹에서 찾은 내용 — 출처를 열어 보고 틀리면 제외',
       original_url: it.url,
       reliability: 'web',
       feature_count: null,
@@ -230,7 +230,7 @@ export function importResearch(d: Project, items: ResearchItem[]): { added: numb
         origin: 'chatbot',
         confidence: it.confidence,
         human_validation_required: true,
-        status: 'draft',
+        status: 'confirmed',
         user_note: '',
         auto_key: key,
         fields: { 스케일: it.scale, 지역: it.place, 주제: it.theme, 제목: it.title, 시점: it.when, 출처: it.source, 주소: it.url },
@@ -244,7 +244,7 @@ export function importResearch(d: Project, items: ResearchItem[]): { added: numb
 /** 정성 조사 카드인지 */
 export const isResearchCard = (c: Card) => !!c.auto_key?.startsWith(RESEARCH_KEY)
 
-/** 확인한 정성 조사 카드 — 스케일 순서대로 (⑥ 도판 '스케일별 주요 이슈') */
+/** 제외하지 않은(확인된) 정성 조사 카드 — 스케일 순서대로 (⑥ 도판 '스케일별 주요 이슈') */
 export function researchByScale(project: Project): { scale: ResearchScale; place: string; cards: Card[] }[] {
   const ok = project.cards.filter((c) => isResearchCard(c) && c.status === 'confirmed')
   return RESEARCH_SCALES.map((scale) => {
