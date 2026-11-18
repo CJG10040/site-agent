@@ -14,6 +14,7 @@ import { downloadBlob } from '../model/project'
 import type { ContourSettings, RenderLevel, RenderModelSettings } from '../model/types'
 import ContourBench from './ContourBench'
 import ModelDimsPanel from './ModelDimsPanel'
+import RangeSlider, { fmtDist } from './RangeSlider'
 
 const ModelPreview = lazy(() => import('./ModelPreview'))
 
@@ -22,8 +23,8 @@ interface Props {
   /** 파일 이름 앞부분 */
   baseName: string
   meta: { title: string; address: string; collected: string }
-  /** 범위 후보 (정사각 반쪽, m) */
-  halfOptions: number[]
+  /** 범위 (반경 = 정사각 반쪽, m): 대지가 다 들어가는 값 ~ 조사 반경 */
+  halfRange: { min: number; max: number }
   initialHalf: number
   /** 떠 있는 창이 아니라 ⑩ 3D 모형 화면 안에 (닫기·Esc 없음) */
   asPage?: boolean
@@ -45,12 +46,18 @@ interface Props {
 
 type Tab = 'render' | 'contour'
 
-const sideLabel = (h: number) => (h * 2 >= 1000 ? `${(h * 2) / 1000}km` : `${h * 2}m`)
+/** 파일 이름: 반경 (2026-11-18: 조사 반경과 같은 말로) */
+const radiusLabel = (h: number) => `반경${fmtDist(h)}`
+const H_TICKS = [150, 300, 500, 1000, 2000, 3000]
 const fmt = (n: number, d = 0) => n.toLocaleString('ko-KR', { maximumFractionDigits: d })
 
-export default function ModelWorkbench({ data, baseName, meta, halfOptions, initialHalf, asPage = false, onClose, onExported, contour, onContour, render, onRender, vworldKey = '', modelDims, onModelDims }: Props) {
+export default function ModelWorkbench({ data, baseName, meta, halfRange, initialHalf, asPage = false, onClose, onExported, contour, onContour, render, onRender, vworldKey = '', modelDims, onModelDims }: Props) {
   const [tab, setTab] = useState<Tab>('render')
   const [half, setHalf] = useState(initialHalf)
+  // 조사 반경이 바뀌어 범위 밖이 되면 범위 안으로
+  useEffect(() => {
+    if (half > halfRange.max || half < halfRange.min) setHalf(Math.min(halfRange.max, Math.max(halfRange.min, half)))
+  }, [half, halfRange.min, halfRange.max])
   const [model, setModel] = useState<SiteModel | null>(null)
   const [building, setBuilding] = useState(false)
   const [showPreview, setShowPreview] = useState(true)
@@ -141,7 +148,7 @@ export default function ModelWorkbench({ data, baseName, meta, halfOptions, init
   }, [shown])
   const stats = useMemo(() => (shown ? modelStats(shown) : null), [shown])
   const levelLabel = LEVELS.find((l) => l.id === rs.level)?.label ?? ''
-  const name = `${baseName}_3D_${sideLabel(half)}_${levelLabel}${custom ? '_고침' : ''}`
+  const name = `${baseName}_3D_${radiusLabel(half)}_${levelLabel}${custom ? '_고침' : ''}`
 
   // 렌더 재질 (2026-11-16): 방식은 학생이 고름, 항공사진은 키가 있을 때만
   const material: MaterialStyle = rs.material ?? 'tex'
@@ -231,7 +238,7 @@ export default function ModelWorkbench({ data, baseName, meta, halfOptions, init
   }
   const downloadDxf = () => {
     if (!shown) return
-    downloadBlob(`${baseName}_평면_${sideLabel(half)}.dxf`, new Blob([siteModelToDxf(shown, meta)], { type: 'application/dxf' }))
+    downloadBlob(`${baseName}_평면_${radiusLabel(half)}.dxf`, new Blob([siteModelToDxf(shown, meta)], { type: 'application/dxf' }))
     onExported?.()
     setMsg({ kind: 'ok', text: 'DXF(평면 밑그림)를 내려받았습니다.' })
   }
@@ -263,15 +270,27 @@ export default function ModelWorkbench({ data, baseName, meta, halfOptions, init
         <div className="workbench-body">
           <aside className="workbench-side">
             <section>
-              <h3>범위 (가로·세로)</h3>
-              <div className="segmented small" role="radiogroup" aria-label="범위">
-                {halfOptions.map((h) => (
-                  <button key={h} type="button" role="radio" aria-checked={half === h} className={half === h ? 'on' : ''} disabled={!!busy} onClick={() => setHalf(h)}>
-                    {sideLabel(h)}
-                  </button>
-                ))}
-              </div>
-              <p className="muted small">대지 중심 = 원점, 실제 크기(m), 높이 0 = 대지 중심 지면.</p>
+              <h3>범위</h3>
+              <RangeSlider
+                label="반경"
+                value={half}
+                min={halfRange.min}
+                max={halfRange.max}
+                step={50}
+                ticks={H_TICKS}
+                format={fmtDist}
+                sub={(h) => `가로·세로 ${fmtDist(2 * h)}`}
+                disabled={!!busy || building}
+                onCommit={setHalf}
+              />
+              <p className="muted small">
+                대지 중심 = 원점, 실제 크기(m), 높이 0 = 대지 중심 지면. 주변 조사 반경({fmtDist(halfRange.max)})까지 고를 수 있습니다.
+              </p>
+              {half > 1000 && (
+                <p className="notice error small">
+                  반경 1km를 넘으면 모형이 커서(넓이 {Math.round((half / 1000) ** 2 * 10) / 10}배) 만들기·미리보기가 느리고 라이노 파일이 수백 MB가 될 수 있습니다. 지형은 10m 칸으로 넣습니다 — 디테일 단계를 낮추거나 재질을 '재질 없음'으로 받으면 가볍습니다.
+                </p>
+              )}
             </section>
 
             <section>

@@ -8,7 +8,7 @@ import TreePanel from '../components/TreePanel'
 import { buildDiagramData } from '../diagrams/data'
 import { projectDims } from '../export/modelDims'
 import { collectedDate } from '../diagrams/render'
-import { defaultHalf, halfOptionsFor } from '../export/modelBuild'
+import { defaultHalfIn, halfRangeFor } from '../export/modelBuild'
 import { DXF_LAYERS } from '../export/toDxf'
 import { nowIso } from '../model/project'
 import type { Project } from '../model/types'
@@ -35,7 +35,7 @@ export default function ModelStep({ project, update, config, keys, onGoData, onG
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const data = useMemo(() => buildDiagramData(project), [project.collected, project.site, project.edits?.hides, project.sourcePick, project.sourceAuto, project.trees, project.treeEdits])
   // 지붕 구조를 받으면 collected가 바뀌어 모형을 다시 만듦
-  const halfOptions = useMemo(() => (data ? halfOptionsFor(data) : []), [data])
+  const halfRange = useMemo(() => (data ? halfRangeFor(data) : { min: 150, max: 150 }), [data])
   const meta = {
     title: project.brief.projectName || '대지',
     address: project.site.address?.road || project.site.address?.parcel || project.site.parcels[0]?.addr || '',
@@ -125,8 +125,8 @@ export default function ModelStep({ project, update, config, keys, onGoData, onG
               baseName={baseName}
               meta={meta}
               vworldKey={config.key}
-              halfOptions={halfOptions}
-              initialHalf={defaultHalf(halfOptions)}
+              halfRange={halfRange}
+              initialHalf={defaultHalfIn(halfRange)}
               onExported={() =>
                 update((d) => {
                   d.modelExportedAt = nowIso()

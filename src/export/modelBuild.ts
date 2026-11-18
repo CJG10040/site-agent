@@ -19,18 +19,19 @@ export function siteFarOf(d: Pick<DiagramData, 'center' | 'boundary'>): number {
   return far
 }
 
-/** 범위 후보 (정사각 반쪽, m): 대지가 다 들어가는 것만, 수집 반경까지 */
-export function halfOptionsFor(d: Pick<DiagramData, 'center' | 'boundary' | 'R'>): number[] {
+/**
+ * 3D 모형 범위 (반경 = 정사각 반쪽, m): 대지가 다 들어가는 가장 작은 값(50m 단위) ~ 수집 반경.
+ * 2026-11-18 사용자 결정: 주변 조사 반경과 통일 — 반경으로 표시하고 조사 반경(최대 3km)까지, 슬라이더로
+ */
+export function halfRangeFor(d: Pick<DiagramData, 'center' | 'boundary' | 'R'>): { min: number; max: number } {
   const far = siteFarOf(d)
-  // 반쪽 1km(가로·세로 2km)까지 — 2026-11-18 조사 반경을 3km까지 늘려도 모형은 무거워지지 않게
-  const R = Math.min(d.R, 1000)
-  const opts = [...new Set([150, 300, 500, 1000, R])].filter((h) => h <= R && h >= far + 20).sort((a, b) => a - b)
-  return opts.length ? opts : [Math.max(R, Math.ceil(far + 20))]
+  const min = Math.max(150, Math.ceil((far + 20) / 50) * 50)
+  return { min, max: Math.max(min, d.R) }
 }
 
-/** 처음 고를 범위 (가로·세로 600m 안팎) */
-export function defaultHalf(opts: number[]): number {
-  return opts.find((h) => h >= 300) ?? opts[opts.length - 1]
+/** 처음 고를 범위 (반경 300m = 가로·세로 600m 안팎) */
+export function defaultHalfIn(r: { min: number; max: number }): number {
+  return Math.min(r.max, Math.max(r.min, 300))
 }
 
 /** 범위(정사각 반쪽)에 맞춘 지형 격자로 대지 모형을 만든다. 수치지도를 올렸으면 대지 주변 2m + 그 밖 10m를 섞은 격자 (범위가 크면 칸을 키움) */
@@ -40,7 +41,8 @@ export async function buildModelFor(data: DiagramData, half: number, opts: { dim
   if (data.ngii) {
     const fine = fineTerrainCached(data.ngii, data.center, fineHalfFor(data.R))
     const base = await terrainAround(data.center[0], data.center[1], data.R).catch(() => null)
-    grid = compositeGrid(base, fine, data.center, half + 20, half <= 300 ? 2 : half <= 600 ? 4 : 5)
+    // 칸: 반경 300m까지 2m · 600m까지 4m · 1km까지 5m · 그보다 넓으면 10m (반경 3km에서 지형 면이 수백 MB가 되지 않게)
+    grid = compositeGrid(base, fine, data.center, half + 20, half <= 300 ? 2 : half <= 600 ? 4 : half <= 1000 ? 5 : 10)
   }
   const o = { dims: opts.dims }
   return buildSiteModel(data, half, grid !== undefined ? { grid, ...o } : o)

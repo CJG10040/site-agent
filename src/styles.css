@@ -5133,17 +5133,6 @@ dl {
   border-color: var(--accent);
 }
 
-/* 조사 반경 직접 입력 (2026-11-18) */
-.radius-field {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 13px;
-}
-.radius-field input {
-  width: 72px;
-}
-
 /* 정성 조사 (2026-11-18) */
 .research-panel .row.wrap {
   display: flex;
@@ -5163,4 +5152,63 @@ dl {
   padding-left: 18px;
   max-height: 260px;
   overflow: auto;
+}
+
+/* 거리 슬라이더 — 주변 조사 반경·3D 모형 범위 (2026-11-18) */
+.range-slider {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-bottom: 22px;
+}
+.range-slider-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.range-slider-value {
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+}
+.range-slider input[type='range'] {
+  width: 100%;
+  margin: 4px 0 0;
+  accent-color: var(--accent);
+}
+.range-slider-ticks {
+  position: relative;
+  height: 18px;
+  margin: 0 8px;
+}
+.range-tick {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  border: 0;
+  background: none;
+  padding: 0 2px;
+  font: inherit;
+  font-size: 11px;
+  color: var(--muted);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.range-tick.first {
+  transform: none;
+  margin-left: -8px;
+}
+.range-tick.last {
+  transform: translateX(-100%);
+  margin-left: 8px;
+}
+.range-tick.on {
+  color: var(--accent);
+  font-weight: 700;
+}
+.range-tick:disabled {
+  cursor: default;
+}
+.range-slider.disabled {
+  opacity: 0.6;
 }

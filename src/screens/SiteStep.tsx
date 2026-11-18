@@ -4,6 +4,7 @@ import MapView, { type MapFit, type MapFocus, type MapMode } from '../components
 import MapToolbar from '../components/MapToolbar'
 import { SunLegend } from '../components/Legends'
 import SearchPanel from '../components/SearchPanel'
+import RangeSlider, { fmtDist } from '../components/RangeSlider'
 import { areaM2, centerOf, radiusCircle, siteBoundary } from '../lib/geo'
 import { sunPathFeatures } from '../lib/sun'
 import { jimokName } from '../model/codes'
@@ -22,42 +23,10 @@ interface Props {
 
 type Tool = 'select' | 'draw' | 'modify'
 
-const RADII = [250, 500, 1000]
-/** 직접 입력 범위 (2026-11-18 사용자 요청: 1km보다 여유 있게 — 인터뷰: 직접 입력 250m~3km) */
+/** 주변 조사 반경 (2026-11-18 사용자 요청: 1km보다 여유 있게, 슬라이더로 — 250m~3km, 50m 단위) */
 const R_MIN = 250
 const R_MAX = 3000
-const fmtR = (r: number) => (r >= 1000 ? `${Math.round(r / 10) / 100}km` : `${r}m`)
-
-/** 반경 직접 입력: 칸을 벗어나거나 Enter일 때 반영, 범위 밖은 되돌림 (50m 단위로 맞춤) */
-function RadiusField({ value, onCommit }: { value: number; onCommit: (r: number) => void }) {
-  const [draft, setDraft] = useState(String(value))
-  useEffect(() => setDraft(String(value)), [value])
-  const commit = () => {
-    const v = Math.round(Number(draft) / 50) * 50
-    if (draft.trim() !== '' && Number.isFinite(v) && v >= R_MIN && v <= R_MAX) {
-      if (v !== value) onCommit(v)
-      else setDraft(String(value))
-    } else setDraft(String(value))
-  }
-  return (
-    <label className="num-field radius-field">
-      <span>직접</span>
-      <input
-        type="number"
-        inputMode="numeric"
-        min={R_MIN}
-        max={R_MAX}
-        step={50}
-        value={draft}
-        aria-label="주변 조사 반경 (m)"
-        onChange={(e) => setDraft(e.target.value)}
-        onBlur={commit}
-        onKeyDown={(e) => e.key === 'Enter' && commit()}
-      />
-      <span>m</span>
-    </label>
-  )
-}
+const R_TICKS = [250, 500, 1000, 2000, 3000]
 
 function fmt(n: number): string {
   return Math.round(n).toLocaleString('ko-KR')
@@ -285,37 +254,27 @@ export default function SiteStep({ project, update, config, baseMap, onBaseMap, 
 
         <section className="block">
           <h3>주변 조사 반경</h3>
-          <div className="chips">
-            {RADII.map((r) => (
-              <button
-                key={r}
-                type="button"
-                className={`chip${site.radiusM === r ? ' on' : ''}`}
-                aria-pressed={site.radiusM === r}
-                onClick={() =>
-                  update((d) => {
-                    d.site.radiusM = r
-                  })
-                }
-              >
-                {r >= 1000 ? `${r / 1000}km` : `${r}m`}
-              </button>
-            ))}
-            <RadiusField
-              value={site.radiusM}
-              onCommit={(r) =>
-                update((d) => {
-                  d.site.radiusM = r
-                })
-              }
-            />
-          </div>
+          <RangeSlider
+            label="반경"
+            value={site.radiusM}
+            min={R_MIN}
+            max={R_MAX}
+            step={50}
+            ticks={R_TICKS}
+            format={fmtDist}
+            sub={(r) => `걸어서 약 ${Math.round(r / 67)}분`}
+            onCommit={(r) =>
+              update((d) => {
+                d.site.radiusM = r
+              })
+            }
+          />
           <p className="help">
-            대지 중심에서 이 거리 안의 건물·도로·시설을 모읍니다. 지금 {fmtR(site.radiusM)} — 걸어서 약 {Math.round(site.radiusM / 67)}분 거리입니다. 직접 입력은 {R_MIN}m~{R_MAX / 1000}km.
+            대지 중심에서 이 거리 안의 건물·도로·시설을 모읍니다. 슬라이더를 끌거나 눈금을 누르세요 ({R_MIN}m~{R_MAX / 1000}km, 50m 단위). 3D 모형 범위도 이 반경까지 고를 수 있습니다.
           </p>
           {site.radiusM > 1000 && (
             <p className="help">
-              1km보다 넓으면 자료 모으기·도판 그리기가 느려집니다(넓이 {Math.round((site.radiusM / 1000) ** 2 * 10) / 10}배). 3D 모형 범위는 가로·세로 2km까지입니다.
+              1km보다 넓으면 자료 모으기·도판 그리기가 느려집니다(넓이 {Math.round((site.radiusM / 1000) ** 2 * 10) / 10}배).
             </p>
           )}
         </section>
