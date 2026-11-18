@@ -21,6 +21,7 @@ import { flowAccumulation } from '../lib/flow'
 import { arealRings, pointInRings, pointToRingsDist, toXY } from '../lib/xy'
 import { ENV_PANELS } from './panelsEnv'
 import { LAW_PANEL } from './panelsLaw'
+import { RESEARCH_PANEL } from './panelsResearch'
 import { OVERLAY_PANELS } from './overlay'
 import { EXPLODED_PANEL } from './exploded'
 import type { Cam3d, Projector, View3dOpts } from './view3d'
@@ -1336,7 +1337,7 @@ export const TERRAIN_PANELS: PanelDef[] = [
 export const PANEL_GROUP_ORDER: PanelGroup[] = ['위치', '땅의 조건', '지형', '주변 현황', '연계와 접근', '환경', '사회·경제', '현장', '겹쳐 보기', '종합']
 
 /** 보고서 배치 순서 (위치 → 땅의 조건 → 지형 → 주변 현황 → 연계와 접근 → 환경 → 사회·현장) */
-export const ORDERED_PANELS: PanelDef[] = PANEL_GROUP_ORDER.flatMap((g) => [...PANELS, LAW_PANEL, ...TERRAIN_PANELS, ...SECTION_PANELS, ...MOVE_PANELS, ...ENV_PANELS, ...LIFE_PANELS, ...OVERLAY_PANELS, EXPLODED_PANEL, SYNTH_PANEL].filter((p) => p.group === g))
+export const ORDERED_PANELS: PanelDef[] = PANEL_GROUP_ORDER.flatMap((g) => [...PANELS, LAW_PANEL, ...TERRAIN_PANELS, ...SECTION_PANELS, ...MOVE_PANELS, ...ENV_PANELS, ...LIFE_PANELS, RESEARCH_PANEL, ...OVERLAY_PANELS, EXPLODED_PANEL, SYNTH_PANEL].filter((p) => p.group === g))
 
 export function panelNumber(id: string): number {
   return ORDERED_PANELS.findIndex((p) => p.id === id) + 1

@@ -22,8 +22,10 @@ export function siteFarOf(d: Pick<DiagramData, 'center' | 'boundary'>): number {
 /** 범위 후보 (정사각 반쪽, m): 대지가 다 들어가는 것만, 수집 반경까지 */
 export function halfOptionsFor(d: Pick<DiagramData, 'center' | 'boundary' | 'R'>): number[] {
   const far = siteFarOf(d)
-  const opts = [...new Set([150, 300, 500, 1000, d.R])].filter((h) => h <= d.R && h >= far + 20).sort((a, b) => a - b)
-  return opts.length ? opts : [Math.max(d.R, Math.ceil(far + 20))]
+  // 반쪽 1km(가로·세로 2km)까지 — 2026-11-18 조사 반경을 3km까지 늘려도 모형은 무거워지지 않게
+  const R = Math.min(d.R, 1000)
+  const opts = [...new Set([150, 300, 500, 1000, R])].filter((h) => h <= R && h >= far + 20).sort((a, b) => a - b)
+  return opts.length ? opts : [Math.max(R, Math.ceil(far + 20))]
 }
 
 /** 처음 고를 범위 (가로·세로 600m 안팎) */

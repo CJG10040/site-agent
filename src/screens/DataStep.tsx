@@ -285,7 +285,11 @@ export default function DataStep(props: Props) {
               )}
             </section>
 
-            {site.radiusM >= 1000 && <p className="help">반경 1km는 건물이 수천 동일 수 있어 1분 정도 걸릴 수 있습니다.</p>}
+            {site.radiusM >= 1000 && (
+              <p className="help">
+                반경 {site.radiusM >= 1000 ? `${Math.round(site.radiusM / 10) / 100}km` : `${site.radiusM}m`}는 건물이 {site.radiusM > 1000 ? '수만' : '수천'} 동일 수 있어 {site.radiusM > 1500 ? `${Math.ceil((site.radiusM / 1000) ** 2)}분 넘게` : '1분 정도'} 걸릴 수 있습니다.
+              </p>
+            )}
             <button type="button" className="btn primary block" onClick={() => void run()} disabled={running || runnable.length === 0}>
               {running ? '수집 중…' : project.collectedAt ? '다시 수집' : '공간정보 수집'}
             </button>

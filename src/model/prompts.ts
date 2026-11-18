@@ -65,6 +65,7 @@ export function cardTitle(c: Card): string {
 /** 도판 id → 제목 (prompts가 diagrams 모듈을 불러오지 않도록 이름만 따로 둔다) */
 const PANEL_TITLES: Record<string, string> = {
   aerial: '항공사진',
+  scaleIssues: '스케일별 주요 이슈',
   zoning: '용도지역',
   districts: '구역·지구',
   facilities: '도시계획시설',
@@ -147,6 +148,8 @@ export function contextBlock(project: Project): string {
 function sourceHint(project: Project, c: Card): string {
   const s = project.sources.find((x) => x.source_id === c.related_source_ids[0])
   if (!s) return c.origin === 'user' ? '학생이 직접 입력' : ''
+  // 정성 조사(챗봇 웹 조사, 학생 확인): 기관·언론 이름과 시점, 스케일 (2026-11-18)
+  if (s.reliability === 'web') return `${s.source_name}${s.time_range ? `, ${s.time_range}` : ''} · 스케일 ${s.spatial_scale}`
   return `${s.dataset_name}${s.time_range ? `, ${s.time_range}` : ''}`
 }
 

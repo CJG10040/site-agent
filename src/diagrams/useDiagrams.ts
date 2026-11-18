@@ -94,7 +94,12 @@ export function useDiagrams(project: Project, vworldKey: string, only?: string[]
   const hideSig = (project.edits?.hides ?? []).map((h) => h.id).join(',')
   // ④ 항목별 자료를 바꾸면 자료부터 다시
   const srcSig = pickSig(project)
-  const dataSig = `${project.collectedAt ?? ''}|${envSig}|${ngiiSig}|${siteKey(project.site)}|${project.collectedRadiusM ?? project.site.radiusM}|${obsSig}|${hashOf(hideSig)}|${srcSig}`
+  // 정성 조사 카드를 확인·제외·고치면 '스케일별 주요 이슈' 도판을 다시
+  const researchSig = project.cards
+    .filter((c) => c.auto_key?.startsWith('research:') && c.status === 'confirmed')
+    .map((c) => `${c.id}:${c.updated_at}`)
+    .join(',')
+  const dataSig = `${project.collectedAt ?? ''}|${envSig}|${ngiiSig}|${siteKey(project.site)}|${project.collectedRadiusM ?? project.site.radiusM}|${obsSig}|${hashOf(hideSig)}|${srcSig}|${hashOf(researchSig)}`
   const labelEdits = project.edits?.labels ?? []
   const labelSig = labelEdits.map((l) => `${l.panelId}:${l.key}:${l.dx.toFixed(1)},${l.dy.toFixed(1)}:${l.hidden ? 1 : 0}`).join('|')
   // 결론을 고칠 때마다 프로젝트 객체가 바뀌므로, 자료가 실제로 바뀐 때만 다시 만든다

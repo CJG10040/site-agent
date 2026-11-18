@@ -66,7 +66,7 @@ export interface SourceRecord {
   license: string
   limitations: string
   original_url: string // 인증키는 제거하고 저장
-  reliability: 'official' | 'computed' | 'user' | 'secondary' // secondary = 민간 지도 서비스(카카오 등)
+  reliability: 'official' | 'computed' | 'user' | 'secondary' | 'web' // secondary = 민간 지도 서비스(카카오 등), web = 챗봇 웹 조사(학생 확인 전 · 2026-11-18)
   feature_count: number | null
   status: 'ok' | 'empty' | 'error'
   error: string | null

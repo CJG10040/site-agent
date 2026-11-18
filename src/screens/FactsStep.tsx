@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react'
+import ResearchPanel from '../components/ResearchPanel'
 import { linksByFact } from '../model/observations'
+import { isResearchCard } from '../model/research'
 import { makeCard, nextNumber, nowIso } from '../model/project'
 import type { Card, CardStatus, Project, SourceRecord } from '../model/types'
 
@@ -15,8 +17,8 @@ const FILTERS: { id: Filter; label: string }[] = [
   { id: 'all', label: '전체' },
   { id: 'confirmed', label: '확인됨' },
   { id: 'rejected', label: '제외' },
-  // 이전 버전에서 만든 프로젝트에만 남아 있는 상태
-  { id: 'draft', label: '검토 대기' },
+  // 확인 전: 정성 조사(챗봇) 카드 (2026-11-18) + 이전 버전에서 만든 검토 대기 카드
+  { id: 'draft', label: '확인 전' },
 ]
 
 const TYPE_LABEL: Record<string, string> = {
@@ -37,6 +39,7 @@ const RELIABILITY_LABEL: Record<SourceRecord['reliability'], string> = {
   secondary: '민간 지도 서비스',
   computed: '프로그램 계산값',
   user: '사용자 입력 자료',
+  web: '챗봇 웹 조사 — 출처를 열어 확인하세요',
 }
 
 function when(iso: string | null): string {
@@ -159,6 +162,24 @@ function FactCard({
         </div>
       ) : (
         <p className="card-text">{card.text}</p>
+      )}
+      {isResearchCard(card) && (
+        <p className="muted small">
+          {card.fields?.['스케일']}
+          {card.fields?.['지역'] ? ` (${card.fields['지역']})` : ''}
+          {card.fields?.['시점'] ? ` · ${card.fields['시점']}` : ''}
+          {card.fields?.['출처'] ? ` · ${card.fields['출처']}` : ''}
+          {card.fields?.['주소'] && /^https?:\/\//.test(card.fields['주소']) ? (
+            <>
+              {' · '}
+              <a href={card.fields['주소']} target="_blank" rel="noreferrer noopener">
+                출처 열기
+              </a>
+            </>
+          ) : (
+            ' · 주소 없음'
+          )}
+        </p>
       )}
 
       {card.related_source_ids.length > 0 && (
@@ -320,6 +341,8 @@ export default function FactsStep({ project, update, onGoData }: Props) {
   const observedBy = useMemo(() => linksByFact(project), [project])
 
   const cards = project.cards.filter((c) => c.type === 'FACT' || c.type === 'UNKNOWN')
+  // 이전 버전의 검토 대기 카드 (정성 조사 카드는 학생이 하나씩 확인하므로 빼고)
+  const legacyDraft = cards.filter((c) => c.status === 'draft' && !isResearchCard(c)).length
   const counts = {
     draft: cards.filter((c) => c.status === 'draft').length,
     confirmed: cards.filter((c) => c.status === 'confirmed').length,
@@ -397,6 +420,8 @@ export default function FactsStep({ project, update, onGoData }: Props) {
         </p>
       </header>
 
+      <ResearchPanel project={project} update={update} onImported={() => setFilter('draft')} />
+
       <div className="fact-summary">
         <div className={`meter${confirmedFacts >= 5 ? ' done' : ''}`}>
           <span className="meter-value">{confirmedFacts}</span>
@@ -421,9 +446,9 @@ export default function FactsStep({ project, update, onGoData }: Props) {
         </div>
       ) : (
         <>
-          {counts.draft > 0 && (
+          {legacyDraft > 0 && (
             <div className="notice">
-              이전 버전에서 만든 검토 대기 카드가 {counts.draft}개 있습니다.{' '}
+              이전 버전에서 만든 검토 대기 카드가 {legacyDraft}개 있습니다.{' '}
               <button
                 type="button"
                 className="btn small"
@@ -431,7 +456,7 @@ export default function FactsStep({ project, update, onGoData }: Props) {
                   update((d) => {
                     const t = nowIso()
                     for (const c of d.cards) {
-                      if ((c.type === 'FACT' || c.type === 'UNKNOWN') && c.status === 'draft') {
+                      if ((c.type === 'FACT' || c.type === 'UNKNOWN') && c.status === 'draft' && !isResearchCard(c)) {
                         c.status = 'confirmed'
                         c.updated_at = t
                       }

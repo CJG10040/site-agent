@@ -1,6 +1,7 @@
 // 도판에 쓸 자료를 프로젝트의 수집 결과에서 한 번에 꺼낸다.
 
 import type { RoofTitle } from '../sources/buildingRegister'
+import { RESEARCH_KEY, RESEARCH_SCALES } from '../model/researchScales'
 import { area, booleanPointInPolygon, feature, point } from '@turf/turf'
 import type { Geometry, LineString, MultiLineString } from 'geojson'
 import { centerOf, isAreal, isLinear, siteBoundary, type Areal } from '../lib/geo'
@@ -448,6 +449,8 @@ export interface DiagramData {
   has: Record<string, boolean>
   /** 학생이 뺀 자료: 이번에 찾아 뺀 수와 못 찾은 기록 */
   hidden: { applied: number; missing: HideEdit[] }
+  /** 정성 조사 (2026-11-18): 학생이 출처를 확인한 챗봇 웹 조사 카드 — 스케일(거시 → 미시) 순서 */
+  research: { scale: string; place: string; items: { id: string; theme: string; title: string; text: string; when: string; source: string }[] }[]
 }
 
 /**
@@ -957,11 +960,22 @@ export function buildDiagramData(project: Project): DiagramData | null {
       return { lon: d.location!.lon, lat: d.location!.lat, name: o.text.trim().slice(0, 40), kind, label: o.id.replace('O-', '') }
     })
 
+  // 정성 조사: 확인한 카드만, 스케일 순서대로 (⑥ 도판 '스케일별 주요 이슈')
+  const resCards = project.cards.filter((c) => c.auto_key?.startsWith(RESEARCH_KEY) && c.status === 'confirmed')
+  const research = RESEARCH_SCALES.map((scale) => {
+    const cs = resCards.filter((c) => c.fields?.['스케일'] === scale)
+    return {
+      scale,
+      place: cs.map((c) => c.fields?.['지역'] ?? '').find(Boolean) ?? '',
+      items: cs.map((c) => ({ id: c.id, theme: c.fields?.['주제'] ?? '', title: c.fields?.['제목'] || c.text.slice(0, 40), text: c.text, when: c.fields?.['시점'] ?? '', source: c.fields?.['출처'] ?? '' })),
+    }
+  })
   const out: DiagramData = {
     center,
     R,
     boundary,
     collectedAt: project.collectedAt ?? null,
+    research,
     buildings,
     addedFromAddr,
     parcels,

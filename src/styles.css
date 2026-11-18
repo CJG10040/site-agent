@@ -5131,3 +5131,35 @@ dl {
 .model-dims-table tr.changed input {
   border-color: var(--accent);
 }
+
+/* 조사 반경 직접 입력 (2026-11-18) */
+.radius-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+}
+.radius-field input {
+  width: 72px;
+}
+
+/* 정성 조사 (2026-11-18) */
+.research-panel .row.wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 6px 0;
+}
+.research-prompt textarea {
+  width: 100%;
+  font-size: 12px;
+}
+.research-panel .field textarea {
+  width: 100%;
+}
+.research-list {
+  margin: 4px 0;
+  padding-left: 18px;
+  max-height: 260px;
+  overflow: auto;
+}

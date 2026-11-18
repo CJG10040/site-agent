@@ -228,7 +228,10 @@ export async function collectSiteData(input: CollectInput, onProgress: (p: Colle
     const scopeLabel = layer.scope === 'center' ? '대지 중심점' : layer.scope === 'site' ? '대지 경계' : `반경 ${radiusM}m`
     const retrievedAt = new Date().toISOString()
     try {
-      const r = await queryFeatures(config, { layerId: layer.id, geomFilter, geometry: layer.geometry, maxFeatures: layer.maxFeatures })
+      // 반경이 1km보다 넓으면 받는 개수 한도를 넓이만큼 늘림 (2026-11-18: 반경 직접 입력 최대 3km — 건물 등이 잘리지 않게)
+      const areaK = layer.scope === 'center' || layer.scope === 'site' ? 1 : Math.max(1, (radiusM / 1000) ** 2)
+      const maxFeatures = areaK > 1 ? Math.round((layer.maxFeatures ?? 3000) * areaK) : layer.maxFeatures
+      const r = await queryFeatures(config, { layerId: layer.id, geomFilter, geometry: layer.geometry, maxFeatures })
       const state = r.features.length > 0 ? 'ok' : 'empty'
       layerOutcomes.push({ layer, state, ...r, error: null, retrievedAt, scopeLabel })
       set(layer.id, {

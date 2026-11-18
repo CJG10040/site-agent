@@ -47,7 +47,7 @@ export function applyCollection(project: Project, outcome: CollectOutcome, bound
   // ── 0. 기존 출처 정리: 다시 만들 자동 카드의 출처만 지우고, 사용자가 손댄 카드·다른 카드가 기대는 카드의 출처는 남긴다
   const referenced = referencedCardIds(project)
   const keepIds = new Set(project.cards.filter((c) => !isReplaceable(c, referenced)).flatMap((c) => c.related_source_ids))
-  project.sources = project.sources.filter((s) => s.reliability === 'user' || keepIds.has(s.source_id))
+  project.sources = project.sources.filter((s) => s.reliability === 'user' || s.reliability === 'web' || keepIds.has(s.source_id))
 
   const newSource = (s: Omit<SourceRecord, 'source_id'>): string => {
     const id = nextNumber(project, 'S')
