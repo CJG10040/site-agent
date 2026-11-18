@@ -1812,7 +1812,8 @@ input[type='datetime-local'] {
   flex-wrap: wrap;
 }
 
-.workbench {
+/* ⑧ 챗봇 왕복 작업 칸 — 2026-11-18: 예전 이름 .workbench가 ⑩ 모형 작업대(화면 전체를 덮는 창)와 겹쳐 ⑧ 화면이 가려지고 잘렸음 */
+.round-workbench {
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -1823,7 +1824,7 @@ input[type='datetime-local'] {
   min-width: 0;
 }
 
-.workbench h3 {
+.round-workbench h3 {
   font-size: 16px;
 }
 

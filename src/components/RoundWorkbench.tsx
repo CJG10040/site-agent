@@ -102,7 +102,7 @@ export default function RoundWorkbench({ project, round, update, onImported }: P
   }
 
   return (
-    <div className="workbench">
+    <div className="round-workbench">
       <header>
         <h3>
           {def.short} {def.title}
