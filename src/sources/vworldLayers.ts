@@ -141,7 +141,8 @@ export const COLLECT_LAYERS: CollectLayer[] = [
     geometry: true,
     nameField: 'bld_nm',
     kind: 'buildings',
-    maxFeatures: 5000,
+    // 2026-11-18: 5,000 → 20,000 — 광주 도심 반경 1km 원에 약 8,000동(반경 3km 72,530동)이라 5,000에서 잘렸음
+    maxFeatures: 20000,
     limitations:
       '건축물대장과 건물 도형을 결합한 자료. 높이·건폐율·용적률은 비어 있거나 0인 경우가 많고, 무허가·최근 건물은 빠질 수 있음.',
   },

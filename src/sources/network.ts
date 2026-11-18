@@ -2,11 +2,11 @@
 // Web Worker에서 선택도를 계산한다. 결과(나뉜 길 + 길마다 정규화 선택도)는 프로젝트에 저장해 다시 계산하지 않는다.
 
 import type { Geometry, Position } from 'geojson'
-import { queryPolygonWkt, radiusCircle } from '../lib/geo'
+import { radiusCircle } from '../lib/geo'
 import type { XY } from '../lib/network'
 import type { NetworkJob, NetworkMessage } from '../lib/network.worker'
 import { localProj, toXY } from '../lib/xy'
-import { queryFeatures, type VWorldConfig } from './vworld'
+import { type VWorldConfig, queryFeaturesInArea } from './vworld'
 
 export const NETWORK_LAYER = 'LT_L_N3A0020000'
 export const WALK_R = 800
@@ -83,12 +83,15 @@ export async function networkAround(
 ): Promise<NetworkResult> {
   const fetchR = networkRadius(displayR)
   onProgress?.(`반경 ${(fetchR / 1000).toLocaleString('ko-KR', { maximumFractionDigits: 1 })}km 도로중심선 받는 중`)
-  const r = await queryFeatures(config, {
+  // 넓으면 칸으로 나눠 받음 (브이월드 10㎢ 한도 — 반경 1.8km 원이 벌써 10㎢를 넘음)
+  const r = await queryFeaturesInArea(config, {
     layerId: NETWORK_LAYER,
-    geomFilter: queryPolygonWkt(radiusCircle(center, fetchR), 90),
+    area: radiusCircle(center, fetchR),
+    maxVertices: 90,
     geometry: true,
     attribute: false,
     maxFeatures: 40000,
+    onProgress: (got, tile, tiles) => onProgress?.(`반경 ${(fetchR / 1000).toLocaleString('ko-KR', { maximumFractionDigits: 1 })}km 도로중심선 ${got.toLocaleString('ko-KR')}개 받는 중${tiles > 1 ? ` (${tile}/${tiles}칸)` : ''}`),
   })
   const proj = localProj(center[0], center[1])
   const lines: XY[][] = []

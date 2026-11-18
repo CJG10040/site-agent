@@ -3,7 +3,9 @@
 // - 검색·주소·2D 데이터 API: CORS 미지원 → JSONP로 호출 (2026-11-08 확인)
 // 인증키는 코드에 넣지 않고 사용자가 설정 화면에서 입력하며, 이 브라우저에만 저장한다.
 
-import type { Geometry } from 'geojson'
+import { area as turfArea, bbox as turfBbox, bboxPolygon, featureCollection, intersect, polygon as turfPolygon } from '@turf/turf'
+import type { Geometry, Polygon } from 'geojson'
+import { queryPolygonWkt } from '../lib/geo'
 import { jsonp, JsonpError } from '../lib/jsonp'
 import { readSetting, writeSetting } from '../lib/storage'
 
@@ -333,6 +335,8 @@ export interface FeatureQuery {
   maxFeatures?: number
   /** false면 속성 없이 도형만 (기본 true) */
   attribute?: boolean
+  /** 쪽을 받을 때마다 (받은 수, 전체 수) — 수집 진행도 (2026-11-18) */
+  onPage?: (got: number, total: number) => void
 }
 
 export interface FeatureQueryResult {
@@ -368,6 +372,7 @@ export async function queryFeatures(config: VWorldConfig, q: FeatureQuery): Prom
     const batch = r.result?.featureCollection?.features ?? []
     total = r.total ?? batch.length
     features.push(...batch)
+    q.onPage?.(Math.min(features.length, max), Math.min(total, max))
     if (features.length >= total || batch.length < size) break
   }
   return {
@@ -376,6 +381,88 @@ export async function queryFeatures(config: VWorldConfig, q: FeatureQuery): Prom
     truncated: total > max,
     url: publicUrl('/req/data', { ...base, page: '1', format: 'json' }),
   }
+}
+
+/**
+ * 넓은 범위 조회: 브이월드 데이터 API는 polygon·box 조회 면적이 10㎢ 이내라(넘으면 INVALID_RANGE — 2026-11-18 반경 3km 수집에서 확인)
+ * 9㎢를 넘으면 한 변 2.9km 이하 칸으로 나눠(범위와 겹치는 부분만) 따로 받고 합친다. 칸 경계에 걸친 도형은 두 칸에서 오므로 한 번만 남김.
+ * 개수 한도는 칸마다 maxFeatures (칸으로 나누면 한 칸에서 잘릴 일이 거의 없음).
+ */
+const AREA_LIMIT_KM2 = 9
+const TILE_M = 2900
+
+function featureKey(f: GeoFeature): string {
+  const id = (f as unknown as { id?: unknown }).id
+  if (typeof id === 'string' || typeof id === 'number') return String(id)
+  const g = f.geometry as { coordinates?: unknown } | null
+  return `${JSON.stringify(f.properties)}|${JSON.stringify(g?.coordinates ?? null).slice(0, 120)}`
+}
+
+/** 9㎢를 넘는 범위를 한 변 2.9km 이하 칸과 겹치는 조각들로 (조각마다 9㎢ 이하) */
+export function areaTiles(area: Polygon): Polygon[] {
+  const [x0, y0, x1, y1] = turfBbox(area)
+  const lat = (y0 + y1) / 2
+  const dLat = TILE_M / 110574
+  const dLon = TILE_M / (111320 * Math.cos((lat * Math.PI) / 180))
+  const nx = Math.ceil((x1 - x0) / dLon)
+  const ny = Math.ceil((y1 - y0) / dLat)
+  const sx = (x1 - x0) / nx
+  const sy = (y1 - y0) / ny
+  const parts: Polygon[] = []
+  const whole = turfPolygon(area.coordinates)
+  for (let i = 0; i < nx; i++)
+    for (let j = 0; j < ny; j++) {
+      const box = bboxPolygon([x0 + i * sx, y0 + j * sy, x0 + (i + 1) * sx, y0 + (j + 1) * sy])
+      const cut = intersect(featureCollection([whole, box]))
+      if (!cut) continue
+      const geoms: Polygon[] = cut.geometry.type === 'Polygon' ? [cut.geometry] : cut.geometry.coordinates.map((c) => ({ type: 'Polygon', coordinates: c }))
+      for (const g of geoms) if (turfArea(g) > 1000) parts.push(g)
+    }
+  return parts
+}
+
+export async function queryFeaturesInArea(
+  config: VWorldConfig,
+  q: Omit<FeatureQuery, 'geomFilter' | 'onPage'> & {
+    area: Polygon
+    /** WKT 꼭짓점 수 한도 */
+    maxVertices?: number
+    /** 진행: 받은 수(겹친 것 포함), 칸 번호(1부터)·칸 수 */
+    onProgress?: (got: number, tile: number, tiles: number) => void
+  },
+): Promise<FeatureQueryResult & { tiles: number }> {
+  const km2 = turfArea(q.area) / 1e6
+  const base = { layerId: q.layerId, geometry: q.geometry, maxFeatures: q.maxFeatures, attribute: q.attribute }
+  if (km2 <= AREA_LIMIT_KM2) {
+    const r = await queryFeatures(config, { ...base, geomFilter: queryPolygonWkt(q.area, q.maxVertices), onPage: (got) => q.onProgress?.(got, 1, 1) })
+    return { ...r, tiles: 1 }
+  }
+  const parts = areaTiles(q.area)
+  const seen = new Set<string>()
+  const features: GeoFeature[] = []
+  let total = 0
+  let truncated = false
+  let url = ''
+  let got = 0
+  for (let k = 0; k < parts.length; k++) {
+    const before = got
+    const r = await queryFeatures(config, {
+      ...base,
+      geomFilter: queryPolygonWkt(parts[k], q.maxVertices),
+      onPage: (n) => q.onProgress?.(before + n, k + 1, parts.length),
+    })
+    got = before + r.features.length
+    total += r.total
+    truncated ||= r.truncated
+    url ||= r.url
+    for (const f of r.features) {
+      const key = featureKey(f)
+      if (seen.has(key)) continue
+      seen.add(key)
+      features.push(f)
+    }
+  }
+  return { features, total: truncated ? Math.max(total - (got - features.length), features.length) : features.length, truncated, url: url && `${url} (외 ${parts.length - 1}칸으로 나눠 받음)`, tiles: parts.length }
 }
 
 // ───────────────────────── 연결 진단 ─────────────────────────

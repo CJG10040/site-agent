@@ -60,6 +60,15 @@ export default function DataStep(props: Props) {
   const [showSun, setShowSun] = useState(false)
   const [progress, setProgress] = useState<CollectProgress[] | null>(null)
   const [running, setRunning] = useState(false)
+  // 수집 진행도 (2026-11-18 사용자 요청: 멈춘 건지 진행 중인지 모르겠음): 시작 시각·단계, 0.5초마다 지난 시간 다시 그림
+  const [startedAt, setStartedAt] = useState<number | null>(null)
+  const [phase, setPhase] = useState<'collect' | 'apply' | 'env'>('collect')
+  const [, setNow] = useState(0)
+  useEffect(() => {
+    if (!running) return
+    const id = window.setInterval(() => setNow(Date.now()), 500)
+    return () => window.clearInterval(id)
+  }, [running])
   const [error, setError] = useState<string | null>(null)
   const [fit, setFit] = useState<MapFit | null>(null)
   const [shown, setShown] = useState<OverlayId[]>([])
@@ -150,6 +159,8 @@ export default function DataStep(props: Props) {
   const run = async () => {
     if (!boundary) return
     setRunning(true)
+    setStartedAt(Date.now())
+    setPhase('collect')
     setError(null)
     // 다시 수집하면 자동 카드가 바뀌므로 그 전 해석을 버전으로 남긴다 (바뀐 것이 없으면 건너뜀)
     if (project.collectedAt) await saveVersion(project, '다시 수집 전', 'recollect').catch(() => null)
@@ -163,6 +174,9 @@ export default function DataStep(props: Props) {
         },
       )
       let after = null as Project | null
+      // 모은 자료 정리·사실 카드 (넓은 반경이면 몇 초 화면이 멈출 수 있어 그 전에 단계 글을 먼저 그림)
+      setPhase('apply')
+      await new Promise((r) => window.setTimeout(r, 60))
       update((d) => {
         applyCollection(d, outcome, boundary, last)
         // 올려 둔 수치지도(같은 대지)는 남아 있으므로 그 사실 카드도 다시
@@ -178,6 +192,7 @@ export default function DataStep(props: Props) {
           setProgress(last)
         }
         const t0 = performance.now()
+        setPhase('env')
         setEnv({ state: 'running', message: '계산 준비' })
         try {
           const r = await computeEnv(after, config, (text) => setEnv({ state: 'running', message: text }))
@@ -202,10 +217,27 @@ export default function DataStep(props: Props) {
       setError(e instanceof Error ? e.message : String(e))
     } finally {
       setRunning(false)
+      setStartedAt(null)
     }
   }
 
   const rows: CollectProgress[] = progress ?? project.collectLog ?? []
+  // 진행도: 끝난 항목 수 / 전체, 지금 받는 항목
+  const doneN = rows.filter((r) => r.state === 'ok' || r.state === 'empty' || r.state === 'error').length
+  const runningRows = rows.filter((r) => r.state === 'running')
+  const frac = rows.length ? doneN / rows.length : 0
+  const elapsed = startedAt ? Math.floor((Date.now() - startedAt) / 1000) : 0
+  const phaseLabel =
+    phase === 'apply'
+      ? '모은 자료 정리·사실 카드 만드는 중 (넓은 반경이면 몇 초 화면이 멈출 수 있음)'
+      : phase === 'env'
+        ? `환경 계산 중${runningRows.find((r) => r.id === 'env')?.message ? ` — ${runningRows.find((r) => r.id === 'env')!.message}` : ''}`
+        : runningRows.length
+          ? `받는 중: ${runningRows
+              .slice(0, 3)
+              .map((r) => `${r.label}${r.message ? ` (${r.message})` : ''}`)
+              .join(' · ')}${runningRows.length > 3 ? ` 외 ${runningRows.length - 3}개` : ''}`
+          : '준비 중'
   const grouped = GROUP_ORDER.map((g) => ({ group: g, rows: rows.filter((r) => r.group === g) })).filter((g) => g.rows.length)
   const autoCards = project.cards.filter((c) => c.origin === 'data' && (c.type === 'FACT' || c.type === 'UNKNOWN') && c.status !== 'rejected').length
 
@@ -301,6 +333,21 @@ export default function DataStep(props: Props) {
             )}
             {siteChanged && !running && (
               <p className="notice error">수집한 뒤 대지 경계가 바뀌었습니다. 지금 보이는 자료와 사실 카드는 이전 대지 기준입니다. 다시 수집하세요.</p>
+            )}
+            {running && (
+              <div className="export-progress collect-progress" role="status" aria-live="polite">
+                <div className="export-bar" role="progressbar" aria-valuemin={0} aria-valuemax={rows.length} aria-valuenow={doneN}>
+                  <span style={{ width: `${Math.max(2, Math.round(frac * 100))}%` }} />
+                </div>
+                <p className="small">
+                  <strong>
+                    {doneN}/{rows.length}개 끝남 · {Math.round(frac * 100)}%
+                  </strong>
+                  <span className="muted"> · {elapsed}초 지남</span>
+                </p>
+                <p className="small muted">{phaseLabel}</p>
+                <p className="small muted">막대 위 빛이 움직이고 지난 시간이 늘면 진행 중입니다. 건물처럼 큰 자료는 몇 건째 받는지 아래 목록에 보입니다.</p>
+              </div>
             )}
             {error && <p className="notice error">{error}</p>}
           </>

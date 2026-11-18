@@ -30,7 +30,7 @@ import { storesAround, type StoresResult } from './stores'
 import { busStopsAround, type TransitResult } from './transit'
 import { ALL_LAYERS, layerCategory, type CollectLayer } from './vworldLayers'
 import { LAND_DATASETS, nedByDong, nedForParcel } from './vworldLand'
-import { PARCEL_LAYER, queryFeatures, reverseGeocode, VWorldError, type GeoFeature, type VWorldConfig } from './vworld'
+import { PARCEL_LAYER, queryFeatures, queryFeaturesInArea, reverseGeocode, VWorldError, type GeoFeature, type VWorldConfig } from './vworld'
 
 export type CollectState = 'pending' | 'running' | 'ok' | 'empty' | 'error'
 
@@ -183,7 +183,6 @@ export async function collectSiteData(input: CollectInput, onProgress: (p: Colle
   const want = (c: DataCategory) => selection.includes(c)
   const center = centerOf(boundary)
   const siteWkt = queryPolygonWkt(boundary)
-  const radiusWkt = queryPolygonWkt(radiusCircle(center, radiusM), 70)
   const pointWkt = `POINT(${center[0].toFixed(7)} ${center[1].toFixed(7)})`
 
   const layers = ALL_LAYERS.filter((l) => {
@@ -224,14 +223,26 @@ export async function collectSiteData(input: CollectInput, onProgress: (p: Colle
   const layerOutcomes: LayerOutcome[] = []
   const layerTask = runPool(layers, 4, async (layer) => {
     set(layer.id, { state: 'running' })
-    const geomFilter = layer.scope === 'center' ? pointWkt : layer.scope === 'site' ? siteWkt : radiusWkt
+    const geomFilter = layer.scope === 'center' ? pointWkt : layer.scope === 'site' ? siteWkt : ''
     const scopeLabel = layer.scope === 'center' ? '대지 중심점' : layer.scope === 'site' ? '대지 경계' : `반경 ${radiusM}m`
     const retrievedAt = new Date().toISOString()
     try {
       // 반경이 1km보다 넓으면 받는 개수 한도를 넓이만큼 늘림 (2026-11-18: 반경 직접 입력 최대 3km — 건물 등이 잘리지 않게)
       const areaK = layer.scope === 'center' || layer.scope === 'site' ? 1 : Math.max(1, (radiusM / 1000) ** 2)
       const maxFeatures = areaK > 1 ? Math.round((layer.maxFeatures ?? 3000) * areaK) : layer.maxFeatures
-      const r = await queryFeatures(config, { layerId: layer.id, geomFilter, geometry: layer.geometry, maxFeatures })
+      // 반경 조회는 넓으면 칸으로 나눠 받음 (브이월드 10㎢ 한도) — 받는 동안 몇 건째인지 알림
+      const fmtN = (n: number) => n.toLocaleString('ko-KR')
+      const r =
+        layer.scope === 'center' || layer.scope === 'site'
+          ? await queryFeatures(config, { layerId: layer.id, geomFilter, geometry: layer.geometry, maxFeatures, onPage: (got, total) => set(layer.id, { state: 'running', message: `${fmtN(got)}/${fmtN(total)}건 받는 중` }) })
+          : await queryFeaturesInArea(config, {
+              layerId: layer.id,
+              area: radiusCircle(center, radiusM),
+              maxVertices: 70,
+              geometry: layer.geometry,
+              maxFeatures,
+              onProgress: (got, tile, tiles) => set(layer.id, { state: 'running', message: `${fmtN(got)}건 받는 중${tiles > 1 ? ` (범위를 ${tiles}칸으로 나눠 ${tile}번째)` : ''}` }),
+            })
       const state = r.features.length > 0 ? 'ok' : 'empty'
       layerOutcomes.push({ layer, state, ...r, error: null, retrievedAt, scopeLabel })
       set(layer.id, {
