@@ -80,7 +80,7 @@ function swatch(item: LegendItem, x: number, y: number, pal: Palette): string {
     case 'outline':
       return `<rect x="${x + 1}" y="${y + 1}" width="18" height="16" fill="none" stroke="${c}" stroke-width="2.5"/>`
     default:
-      return `<rect x="${x}" y="${y}" width="20" height="18" rx="2" fill="${c}" stroke="${pal.ink}" stroke-opacity="0.15"/>`
+      return `<rect x="${x}" y="${y}" width="20" height="18" fill="${c}" stroke="${pal.ink}" stroke-opacity="0.2" stroke-width="0.8"/>`
   }
 }
 
@@ -136,7 +136,7 @@ export function composePanel(meta: ComposeMeta, out: PanelOutput, frame: Frame, 
   const sq = frame.shape !== 'circle'
   const nx = MAP_CX + MAP_R - (sq ? 40 : 10)
   const ny = MAP_CY - MAP_R + (sq ? 30 : 14)
-  const north = `<g id="방위표"><path d="M${nx} ${ny} L${nx + 11} ${ny + 32} L${nx} ${ny + 25} L${nx - 11} ${ny + 32} Z" fill="${pal.ink}"/><text x="${nx}" y="${ny + 52}" font-size="16" font-weight="700" text-anchor="middle" fill="${pal.ink}">N</text></g>`
+  const north = `<g id="방위표"><path d="M${nx} ${ny} L${nx + 11} ${ny + 32} L${nx} ${ny + 25} L${nx - 11} ${ny + 32} Z" fill="${pal.ink}"/><text x="${nx}" y="${ny + 52}" font-size="16" font-weight="600" text-anchor="middle" fill="${pal.ink}">N</text></g>`
   const len = niceLength(frame.R * 0.45)
   const lenPx = len * frame.s
   const sx = MAP_CX - MAP_R + (sq ? 30 : 40)
@@ -174,9 +174,9 @@ export function composePanel(meta: ComposeMeta, out: PanelOutput, frame: Frame, 
     emptyNote,
     nf ? '' : north,
     out.noScale || nf ? '' : scale,
-    `<g id="제목"><text x="40" y="1012" font-size="34" font-weight="700" fill="${pal.ink}"><tspan fill="${pal.subtle}" font-weight="400">${String(meta.number).padStart(2, '0')}  </tspan>${esc(meta.title)}</text>`,
+    `<g id="제목"><text x="40" y="1012" font-size="34" font-weight="600" fill="${pal.ink}"><tspan fill="${pal.subtle}" font-weight="400">${String(meta.number).padStart(2, '0')}  </tspan>${esc(meta.title)}</text>`,
     `<text x="40" y="1046" font-size="17" fill="${pal.subtle}">${esc(meta.subtitle)}</text></g>`,
-    `<g id="범례">${out.legendTitle ? `<text x="40" y="${legendTop - 10}" font-size="16" font-weight="700" fill="${pal.ink}">${esc(out.legendTitle)}</text>` : ''}${legendSvg}</g>`,
+    `<g id="범례">${out.legendTitle ? `<text x="40" y="${legendTop - 10}" font-size="16" font-weight="600" fill="${pal.ink}">${esc(out.legendTitle)}</text>` : ''}${legendSvg}</g>`,
     `<g id="출처">${captionLines.map((l, i) => `<text x="40" y="${captionTop + 14 + i * 19}" font-size="13" fill="${pal.subtle}">${esc(l)}</text>`).join('')}</g>`,
     `</g></svg>`,
   ].join('')

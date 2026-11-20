@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from 'react'
 import { EDIT_FIELDS, EDIT_LISTS, PALETTE_GROUPS, PALETTES, boardBase, paletteFor, paletteOf, type Palette } from '../diagrams/palette'
 import { ORDERED_PANELS } from '../diagrams/panels'
 import { panelLabel } from '../diagrams/render'
-import { HARMONY_LABEL, TONE_LABEL, themePalette } from '../diagrams/themePalette'
+import { THEME_PAIRS, TONE_LABEL, themePalette } from '../diagrams/themePalette'
 import type { DiagramSettings, PaletteEdit, PaletteId, PanelStyle, ThemeSpec } from '../model/types'
 
 interface Props {
@@ -14,7 +14,8 @@ interface Props {
   setSettings: (patch: Partial<DiagramSettings>) => void
 }
 
-const DEFAULT_THEME: ThemeSpec = { color: '#4b6f8c', harmony: 'complement', tone: 'light', variant: 0 }
+/** 새로 만들 때의 첫 조합: 앱 화면과 같은 '먹 + 레드라인' */
+const DEFAULT_THEME: ThemeSpec = { color: THEME_PAIRS[0].color, point: THEME_PAIRS[0].point, harmony: 'complement', tone: 'light', variant: 0 }
 
 /** 묶음 단추에 보이는 색 띠: 바탕 · 바탕 건물 · 단계 · 범주 · 강조 */
 function Strip({ pal, wide = false }: { pal: Palette; wide?: boolean }) {
@@ -33,7 +34,11 @@ function isEmptyEdit(e: PaletteEdit | undefined): boolean {
   return !Object.entries(e).some(([, v]) => (Array.isArray(v) ? v.some(Boolean) : !!v))
 }
 
-const sameTheme = (a: ThemeSpec | undefined, b: ThemeSpec) => !!a && a.color.toLowerCase() === b.color.toLowerCase() && a.harmony === b.harmony && a.tone === b.tone && a.variant === b.variant
+const sameTheme = (a: ThemeSpec | undefined, b: ThemeSpec) =>
+  !!a && a.color.toLowerCase() === b.color.toLowerCase() && (a.point ?? '').toLowerCase() === (b.point ?? '').toLowerCase() && a.tone === b.tone && (!!a.point || (a.harmony === b.harmony && a.variant === b.variant))
+
+/** 예전 방식(포인트색 없음)으로 저장된 테마는 포인트색을 채워 새 방식 초안으로 */
+const asDraft = (t: ThemeSpec | undefined): ThemeSpec => (t ? { ...t, point: t.point ?? DEFAULT_THEME.point } : DEFAULT_THEME)
 
 /** 색 칸 하나: 바꾸는 동안은 화면에만, 손을 떼고 잠시 뒤 저장 (도판을 너무 자주 다시 그리지 않게) */
 function ColorInput({ value, edited, label, onCommit, onReset }: { value: string; edited: boolean; label: string; onCommit: (v: string) => void; onReset: () => void }) {
@@ -85,9 +90,9 @@ export default function StylePanel({ settings, setSettings }: Props) {
   const currentTheme = target === 'all' ? settings.theme : ps?.theme
 
   // 테마색 초안 (고칠 곳을 바꾸면 그곳의 테마로)
-  const [draft, setDraft] = useState<ThemeSpec>(currentTheme ?? DEFAULT_THEME)
+  const [draft, setDraft] = useState<ThemeSpec>(() => asDraft(currentTheme))
   useEffect(() => {
-    setDraft((d) => currentTheme ?? d)
+    setDraft((d) => (currentTheme ? asDraft(currentTheme) : d))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [target])
   const draftPal = themePalette(draft)
@@ -174,32 +179,46 @@ export default function StylePanel({ settings, setSettings }: Props) {
             ))}
           </div>
         ))}
-        <div className={`pal-group theme-maker${activeId === 'theme' ? ' on' : ''}`} aria-label="테마색으로 만들기">
-          <span className="pal-group-label">테마색</span>
-          <label className="theme-color">
-            <input type="color" value={draft.color} aria-label="테마색" onChange={(e) => setDraft({ ...draft, color: e.target.value })} />
-            <code className="small">{draft.color}</code>
-          </label>
-          <Mini
-            label="범주색 고르는 방식"
-            value={draft.harmony}
-            options={Object.entries(HARMONY_LABEL) as [ThemeSpec['harmony'], string][]}
-            onChange={(v) => setDraft({ ...draft, harmony: v })}
-          />
-          <Mini label="바탕" value={draft.tone} options={Object.entries(TONE_LABEL) as [ThemeSpec['tone'], string][]} onChange={(v) => setDraft({ ...draft, tone: v })} />
-          <button type="button" className="btn small" onClick={() => setDraft({ ...draft, variant: draft.variant + 1 })} title="범주색 순서와 강조색을 바꿔 다시 짭니다">
-            다른 조합
-          </button>
-          <span className="theme-preview">
-            <Strip pal={draftPal} wide />
-          </span>
-          <button type="button" className={`btn small${draftInUse ? '' : ' primary'}`} disabled={draftInUse} onClick={useTheme}>
-            {draftInUse ? '쓰는 중' : target === 'all' ? '이 조합을 보드 전체에' : '이 조합을 이 도판에'}
-          </button>
+        <div className={`theme-maker${activeId === 'theme' ? ' on' : ''}`} aria-label="테마색 + 포인트색으로 만들기">
+          <span className="pal-group-label">테마색 + 포인트색</span>
+          <div className="theme-pairs" role="group" aria-label="추천 짝">
+            {THEME_PAIRS.map((p) => {
+              const on = draft.color.toLowerCase() === p.color && (draft.point ?? '').toLowerCase() === p.point
+              return (
+                <button key={p.name} type="button" aria-pressed={on} className={`theme-pair${on ? ' on' : ''}`} onClick={() => setDraft({ ...draft, color: p.color, point: p.point })} title={`테마색 ${p.color} · 포인트색 ${p.point}`}>
+                  <span className="theme-pair-swatch" aria-hidden="true">
+                    <i style={{ background: p.color }} />
+                    <i style={{ background: p.point }} />
+                  </span>
+                  {p.name}
+                </button>
+              )
+            })}
+          </div>
+          <div className="theme-row">
+            <label className="theme-color">
+              <input type="color" value={draft.color} aria-label="테마색" onChange={(e) => setDraft({ ...draft, color: e.target.value })} />
+              <span className="small">테마색</span>
+              <code className="small">{draft.color}</code>
+            </label>
+            <label className="theme-color">
+              <input type="color" value={draft.point ?? DEFAULT_THEME.point} aria-label="포인트색" onChange={(e) => setDraft({ ...draft, point: e.target.value })} />
+              <span className="small">포인트색</span>
+              <code className="small">{draft.point}</code>
+            </label>
+            <Mini label="바탕" value={draft.tone} options={Object.entries(TONE_LABEL) as [ThemeSpec['tone'], string][]} onChange={(v) => setDraft({ ...draft, tone: v })} />
+            <span className="theme-preview">
+              <Strip pal={draftPal} wide />
+            </span>
+            <button type="button" className={`btn small${draftInUse ? '' : ' primary'}`} disabled={draftInUse} onClick={useTheme}>
+              {draftInUse ? '쓰는 중' : target === 'all' ? '이 조합을 보드 전체에' : '이 조합을 이 도판에'}
+            </button>
+          </div>
         </div>
         <p className="muted small theme-note">
-          테마색 하나로 바탕·글자·단계색(테마색의 옅음→진함)·범주색({HARMONY_LABEL[draft.harmony]}으로 색상을 돌림)·양쪽 단계색(따뜻한 쪽 = 더위·빠름)·대지 강조(보색 쪽)를 짭니다. 물·녹지는 뜻을 지키려고 파랑·초록을
-          유지합니다. 만든 뒤 아래 '색 직접 고치기'로 더 다듬을 수 있습니다.
+          <strong>테마색</strong>은 단계색(옅음 → 진함)과 바탕·글자의 옅은 기운을, <strong>포인트색</strong>은 대지 강조와 양쪽 단계색의 뜨거운 쪽(더위·빠름)을 맡습니다.
+          범주색은 칸의 뜻(노랑·주황·빨강·파랑·청록·보라·회색·갈색)을 지키며 두 색에 맞추고, 이웃한 색이 색약으로도 구분되게 밝기를 조정합니다. 추천 짝은 밝게·파스텔·어둡게에서
+          이 검사를 모두 통과한 조합입니다. 물·녹지는 파랑·초록을 유지하고, 만든 뒤 아래 '색 직접 고치기'로 더 다듬을 수 있습니다.
         </p>
       </div>
 

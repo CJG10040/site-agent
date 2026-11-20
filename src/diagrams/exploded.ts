@@ -100,7 +100,7 @@ export const EXPLODED_PANEL: PanelDef = {
         (() => {
           const ex = cx + k * MAP_R
           const lx = ex + 26
-          return `<path d="M${(ex + 4).toFixed(1)} ${cy.toFixed(1)}H${(lx - 6).toFixed(1)}" stroke="${c.pal.subtle}" stroke-width="1"/><text x="${lx.toFixed(1)}" y="${(cy + 6).toFixed(1)}" font-size="18" font-weight="700" fill="${c.pal.ink}"><tspan fill="${c.pal.subtle}" font-weight="400">${String(i + 1).padStart(2, '0')}  </tspan>${esc(label(p.id))}</text>`
+          return `<path d="M${(ex + 4).toFixed(1)} ${cy.toFixed(1)}H${(lx - 6).toFixed(1)}" stroke="${c.pal.subtle}" stroke-width="1"/><text x="${lx.toFixed(1)}" y="${(cy + 6).toFixed(1)}" font-size="18" font-weight="600" fill="${c.pal.ink}"><tspan fill="${c.pal.subtle}" font-weight="400">${String(i + 1).padStart(2, '0')}  </tspan>${esc(label(p.id))}</text>`
         })() +
         `</g>`
       tops.push(corners.map(([x, y]) => pl.P(x, y)))

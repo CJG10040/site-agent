@@ -281,7 +281,7 @@ const skyDomePanel: PanelDef = {
     const labels = ['북', '동', '남', '서']
       .map((t, i) => {
         const [x, y] = pt(i * 90, -12)
-        return `<text x="${x.toFixed(1)}" y="${(y + 6).toFixed(1)}" font-size="18" font-weight="700" text-anchor="middle" fill="${c.pal.ink}">${t}</text>`
+        return `<text x="${x.toFixed(1)}" y="${(y + 6).toFixed(1)}" font-size="18" font-weight="600" text-anchor="middle" fill="${c.pal.ink}">${t}</text>`
       })
       .join('')
     const maxA = e.sky.horizon.reduce((bi, v, i, arr) => (v > arr[bi] ? i : bi), 0)

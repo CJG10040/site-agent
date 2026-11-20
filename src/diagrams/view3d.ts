@@ -235,7 +235,7 @@ export function to3d(
   const uy = nyv / nlen
   const ax = MAP_CX + MAP_R - 30
   const ay = 70
-  const north = `<g id="방위표_3D"><path d="M${(ax + ux * 22).toFixed(1)} ${(ay + uy * 22).toFixed(1)}L${(ax - uy * 9 - ux * 12).toFixed(1)} ${(ay + ux * 9 - uy * 12).toFixed(1)}L${(ax - ux * 6).toFixed(1)} ${(ay - uy * 6).toFixed(1)}L${(ax + uy * 9 - ux * 12).toFixed(1)} ${(ay - ux * 9 - uy * 12).toFixed(1)}Z" fill="${pal.ink}"/><text x="${(ax + ux * 38).toFixed(1)}" y="${(ay + uy * 38 + 5).toFixed(1)}" font-size="15" font-weight="700" text-anchor="middle" fill="${pal.ink}">N</text></g>`
+  const north = `<g id="방위표_3D"><path d="M${(ax + ux * 22).toFixed(1)} ${(ay + uy * 22).toFixed(1)}L${(ax - uy * 9 - ux * 12).toFixed(1)} ${(ay + ux * 9 - uy * 12).toFixed(1)}L${(ax - ux * 6).toFixed(1)} ${(ay - uy * 6).toFixed(1)}L${(ax + uy * 9 - ux * 12).toFixed(1)} ${(ay - ux * 9 - uy * 12).toFixed(1)}Z" fill="${pal.ink}"/><text x="${(ax + ux * 38).toFixed(1)}" y="${(ay + uy * 38 + 5).toFixed(1)}" font-size="15" font-weight="600" text-anchor="middle" fill="${pal.ink}">N</text></g>`
 
   const layers: PanelLayer[] = [
     { id: '3D_판_두께', svg: slab, noClip: true },

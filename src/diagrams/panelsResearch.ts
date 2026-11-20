@@ -58,7 +58,7 @@ export const RESEARCH_PANEL: PanelDef = {
       // 왼쪽: 스케일·지역
       const lx = x + 18
       const labW = 178
-      parts.push(`<text x="${lx}" y="${y + 34}" font-family="${FONT}" font-size="23" font-weight="700" fill="${pal.ink}">${esc(t.scale)}</text>`)
+      parts.push(`<text x="${lx}" y="${y + 34}" font-family="${FONT}" font-size="23" font-weight="600" fill="${pal.ink}">${esc(t.scale)}</text>`)
       if (t.place) parts.push(`<text x="${lx}" y="${y + 60}" font-family="${FONT}" font-size="15" fill="${pal.subtle}">${esc(fit(t.place, labW - 10, 15))}</text>`)
       parts.push(`<text x="${lx}" y="${y + H - 16}" font-family="${FONT}" font-size="13" fill="${pal.subtle}">${t.items.length ? `이슈 ${t.items.length}개` : ''}</text>`)
       // 오른쪽: 이슈 (주제 색 점 + 제목 + 시점)

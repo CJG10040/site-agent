@@ -530,10 +530,13 @@
   }
 }
 
-/* 테마색으로 만들기 */
+/* 테마색 + 포인트색으로 만들기: 추천 짝 줄 + 두 색·바탕·미리보기 줄 */
 .theme-maker {
-  padding: 8px;
-  margin-top: 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+  margin-top: 4px;
   border: 1px dashed var(--line-2);
   border-radius: var(--r-md);
 }
@@ -543,10 +546,73 @@
   border-style: solid;
 }
 
+.theme-maker .pal-group-label {
+  flex: none;
+}
+
+.theme-pairs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.theme-pair {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  padding: 0 8px 0 4px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+  transition: border-color var(--t-fast) var(--ease);
+}
+
+.theme-pair:hover {
+  border-color: var(--line-2);
+}
+
+.theme-pair.on {
+  border-color: var(--text);
+  box-shadow: 0 0 0 1px var(--text);
+}
+
+.theme-pair-swatch {
+  display: inline-flex;
+  border-radius: var(--r-xs);
+  overflow: hidden;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12);
+}
+
+.theme-pair-swatch i {
+  width: 12px;
+  height: 18px;
+}
+
+.theme-pair-swatch i + i {
+  width: 8px;
+}
+
+.theme-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+}
+
 .theme-color {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+}
+
+.theme-color code {
+  font-family: var(--font-mono);
+  color: var(--muted);
 }
 
 .theme-color input[type='color'] {

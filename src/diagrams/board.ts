@@ -52,9 +52,9 @@ export interface BoardHead {
   footer: string
 }
 
-const INK = '#1d1d1b'
-const SUBTLE = '#6b6862'
-const ACCENT = '#c2410c'
+const INK = '#18181b'
+const SUBTLE = '#5f5f66'
+const ACCENT = '#d42a1e'
 
 function b64(s: string): string {
   const bytes = new TextEncoder().encode(s)
@@ -96,7 +96,7 @@ export function buildBoard(panels: BoardPanel[], s: BoardSettings, head: BoardHe
     const S = 3.4 * k
     const O = 3 * k
     let y = M + T
-    const parts = [`<text x="${M}" y="${y.toFixed(2)}" font-size="${T.toFixed(2)}" font-weight="700" fill="${INK}">${esc(head.title)}</text>`]
+    const parts = [`<text x="${M}" y="${y.toFixed(2)}" font-size="${T.toFixed(2)}" font-weight="600" fill="${INK}">${esc(head.title)}</text>`]
     y += S * 1.9
     parts.push(`<text x="${M}" y="${y.toFixed(2)}" font-size="${S.toFixed(2)}" fill="${SUBTLE}">${esc(head.subtitle)}</text>`)
     if (s.overview && head.overview.length) {
@@ -115,7 +115,7 @@ export function buildBoard(panels: BoardPanel[], s: BoardSettings, head: BoardHe
     const T = 4.2 * k
     const y = M + T
     return {
-      svg: `<g id="제목"><text x="${M}" y="${y.toFixed(2)}" font-size="${T.toFixed(2)}" font-weight="700" fill="${INK}">${esc(head.title)}</text><rect x="${M}" y="${(y + 2.4 * k).toFixed(2)}" width="${W.toFixed(2)}" height="${(0.35 * k).toFixed(2)}" fill="${INK}"/></g>`,
+      svg: `<g id="제목"><text x="${M}" y="${y.toFixed(2)}" font-size="${T.toFixed(2)}" font-weight="600" fill="${INK}">${esc(head.title)}</text><rect x="${M}" y="${(y + 2.4 * k).toFixed(2)}" width="${W.toFixed(2)}" height="${(0.35 * k).toFixed(2)}" fill="${INK}"/></g>`,
       bottom: y + 6.5 * k,
     }
   }
@@ -188,7 +188,7 @@ export function buildBoard(panels: BoardPanel[], s: BoardSettings, head: BoardHe
             `<rect x="${x.toFixed(2)}" y="${(ty - C * 0.15).toFixed(2)}" width="${(0.7 * k).toFixed(2)}" height="${(lines.length * C * 1.42).toFixed(2)}" fill="${ACCENT}"/>`,
             ...lines.map(
               (l, j) =>
-                `<text x="${(x + C * 1.6).toFixed(2)}" y="${(ty + C * 0.95 + j * C * 1.42).toFixed(2)}" font-size="${C.toFixed(2)}" fill="${INK}">${j === 0 ? `<tspan font-weight="700">결론</tspan> ${esc(l.replace(/^결론\s*/, ''))}` : esc(l)}</text>`,
+                `<text x="${(x + C * 1.6).toFixed(2)}" y="${(ty + C * 0.95 + j * C * 1.42).toFixed(2)}" font-size="${C.toFixed(2)}" fill="${INK}">${j === 0 ? `<tspan font-weight="600">결론</tspan> ${esc(l.replace(/^결론\s*/, ''))}` : esc(l)}</text>`,
             ),
           )
         }

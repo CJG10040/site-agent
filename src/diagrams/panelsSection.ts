@@ -176,7 +176,7 @@ function sectionPanel(which: 'A' | 'B'): PanelDef {
       }
       if (visSite.length) {
         const mid = (visSite[0][0] + visSite[visSite.length - 1][1]) / 2
-        siteSvg += `<text x="${px(mid).toFixed(1)}" y="${(TOP - 16).toFixed(1)}" font-size="16" font-weight="700" text-anchor="middle" fill="${c.pal.accent}">대지</text>`
+        siteSvg += `<text x="${px(mid).toFixed(1)}" y="${(TOP - 16).toFixed(1)}" font-size="16" font-weight="600" text-anchor="middle" fill="${c.pal.accent}">대지</text>`
       }
 
       // ── 주요 높이·거리 표기 (2026-11-12 사용자 요청: 주요 부분의 높이도 함께)
@@ -190,7 +190,7 @@ function sectionPanel(which: 'A' | 'B'): PanelDef {
         const a0 = visSite[0][0]
         const b0 = visSite[visSite.length - 1][1]
         const mid = (a0 + b0) / 2
-        notes += `<text x="${px(mid).toFixed(1)}" y="${(py(gz(mid)) + 24).toFixed(1)}" font-size="13" font-weight="700" text-anchor="middle" fill="${c.pal.accent}">대지 지반 ${sgn(gz(mid))}m</text>`
+        notes += `<text x="${px(mid).toFixed(1)}" y="${(py(gz(mid)) + 24).toFixed(1)}" font-size="13" font-weight="600" text-anchor="middle" fill="${c.pal.accent}">대지 지반 ${sgn(gz(mid))}m</text>`
         if ((b0 - a0) * sx >= 180)
           for (const s of [a0, b0]) {
             if (Math.abs(gz(s) - gz(mid)) < 0.5) continue
@@ -273,7 +273,7 @@ function sectionPanel(which: 'A' | 'B'): PanelDef {
       }
       axis += `<text x="${X0 - 9}" y="${(py(zMax) - 12).toFixed(1)}" font-size="12" text-anchor="end" fill="${c.pal.subtle}">m</text>`
       // 끝 표시
-      const ends = `<text x="${X0}" y="${BASE + 56}" font-size="17" font-weight="700" fill="${c.pal.ink}">${which}  ${dir8(leftAz)}</text><text x="${X1}" y="${BASE + 56}" font-size="17" font-weight="700" text-anchor="end" fill="${c.pal.ink}">${dir8(rightAz)}  ${which}′</text>`
+      const ends = `<text x="${X0}" y="${BASE + 56}" font-size="17" font-weight="600" fill="${c.pal.ink}">${which}  ${dir8(leftAz)}</text><text x="${X1}" y="${BASE + 56}" font-size="17" font-weight="600" text-anchor="end" fill="${c.pal.ink}">${dir8(rightAz)}  ${which}′</text>`
       // 가로 축척
       const len = niceLength(L * 0.4)
       const scale = `<rect x="${X0}" y="${BASE + 72}" width="${(len * sx).toFixed(1)}" height="5" fill="${c.pal.ink}"/><text x="${(X0 + len * sx + 8).toFixed(1)}" y="${BASE + 79}" font-size="13" fill="${c.pal.ink}">${len >= 1000 ? `${len / 1000}km` : `${len}m`} (높이 ×${fmt(vexShown, 1)})</text>`
@@ -301,8 +301,8 @@ function sectionPanel(which: 'A' | 'B'): PanelDef {
       mini += seg(other, c.pal.subtle, 1, '4 4') + seg(u, c.pal.ink, 2.4)
       const [la, lb] = mp([-u[0] * (L + 14 / ms), -u[1] * (L + 14 / ms)])
       const [ra, rb] = mp([u[0] * (L + 14 / ms), u[1] * (L + 14 / ms)])
-      mini += `<text x="${la.toFixed(1)}" y="${(lb + 5).toFixed(1)}" font-size="14" font-weight="700" text-anchor="middle" fill="${c.pal.ink}">${which}</text><text x="${ra.toFixed(1)}" y="${(rb + 5).toFixed(1)}" font-size="14" font-weight="700" text-anchor="middle" fill="${c.pal.ink}">${which}′</text>`
-      mini += `<path d="M${MCX + MR - 6} ${MCY - MR + 8} l7 18 l-7 -5 l-7 5 z" fill="${c.pal.ink}"/><text x="${MCX + MR - 6}" y="${MCY - MR + 40}" font-size="12" font-weight="700" text-anchor="middle" fill="${c.pal.ink}">N</text>`
+      mini += `<text x="${la.toFixed(1)}" y="${(lb + 5).toFixed(1)}" font-size="14" font-weight="600" text-anchor="middle" fill="${c.pal.ink}">${which}</text><text x="${ra.toFixed(1)}" y="${(rb + 5).toFixed(1)}" font-size="14" font-weight="600" text-anchor="middle" fill="${c.pal.ink}">${which}′</text>`
+      mini += `<path d="M${MCX + MR - 6} ${MCY - MR + 8} l7 18 l-7 -5 l-7 5 z" fill="${c.pal.ink}"/><text x="${MCX + MR - 6}" y="${MCY - MR + 40}" font-size="12" font-weight="600" text-anchor="middle" fill="${c.pal.ink}">N</text>`
       // 요약
       const siteZ = visSite.length ? gz((visSite[0][0] + visSite[visSite.length - 1][1]) / 2) : 0
       const tallest = [...cuts].sort((a, b) => b.h - a.h)[0]

@@ -344,6 +344,8 @@ export interface OverlaySpec {
 export interface ThemeSpec {
   /** 테마색 #rrggbb */
   color: string
+  /** 포인트색 #rrggbb (2026-11-20 '테마색 + 포인트색'). 있으면 새 방식, 없으면 예전 방식(조합·다른 조합)으로 짬 */
+  point?: string
   /** 범주색을 고르는 방식: 유사색 · 보색 · 세 색 */
   harmony: 'analog' | 'complement' | 'triad'
   /** 바탕: 밝게 · 파스텔 · 어둡게 */

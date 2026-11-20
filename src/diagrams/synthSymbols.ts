@@ -254,7 +254,7 @@ function label(x: number, y: number, text: string, color: string, size = 16, anc
   return lines
     .map(
       (l, i) =>
-        `<text x="${f1(x)}" y="${f1(y + i * size * 1.25)}" font-size="${size}" ${bold ? 'font-weight="700"' : ''} text-anchor="${anchor}" fill="${color}" ${HALO}>${esc(l)}</text>`,
+        `<text x="${f1(x)}" y="${f1(y + i * size * 1.25)}" font-size="${size}" ${bold ? 'font-weight="600"' : ''} text-anchor="${anchor}" fill="${color}" ${HALO}>${esc(l)}</text>`,
     )
     .join('')
 }
@@ -287,10 +287,11 @@ export function bolt(x: number, y: number, s: number): string {
   return p.map(([a, b]) => `${f1(x + a * s)},${f1(y + b * s)}`).join(' ')
 }
 
+/** 카드 배지: 앱의 근거 번호(F-01)처럼 흰 바탕 + 종류 색 테두리·글자의 '도면 번호' 표 */
 function cardBadge(x: number, y: number, id: string, color: string): { svg: string; w: number } {
-  const w = textWidth(id, 14) + 16
+  const w = textWidth(id, 14) + 14
   return {
-    svg: `<rect x="${f1(x - w / 2)}" y="${f1(y - 13)}" width="${f1(w)}" height="26" rx="13" fill="${color}" stroke="#ffffff" stroke-width="2"/><text x="${f1(x)}" y="${f1(y + 5)}" font-size="14" font-weight="700" text-anchor="middle" fill="#ffffff">${esc(id)}</text>`,
+    svg: `<rect x="${f1(x - w / 2)}" y="${f1(y - 13)}" width="${f1(w)}" height="26" rx="3" fill="#ffffff" stroke="${color}" stroke-width="2"/><text x="${f1(x)}" y="${f1(y + 5)}" font-size="14" font-weight="600" text-anchor="middle" fill="${color}">${esc(id)}</text>`,
     w,
   }
 }
@@ -578,7 +579,7 @@ function itemBody(it: SynthItem, f: Frame, cards: Record<string, SynthCard>, sel
     const badge = cardBadge(x, y, it.cardId ?? '?', color)
     const text = it.label.trim() || card?.title || '(지운 카드)'
     return (
-      (sel ? `<rect x="${f1(x - badge.w / 2 - 5)}" y="${f1(y - 18)}" width="${f1(badge.w + 10)}" height="36" rx="18" fill="none" stroke="${color}" stroke-width="2" stroke-dasharray="4 3"/>` : '') +
+      (sel ? `<rect x="${f1(x - badge.w / 2 - 5)}" y="${f1(y - 18)}" width="${f1(badge.w + 10)}" height="36" rx="6" fill="none" stroke="${color}" stroke-width="2" stroke-dasharray="4 3"/>` : '') +
       badge.svg +
       label(x + badge.w / 2 + 6, y + 5, text, mix('#000000', color, 0.8), 15, 'start')
     )
@@ -678,7 +679,7 @@ export function symGlyph(sym: SynthSym, c: string): string {
     case 'note':
       return `<rect x="2" y="2.5" width="22" height="13" rx="2" fill="#ffffff" stroke="${c}" stroke-width="1.4"/><path d="M5.5 7H20M5.5 11H15" stroke="${c}" stroke-width="1.2"/>`
     case 'card':
-      return `<rect x="1.5" y="3" width="23" height="12" rx="6" fill="${c}"/><path d="M7 9H19" stroke="#ffffff" stroke-width="1.6"/>`
+      return `<rect x="1.5" y="3" width="23" height="12" rx="2" fill="#ffffff" stroke="${c}" stroke-width="1.6"/><path d="M7 9H19" stroke="${c}" stroke-width="1.6"/>`
   }
 }
 

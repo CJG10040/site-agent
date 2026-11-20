@@ -19,7 +19,6 @@ const GROUPS: Omit<PoiGroup, 'color'>[] = [
 ]
 
 const GROUP_COLORS: Record<string, string[]> = {
-  default: ['#3d7dca', '#e0a22a', '#d6455d', '#2a9d8f', '#8c6bb1', '#6b7a8a'],
   cvd: ['#0072b2', '#e69f00', '#d55e00', '#009e73', '#cc79a7', '#666666'],
   mono: ['#222222', '#555555', '#777777', '#999999', '#444444', '#888888'],
 }

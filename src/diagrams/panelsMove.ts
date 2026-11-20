@@ -324,7 +324,7 @@ export const MOVE_PANELS: PanelDef[] = [
         .filter((x) => c.f.inside(x.pt.lon, x.pt.lat))
         .map((x) => {
           const [px, py] = c.f.pt(x.pt.lon, x.pt.lat)
-          return `<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="8" fill="${c.pal.ink}" stroke="${c.pal.paper}" stroke-width="2"/><text x="${(px + 12).toFixed(1)}" y="${(py + 5).toFixed(1)}" font-size="15" font-weight="700" fill="${c.pal.ink}" stroke="${c.pal.paper}" stroke-width="4" paint-order="stroke">${esc(x.pt.name.replace(/\s.*$/, ''))}</text>`
+          return `<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="8" fill="${c.pal.ink}" stroke="${c.pal.paper}" stroke-width="2"/><text x="${(px + 12).toFixed(1)}" y="${(py + 5).toFixed(1)}" font-size="15" font-weight="600" fill="${c.pal.ink}" stroke="${c.pal.paper}" stroke-width="4" paint-order="stroke">${esc(x.pt.name.replace(/\s.*$/, ''))}</text>`
         })
         .join('')
       const ring = (m: number) => `<circle cx="${MAP_CX}" cy="${MAP_CY}" r="${(m * c.f.s).toFixed(1)}" fill="none" stroke="${c.pal.subtle}" stroke-width="1" stroke-dasharray="4 6"/>`

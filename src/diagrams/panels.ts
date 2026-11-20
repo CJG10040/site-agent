@@ -764,7 +764,7 @@ export const PANELS: PanelDef[] = [
         .slice(0, 3)
         .map((x) => {
           const [px, py] = c.f.pt(x.p.lon, x.p.lat)
-          return `<text x="${(px + 14).toFixed(1)}" y="${(py + 5).toFixed(1)}" font-size="16" font-weight="700" fill="${c.pal.ink}" stroke="${c.pal.paper}" stroke-width="4" paint-order="stroke">${esc(x.p.name.replace(/\s.*$/, ''))}</text>`
+          return `<text x="${(px + 14).toFixed(1)}" y="${(py + 5).toFixed(1)}" font-size="16" font-weight="600" fill="${c.pal.ink}" stroke="${c.pal.paper}" stroke-width="4" paint-order="stroke">${esc(x.p.name.replace(/\s.*$/, ''))}</text>`
         })
         .join('')
       return {
@@ -1001,13 +1001,13 @@ export const PANELS: PanelDef[] = [
       if (!os.length) return { layers: [baseBuildings(c)], legend: [], summary: [], caption: '', empty: '위치가 있는 현장 관찰이 없습니다' }
       const colors = {
         normal: c.pal.ink,
-        differ: c.pal.kind === 'mono' ? mix(c.pal.paper, c.pal.ink, 0.6) : c.pal.custom || !['default', 'cvd'].includes(c.pal.id) ? c.pal.cat[2] : '#c92a2a',
-        discovery: c.pal.kind === 'mono' ? mix(c.pal.paper, c.pal.ink, 0.4) : c.pal.custom || !['default', 'cvd'].includes(c.pal.id) ? c.pal.cat[4] : '#0c8599',
+        differ: c.pal.kind === 'mono' ? mix(c.pal.paper, c.pal.ink, 0.6) : c.pal.custom || !['default', 'cvd'].includes(c.pal.id) ? c.pal.cat[2] : '#d42a1e',
+        discovery: c.pal.kind === 'mono' ? mix(c.pal.paper, c.pal.ink, 0.4) : c.pal.custom || !['default', 'cvd'].includes(c.pal.id) ? c.pal.cat[4] : '#1d7770',
       }
       const marks = os
         .map((o) => {
           const [x, y] = c.f.pt(o.lon, o.lat)
-          return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="13" fill="${colors[o.kind as 'normal']}" stroke="${c.pal.paper}" stroke-width="2"/><text x="${x.toFixed(1)}" y="${(y + 5).toFixed(1)}" font-size="13" font-weight="700" text-anchor="middle" fill="${c.pal.paper}">${esc(o.label ?? '')}</text>`
+          return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="13" fill="${colors[o.kind as 'normal']}" stroke="${c.pal.paper}" stroke-width="2"/><text x="${x.toFixed(1)}" y="${(y + 5).toFixed(1)}" font-size="13" font-weight="600" text-anchor="middle" fill="${c.pal.paper}">${esc(o.label ?? '')}</text>`
         })
         .join('')
       const far = Math.max(...os.map((o) => c.f.polar(o.lon, o.lat).d))
