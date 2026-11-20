@@ -1,7 +1,7 @@
 // 도판 한 장을 SVG 문자열로 짠다.
 // 그룹마다 id를 붙여 일러스트레이터에서 레이어로 열리게 한다.
 
-import type { DiagramSettings } from '../model/types'
+import type { DiagramSettings, HideLayer } from '../model/types'
 import { MAP_CX, MAP_CY, MAP_R, niceLength, SHEET_W, type Frame } from './frame'
 import type { Palette } from './palette'
 
@@ -38,6 +38,30 @@ export interface PanelOutput {
   noScale?: boolean
   /** 원·사각 지도 틀 없이 도판 영역 전체에 그림 (단면도 등): 틀·방위표·축척·대지 표시 없음, 자르지 않음 */
   noFrame?: boolean
+  /** 이 도판을 만든 점 자료 목록 — 앱 화면 카드 아래에서 학생이 확인·빼기 (그림·SVG·PNG·리포트에는 안 들어감) */
+  basis?: BasisGroup[]
+}
+
+/** 도판 근거 목록의 한 줄 (2026-11-21 사용자 결정: 점 자료 도판 전부, 화면에서만) */
+export interface BasisItem {
+  layer: HideLayer
+  name: string
+  /** 분류 (예: 카페, 지하철역, 음식 · 한식) */
+  kind: string
+  lon: number
+  lat: number
+  /** 대지 중심에서 직선거리(m) */
+  distM: number
+  addr?: string
+  /** 원래 자료의 장소 페이지 (없으면 화면에서 카카오맵 좌표 링크) */
+  url?: string
+  /** 덧붙임 (걸어서 n분, 정류소 번호, 건물·층 등) */
+  note?: string
+}
+
+export interface BasisGroup {
+  title: string
+  items: BasisItem[]
 }
 
 export const FONT = "Pretendard, 'Pretendard Variable', 'Malgun Gothic', 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif"

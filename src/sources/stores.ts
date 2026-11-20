@@ -21,6 +21,8 @@ export interface StoreRow {
   scls: string
   floor: string
   bldNm: string
+  /** 도로명 주소(없으면 지번 주소) — 도판 근거 목록에서 학생이 확인하는 용도 */
+  addr: string
   lon: number
   lat: number
 }
@@ -73,6 +75,7 @@ export async function storesAround(keys: ApiKeys, lon: number, lat: number, radi
         scls: s(it.indsSclsNm),
         floor: s(it.flrNo),
         bldNm: s(it.bldNm),
+        addr: s(it.rdnmAdr) || s(it.lnoAdr),
         lon: x,
         lat: y,
       })

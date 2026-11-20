@@ -503,7 +503,7 @@ export function addStoreFacts(ctx: FactContext, o: ApiOutcome<StoresResult>): vo
     features: r.stores.map((s) => ({
       type: 'Feature' as const,
       geometry: { type: 'Point' as const, coordinates: [s.lon, s.lat] },
-      properties: { name: s.name, lcls: s.lcls, mcls: s.mcls, scls: s.scls, floor: s.floor },
+      properties: { name: s.name, lcls: s.lcls, mcls: s.mcls, scls: s.scls, floor: s.floor, bld: s.bldNm, addr: s.addr },
     })),
   }
   const n = r.stores.length
@@ -643,7 +643,7 @@ export function addPoiFacts(ctx: FactContext, o: ApiOutcome<PoiCategoryResult[]>
       [...c.places, ...(c.nearestBeyond ? [c.nearestBeyond] : [])].map((p) => ({
         type: 'Feature' as const,
         geometry: { type: 'Point' as const, coordinates: [p.lon, p.lat] },
-        properties: { name: p.name, code: c.code, label: c.label, category: p.category, distance: p.distance },
+        properties: { name: p.name, code: c.code, label: c.label, category: p.category, distance: p.distance, addr: p.addr, url: p.url },
       })),
     ),
   }

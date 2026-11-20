@@ -196,6 +196,100 @@
   width: 100%;
 }
 
+/* ── 근거 자료 (도판을 만든 점 자료 — 화면에서만) ── */
+.basis {
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+  font-size: var(--fs-sm);
+}
+
+.basis > summary {
+  font-weight: 500;
+}
+
+.basis > summary .count {
+  margin-left: 2px;
+}
+
+.basis-help {
+  margin: 8px 0 0;
+  line-height: 1.5;
+}
+
+.basis-search {
+  width: 100%;
+  margin-top: 8px;
+}
+
+.basis-group {
+  margin-top: 12px;
+}
+
+.basis-group h5 {
+  margin: 0 0 4px;
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  color: var(--text-2);
+}
+
+.basis-group ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.basis-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.basis-text {
+  flex: 1;
+  min-width: 0;
+  line-height: 1.45;
+}
+
+.basis-text a {
+  color: var(--text);
+  font-weight: 500;
+  text-decoration: underline;
+  text-decoration-color: var(--line-2);
+  text-underline-offset: 3px;
+}
+
+.basis-text a:hover {
+  text-decoration-color: currentColor;
+}
+
+.basis-text a svg {
+  width: 12px;
+  height: 12px;
+  margin-left: 2px;
+  vertical-align: -1px;
+  color: var(--muted);
+}
+
+.basis-ask {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.basis-ask input {
+  flex: 1 1 160px;
+  min-width: 0;
+  height: var(--h-control-sm);
+}
+
+.basis-group > .link-btn {
+  margin-top: 6px;
+  padding: 0;
+}
+
 .suggestions {
   display: flex;
   flex-direction: column;
@@ -781,4 +875,14 @@
   color: #fff;
   font-size: var(--fs-xs);
   font-weight: 500;
+}
+
+.basis-row.gone .basis-text {
+  opacity: 0.45;
+  text-decoration: line-through;
+}
+
+.basis-gone {
+  flex: none;
+  padding-top: 2px;
 }

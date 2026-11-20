@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react'
-import type { PanelOutput } from '../diagrams/compose'
+import type { BasisItem, PanelOutput } from '../diagrams/compose'
+import { hideLayerLabel } from '../diagrams/data'
+import BasisList from '../components/BasisList'
 import { svgBlob, svgToPng, zipBlob } from '../diagrams/export'
 import { siteOverview } from '../diagrams/overview'
 import { ORDERED_PANELS, PANEL_GROUP_ORDER, panelNumber, type PanelDef } from '../diagrams/panels'
@@ -7,7 +9,7 @@ import { buildPanelPrompt, parsePanelAnswer } from '../diagrams/prompt'
 import { DEFAULT_SETTINGS, panelFileName } from '../diagrams/render'
 import { settingsKey, useDiagrams } from '../diagrams/useDiagrams'
 import PanelEditor from '../components/PanelEditor'
-import { editsOf } from '../model/edits'
+import { editsOf, newEditId } from '../model/edits'
 import StylePanel from '../components/StylePanel'
 
 import OverlayControls from '../components/OverlayControls'
@@ -115,6 +117,15 @@ export default function DiagramStep({ project, update, config, keys, onGoData, o
     setSettings({ view3d: cur.size ? [...cur] : undefined })
   }
   const cam = { az: settings.cam3d?.az ?? 225, tilt: settings.cam3d?.tilt ?? 45, vex: settings.cam3d?.vex ?? 1 }
+
+  /** 근거 자료 목록에서 빼기 → 자료 빼기 기록 (모든 도판·개요·3D·환경 계산에서 빠짐) */
+  const hideBasis = (x: BasisItem, reason: string) =>
+    update((d) => {
+      const e = editsOf(d)
+      const label = hideLayerLabel(x.layer)
+      const desc = `${label} · ${x.name || '이름 없음'}${x.kind && x.kind !== label ? ` (${x.kind})` : ''}`
+      d.edits = { ...e, hides: [...e.hides, { id: newEditId(), layer: x.layer, lon: x.lon, lat: x.lat, name: x.name, desc, reason: reason.trim(), createdAt: nowIso() }] }
+    })
 
   const patchNote = (id: string, patch: Partial<PanelNote>) =>
     update((d) => {
@@ -595,6 +606,7 @@ export default function DiagramStep({ project, update, config, keys, onGoData, o
                           ))}
                         </ul>
                       )}
+                      {!empty && p?.out.basis && <BasisList basis={p.out.basis} onHide={hideBasis} />}
                       {feedbackForPanel(project, def.id).map((f) => (
                         <p key={f.id} className="small diagram-feedback">
                           <span className={`fb-badge status-${f.status}`}>{FB_STATUS_LABEL[f.status]}</span> {f.id} {f.who}: {f.text}

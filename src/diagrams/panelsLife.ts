@@ -7,7 +7,8 @@
 import { pointToAreaDistanceM } from '../lib/geo'
 import { arealRings, pointInRings, pointToRingsDist, toXY } from '../lib/xy'
 import { mclsLabel, storeGroup, STORE_GROUP_NOTE, storeTime, STORE_TIME_LABEL, type StoreTime } from '../model/storeClass'
-import { esc, type LegendItem, type PanelOutput } from './compose'
+import { basisItem, groupBasis, storeBasis } from './basis'
+import { esc, type BasisGroup, type LegendItem, type PanelOutput } from './compose'
 import type { DiagramData, Pt } from './data'
 import { MAP_CX, MAP_CY, MAP_R } from './frame'
 import { groupOf, iconSvg, poiGroups } from './icons'
@@ -160,6 +161,7 @@ const storesTimePanel: PanelDef = {
         `밤 업종 위주 건물 ${fmt(bldCount.night)}동, 종일 ${fmt(bldCount.allday)}동, 낮 ${fmt(bldCount.day)}동, 섞임 ${fmt(bldCount.mixed)}동`,
       ],
       caption: `소상공인시장진흥공단 상가(상권)정보 업종(대·중·소분류)으로 나눔 — 실제 영업시간이 아니라 업종으로 어림한 것 · 상가를 좌표가 든(또는 8m 안) 건물에 담음 · ${c.date} 수집`,
+      basis: storeBasis(c.f, ss),
     }
   },
 }
@@ -239,6 +241,7 @@ const storesComparePanel: PanelDef = {
         nearN < 10 ? `대지 주변 상가가 ${nearN}곳뿐이라 비율이 크게 흔들릴 수 있음` : '',
       ].filter(Boolean),
       caption: `소상공인시장진흥공단 상가(상권)정보 중분류를 묶음: ${STORE_GROUP_NOTE} · 대지 경계에서 ${NEAR_M}m 안 vs 수집 반경 전체 · 비율은 상가 수 기준(면적·매출 아님) · ${c.date} 수집`,
+      basis: storeBasis(c.f, ss),
       noFrame: true,
       hideBase: true,
     }
@@ -286,6 +289,19 @@ function nearestBy(list: PoiWalk[]): Map<string, PoiWalk> {
 }
 
 const minText = (m: number) => (m < 1 ? '1분 안' : `${Math.round(m)}분`)
+
+/** 생활 시설 도판 2장의 근거 목록: 분류(지하철역·학교…) 묶음, 걷는 시간·가장 가까운 곳 표시 */
+function poiBasis(c: PanelCtx, list: PoiWalk[], near: Map<string, PoiWalk>): BasisGroup[] {
+  const nearest = new Set([...near.values()].map((x) => x.p))
+  const order = LIFE_CODES.map((k) => list.find((x) => x.p.kind === k)?.p.label ?? k)
+  return groupBasis(
+    list.map((x) => ({
+      group: x.p.label || x.p.kind,
+      item: basisItem(c.f, 'poi', x.p, x.p.label || x.p.kind, `걸어서 ${minText(x.min)}${nearest.has(x.p) ? ' · 가장 가까운 곳' : ''}`),
+    })),
+    order,
+  )
+}
 
 const poiMapPanel: PanelDef = {
   id: 'poi',
@@ -374,6 +390,7 @@ const poiMapPanel: PanelDef = {
       legendTitle: `분류마다 가장 가까운 곳 = 진한 아이콘·점선 (걸어서 분당 ${WALK_SPEED}m)`,
       summary: groupMins.slice(0, 6),
       caption: `카카오 로컬 카테고리 검색(분류마다 가까운 15곳까지) · 걷는 시간: ${byNet ? '길의 연결(도로중심선)을 따라 잰 거리' : "직선거리 × 1.3으로 어림 ('길의 연결'을 수집하면 길 따라)"} · 음식점·카페는 상가 업종 도판에서 · ${c.date} 수집`,
+      basis: poiBasis(c, list, near),
     }
   },
 }
@@ -436,6 +453,7 @@ const poiReachPanel: PanelDef = {
       legendTitle: '점 하나 = 시설 한 곳 (7곳 넘으면 +수)',
       summary: [in10.length ? `걸어서 10분 안: ${in10.join(', ')}` : '걸어서 10분 안에 있는 생활 시설 없음', far.length ? `15분 넘게 걸리는 것: ${far.join(', ')}` : ''].filter(Boolean),
       caption: `카카오 로컬(분류마다 가까운 15곳까지만 받아 15곳 이상은 '15+') · 걷는 시간: ${byNet ? '길의 연결(도로중심선)을 따라 잰 거리' : '직선거리 × 1.3으로 어림'} · 분당 ${WALK_SPEED}m · ${c.date} 수집`,
+      basis: poiBasis(c, list, near),
       noFrame: true,
       hideBase: true,
     }

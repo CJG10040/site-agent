@@ -11,6 +11,7 @@ import { contourInterval, contourLines, rangeText, SLOPE_BINS, type TerrainAnaly
 import type { DiagramSettings } from '../model/types'
 import { ALL_LAYERS } from '../sources/vworldLayers'
 import { aerialImage } from './aerial'
+import { basisItem, routesNote, storeBasis } from './basis'
 import { esc, type PanelLayer, type PanelOutput } from './compose'
 import { bldHeight, bldSourceText, type Bld, type DiagramData, type Pt } from './data'
 import { centroidOf, dir8, MAP_CX, MAP_CY, MAP_R, type Frame } from './frame'
@@ -783,6 +784,10 @@ export const PANELS: PanelDef[] = [
           `대지 중심 200m 안 버스정류소 ${nb.filter((x) => x.d <= 200).length}곳, 500m 안 ${nb.filter((x) => x.d <= 500).length}곳`,
         ],
         caption: `지하철역: 카카오 로컬 · 버스정류소: 국토교통부 TAGO(대지 중심 약 500m, 정류소 번호 0·노선 없는 터미널 자체 기록은 뺌) · ${c.date} 수집 · 거리는 직선거리`,
+        basis: [
+          ...(ns.length ? [{ title: '지하철역 (카카오)', items: ns.map((x) => basisItem(c.f, 'station', x.p, '지하철역')) }] : []),
+          ...(nb.length ? [{ title: '버스정류소 (TAGO)', items: nb.map((x) => basisItem(c.f, 'stop', x.p, '버스정류소', routesNote(x.p.label))) }] : []),
+        ],
       }
     },
   },
@@ -988,6 +993,7 @@ export const PANELS: PanelDef[] = [
           `대지 경계 50m 안 상가 ${near.length}곳`,
         ],
         caption: `소상공인시장진흥공단 상가(상권)정보 · 상가 좌표가 들어 있는(또는 8m 안) 건물에 담음${loose.length ? `, 건물을 못 찾은 ${fmt(loose.length)}곳은 점` : ''} · ${c.date} 수집 · 분기 갱신 자료로 최근 개·폐업이 빠졌을 수 있음`,
+        basis: storeBasis(c.f, ss),
       }
     },
   },

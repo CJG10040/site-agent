@@ -51,6 +51,10 @@ export interface Poi {
   lat: number
   /** 대지 중심에서의 직선거리(m) */
   distance: number
+  /** 도로명 주소(없으면 지번 주소) — 도판 근거 목록에서 학생이 확인하는 용도 */
+  addr: string
+  /** 카카오맵 장소 페이지 */
+  url: string
 }
 
 export interface PoiCategoryResult {
@@ -111,6 +115,8 @@ async function search(keys: ApiKeys, code: string, lon: number, lat: number, rad
     lon: Number(d.x),
     lat: Number(d.y),
     distance: Number(d.distance),
+    addr: s(d.road_address_name) || s(d.address_name),
+    url: /^https?:\/\/place\.map\.kakao\.com\//.test(s(d.place_url)) ? s(d.place_url).replace(/^http:/, 'https:') : '',
   }))
   return { total: Number(body.meta?.total_count ?? places.length), places: places.filter((p) => Number.isFinite(p.lon) && Number.isFinite(p.lat)) }
 }

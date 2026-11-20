@@ -8,15 +8,18 @@ import { bearingOf, ringArea, ringCentroid, toXY } from '../lib/xy'
 import { snapshotLabel, timeBand } from '../sources/its'
 import { WALK_R } from '../sources/network'
 import { CALM_MS, DIR16, prevailing, SEASONS, WIND_BINS } from '../sources/wind'
+import { basisItem } from './basis'
 import { esc, type LegendItem, type PanelLayer, type PanelOutput } from './compose'
 import { MAP_CX, MAP_CY, MAP_R } from './frame'
 import { blockView, encView, linkSpeeds, netView, projOf, siteRingsXY, topShare, walkAt, walkshed, walkToPoint, WALK_BANDS, WALK_SPEED } from './move'
-import type { DiagramData } from './data'
+import type { DiagramData, Pt } from './data'
 import { mix, monoShades, speedColors, steps } from './palette'
 import type { PanelCtx, PanelDef } from './panels'
 
 const fmt = (n: number, digits = 0) => n.toLocaleString('ko-KR', { maximumFractionDigits: digits })
 const pctText = (x: number) => `${Math.round(x * 100)}%`
+/** 근거 목록: 길 따라 걷는 시간 (길에서 멀면 '길에서 못 찾음') */
+const walkNote = (m: number | null) => (m === null || !Number.isFinite(m) ? '길 따라 거리 못 잼' : `길 따라 걸어서 ${Math.max(1, Math.round(m / WALK_SPEED))}분`)
 const DIR8 = ['북', '북동', '동', '남동', '남', '남서', '서', '북서']
 const dir8 = (b: number) => DIR8[Math.round(b / 45) % 8]
 
@@ -306,7 +309,7 @@ export const MOVE_PANELS: PanelDef[] = [
           core.push({ d, color: colors[band], width: 2.2 })
         }
       })
-      const reach = (pts: { lon: number; lat: number; name: string }[]) => {
+      const reach = (pts: Pt[]) => {
         const p = projOf(c.d)
         return pts.map((pt) => ({ pt, m: walkToPoint(v, w, toXY(p, [pt.lon, pt.lat])) }))
       }
@@ -350,6 +353,10 @@ export const MOVE_PANELS: PanelDef[] = [
           return `${m}분 안: 버스정류소 ${bandCount(sp, L)}곳${c.d.stations.length ? `, 지하철역 ${ns}곳` : ''}`
         }).concat(c.d.stops.length ? ['버스정류소는 대지 중심 약 500m 안 자료만 있어 10·15분 수는 실제보다 적음'] : ['버스정류소 자료가 없음 (대중교통을 함께 수집하면 표시)']),
         caption: `국토지리정보원 도로중심선(브이월드) ${c.date} 수집 → 대지에 붙은 길에서 길을 따라 잰 거리 · 점선 원은 같은 거리의 직선 · 횡단보도·신호·언덕·보행 전용 길은 반영 안 함 · 정류소: TAGO(대지 중심 약 500m만)`,
+        basis: [
+          ...(st.length ? [{ title: '지하철역 (카카오)', items: st.map((x) => basisItem(c.f, 'station', x.pt, '지하철역', walkNote(x.m))).sort((a, b) => a.distM - b.distM) }] : []),
+          ...(sp.length ? [{ title: '버스정류소 (TAGO)', items: sp.map((x) => basisItem(c.f, 'stop', x.pt, '버스정류소', walkNote(x.m))).sort((a, b) => a.distM - b.distM) }] : []),
+        ],
       }
     },
   },

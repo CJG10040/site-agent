@@ -117,6 +117,12 @@ export interface Pt {
   label?: string
   /** 더 자세한 분류 (상가 소분류 등) */
   detail?: string
+  /** 주소 (카카오·상가 자료, 2026-11-21부터 수집한 것만) — 도판 근거 목록용 */
+  addr?: string
+  /** 원래 자료의 장소 페이지 (카카오맵) */
+  url?: string
+  /** 목록에 덧붙일 짧은 설명 (정류소 번호·건물·층 등) */
+  note?: string
 }
 
 type Lines = LineString | MultiLineString
@@ -889,14 +895,15 @@ export function buildDiagramData(project: Project): DiagramData | null {
     .filter((f) => f.properties.code === 'SW8')
     .map((f) => {
       const c = pointOf(f.geometry)!
-      return { lon: c[0], lat: c[1], name: str(f.properties.name), kind: 'SW8' }
+      return { lon: c[0], lat: c[1], name: str(f.properties.name), kind: 'SW8', addr: str(f.properties.addr) || undefined, url: str(f.properties.url) || undefined }
     })
   const stops: Pt[] = feats('tago:stops')
     // 터미널 자체 기록(정류소 번호 0, 노선 없음)은 정류소가 아님 — 예전에 수집한 자료에도
     .filter((f) => !isPlaceholderStop(f.properties.nodeno, f.properties.routes))
     .map((f): Pt | null => {
       const c = pointOf(f.geometry)
-      return c ? { lon: c[0], lat: c[1], name: str(f.properties.nodenm), kind: 'bus', label: str(f.properties.routes) } : null
+      const no = str(f.properties.nodeno)
+      return c ? { lon: c[0], lat: c[1], name: str(f.properties.nodenm), kind: 'bus', label: str(f.properties.routes), note: no ? `정류소 번호 ${no}` : undefined } : null
     })
     .filter((x): x is Pt => !!x)
   const statsAreas = feats('sgis:statsarea')
@@ -910,13 +917,26 @@ export function buildDiagramData(project: Project): DiagramData | null {
   const stores: Pt[] = feats('sbiz:stores')
     .map((f): Pt | null => {
       const c = pointOf(f.geometry)
-      return c ? { lon: c[0], lat: c[1], name: str(f.properties.name), kind: str(f.properties.lcls) || '분류 없음', label: str(f.properties.mcls), detail: str(f.properties.scls) } : null
+      if (!c) return null
+      const where = [str(f.properties.bld), str(f.properties.floor) ? `${str(f.properties.floor)}층` : ''].filter(Boolean).join(' ')
+      return {
+        lon: c[0],
+        lat: c[1],
+        name: str(f.properties.name),
+        kind: str(f.properties.lcls) || '분류 없음',
+        label: str(f.properties.mcls),
+        detail: str(f.properties.scls),
+        addr: str(f.properties.addr) || undefined,
+        note: where || undefined,
+      }
     })
     .filter((x): x is Pt => !!x)
   const pois: Pt[] = feats('kakao:poi')
     .map((f): Pt | null => {
       const c = pointOf(f.geometry)
-      return c ? { lon: c[0], lat: c[1], name: str(f.properties.name), kind: str(f.properties.code), label: str(f.properties.label) } : null
+      return c
+        ? { lon: c[0], lat: c[1], name: str(f.properties.name), kind: str(f.properties.code), label: str(f.properties.label), addr: str(f.properties.addr) || undefined, url: str(f.properties.url) || undefined }
+        : null
     })
     .filter((x): x is Pt => !!x)
 
@@ -1132,6 +1152,15 @@ function applyHides(d: DiagramData, hides: HideEdit[]): { applied: number; missi
   d.stations = dropPoints('station', d.stations)
   d.stores = dropPoints('store', d.stores)
   d.pois = dropPoints('poi', d.pois)
+  // 지하철역은 카카오 생활 시설(지하철역 분류)과 같은 자료 — 한쪽 도판에서 빼면 다른 쪽에서도 뺀다
+  const sameStation = (h: HideEdit, p: Pt) => {
+    const dist = metersBetween(h.lon, h.lat, p.lon, p.lat)
+    return dist <= 3 || (dist <= 6 && !!h.name && p.name === h.name)
+  }
+  const stHides = byLayer('station')
+  const poiHides = byLayer('poi')
+  if (stHides.length) d.pois = d.pois.filter((p) => p.kind !== 'SW8' || !stHides.some((h) => sameStation(h, p)))
+  if (poiHides.length) d.stations = d.stations.filter((p) => !poiHides.some((h) => sameStation(h, p)))
   d.buildings = dropAreas('building', d.buildings)
   d.parks = dropAreas('park', d.parks)
   d.facilities = dropAreas('facility', d.facilities)
