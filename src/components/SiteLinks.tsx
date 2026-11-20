@@ -2,6 +2,7 @@
 // 2026-11-09 확인: 토지이음 luLandDet.jsp?pnu= 로 필지 상세(토지이용계획)가 바로 열림(통합 후 새 PNU도 됨).
 // 국토정보플랫폼 항공사진은 /ms/map/Aerial.do (좌표로 바로 여는 주소는 없음).
 
+import { ExternalLink } from 'lucide-react'
 import { useMemo } from 'react'
 import { centerOf, siteBoundary } from '../lib/geo'
 import type { Site } from '../model/types'
@@ -69,7 +70,8 @@ export default function SiteLinks({ site, title = '직접 확인할 자료' }: {
         {links.map((l) => (
           <li key={l.id}>
             <a href={l.href} target="_blank" rel="noopener noreferrer">
-              {l.label} ↗
+              {l.label}
+              <ExternalLink className="icon" aria-hidden="true" />
             </a>
             <span className="muted small">{l.detail}</span>
           </li>

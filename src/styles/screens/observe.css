@@ -1,0 +1,288 @@
+/* ⑦ 현장 관찰: 관찰 목록 · 사진 · 사실과 잇기 · 자료와 현장 비교
+   관찰 종류 색은 지도 표시(MapView OBS_COLORS)와 맞춤: 관찰 = 먹, 현장과 다름 = 레드라인, 새 발견 = 청록 */
+
+:root {
+  --k-normal: var(--text);
+  --k-differ: var(--accent);
+  --k-discovery: var(--c-opportunity);
+}
+
+.obs-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.obs-item {
+  width: 100%;
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  transition: border-color var(--t-fast) var(--ease), background-color var(--t-fast) var(--ease);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.obs-item:hover {
+  border-color: var(--line-2);
+  background: var(--sunken);
+}
+
+.obs-num {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: var(--on-ink);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  background: var(--k-normal);
+}
+
+.obs-num.kind-differ {
+  background: var(--k-differ);
+  color: #fff;
+}
+
+.obs-num.kind-discovery {
+  background: var(--k-discovery);
+  color: #fff;
+}
+
+.obs-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.obs-text {
+  font-size: var(--fs-md);
+  overflow-wrap: anywhere;
+}
+
+.obs-meta {
+  font-size: var(--fs-xs);
+  color: var(--muted);
+}
+
+.obs-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.photo-strip {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.photo-thumb {
+  position: relative;
+  width: 84px;
+  height: 84px;
+}
+
+.photo-open {
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  overflow: hidden;
+  background: var(--sunken);
+  cursor: zoom-in;
+}
+
+.photo-open img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.photo-remove {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 0;
+  display: grid;
+  place-items: center;
+  background: var(--ink);
+  color: var(--on-ink);
+  font-size: var(--fs-md);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.photo-viewer {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.photo-viewer img {
+  max-width: 100%;
+  max-height: calc(100vh - 100px);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow);
+}
+
+.speech {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.link-btn.left {
+  padding-left: 0;
+  align-self: flex-start;
+}
+
+.linked-facts {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: var(--fs-sm);
+}
+
+.linked-facts li {
+  padding: 8px;
+  border-radius: var(--r-sm);
+  background: var(--sunken);
+}
+
+.rel-badge {
+  display: inline-block;
+  padding: 0 4px;
+  border-radius: var(--r-xs);
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  background: var(--ok-soft);
+  color: var(--ok);
+  margin-right: 4px;
+}
+
+.rel-differ .rel-badge,
+.rel-badge.rel-differ {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+
+.fact-pick {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.fact-pick ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 340px;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.fact-pick li {
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.fact-pick li.rel-match {
+  border-color: var(--ok);
+}
+
+.fact-pick li.rel-differ {
+  border-color: var(--k-differ);
+}
+
+.fact-pick-text {
+  font-size: var(--fs-sm);
+}
+
+.compare {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.compare h3 {
+  font-size: var(--fs-sm);
+  margin-top: 8px;
+}
+
+.pair {
+  padding: 8px 12px;
+  border-radius: 0 var(--r-sm) var(--r-sm) 0;
+  border: 1px solid var(--line);
+  font-size: var(--fs-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pair.differ {
+  border-left: 3px solid var(--k-differ);
+}
+
+.pair.discovery {
+  border-left: 3px solid var(--k-discovery);
+  display: block;
+}
+
+.pair.match {
+  border-left: 3px solid var(--ok);
+  display: block;
+}
+
+.transfer-help {
+  font-size: var(--fs-sm);
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+
+.transfer-help summary {
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.transfer-help ol {
+  padding-left: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.observed-line {
+  font-size: var(--fs-sm);
+  color: var(--muted);
+}
+

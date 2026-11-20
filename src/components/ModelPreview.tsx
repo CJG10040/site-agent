@@ -17,7 +17,7 @@ interface Props {
 
 type View = 'sw' | 'top' | 'se' | 'n'
 
-export default function ModelPreview({ model, plan, paper = '#f3f1ec', onReady }: Props) {
+export default function ModelPreview({ model, plan, paper = '#f5f5f4', onReady }: Props) {
   const ref = useRef<HTMLDivElement>(null)
   const setViewRef = useRef<((v: View) => void) | null>(null)
   const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading')

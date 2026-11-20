@@ -1,0 +1,549 @@
+/* 화면 틀: 위 막대 · 단계 목차(접기) · 내용 칸 · 지도+패널 · 폼 페이지 · 쪽 머리 */
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* ── 위 막대 ── */
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--topbar-h);
+  padding: 0 12px 0 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+  flex: none;
+  min-width: 0;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  background: none;
+  padding: 4px 8px 4px 0;
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+}
+
+.brand-mark {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  color: var(--text);
+}
+
+.brand-mark .site-dot {
+  fill: var(--accent);
+}
+
+.brand h1 {
+  font-size: var(--fs-read);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.crumb {
+  color: var(--line-2);
+}
+
+.project-title {
+  font-weight: 500;
+  color: var(--text-2);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.save-state {
+  font-size: var(--fs-xs);
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.save-state.error {
+  color: var(--err);
+}
+
+.spacer {
+  flex: 1;
+}
+
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.topbar-sep {
+  width: 1px;
+  height: 20px;
+  margin: 0 4px;
+  background: var(--line);
+}
+
+.banner {
+  padding: 8px 16px;
+  background: var(--err-soft);
+  color: var(--err);
+  font-size: var(--fs-sm);
+}
+
+.pad {
+  padding: 24px;
+}
+
+/* ── 작업 공간: 단계 목차 + 내용 ── */
+.workspace {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+.stepper {
+  width: 224px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border-right: 1px solid var(--line);
+  overflow: auto;
+  padding: 8px;
+}
+
+.stepper-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 32px;
+  padding: 0 0 0 8px;
+  margin-bottom: 4px;
+}
+
+.stepper-title {
+  font-size: var(--fs-xs);
+  color: var(--muted);
+}
+
+.stepper ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.step {
+  position: relative;
+  width: 100%;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-height: 36px;
+  padding: 8px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--text-2);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background-color var(--t-fast) var(--ease),
+    color var(--t-fast) var(--ease);
+}
+
+.step:hover {
+  background: var(--raised);
+  color: var(--text);
+}
+
+.step.current {
+  background: var(--raised);
+  color: var(--text);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.step-num {
+  flex: none;
+  width: 20px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  line-height: 20px;
+  color: var(--muted);
+}
+
+.step.current .step-num {
+  color: var(--accent-text);
+}
+
+.step-text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 20px;
+}
+
+.step-label {
+  font-weight: 500;
+}
+
+.step-note {
+  font-size: var(--fs-xs);
+  line-height: 16px;
+  color: var(--muted);
+}
+
+.step-done {
+  flex: none;
+  width: 16px;
+  height: 20px;
+  color: var(--ok);
+}
+
+.step-done svg {
+  width: 14px;
+  height: 14px;
+  margin-top: 3px;
+  stroke-width: 2;
+}
+
+.step.later .step-label {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+/* 목차 나누기: '모형 만들기' */
+.stepper li.step-group-start {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.step-group {
+  display: block;
+  padding: 0 8px 8px;
+  font-size: var(--fs-xs);
+  color: var(--muted);
+}
+
+/* 접은 목차: 번호만 */
+.stepper.collapsed {
+  width: 56px;
+  padding: 8px 4px;
+}
+
+.stepper.collapsed .stepper-head {
+  justify-content: center;
+  padding: 0;
+}
+
+.stepper.collapsed .stepper-title,
+.stepper.collapsed .step-text,
+.stepper.collapsed .step-done,
+.stepper.collapsed .step-group {
+  display: none;
+}
+
+.stepper.collapsed .step {
+  justify-content: center;
+  padding: 8px 0;
+}
+
+.stepper.collapsed .step-num {
+  width: auto;
+  text-align: center;
+}
+
+.stepper.collapsed .step.done .step-num {
+  color: var(--ok);
+}
+
+.stepper.collapsed .step.current .step-num {
+  color: var(--accent-text);
+}
+
+.stepper.collapsed li.step-group-start {
+  margin-top: 8px;
+  padding-top: 8px;
+}
+
+.workspace-main {
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+  position: relative;
+}
+
+/* ── 지도 + 왼쪽 패널 (③ 대지 · ④ 공간정보 · ⑦ 현장 관찰) ── */
+.split {
+  display: grid;
+  grid-template-columns: 380px 1fr;
+  height: 100%;
+}
+
+.split-panel {
+  overflow: auto;
+  padding: 20px 16px;
+  background: var(--surface);
+  border-right: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.split-map {
+  position: relative;
+  min-height: 0;
+}
+
+/* ── 쪽 머리: 도면 표제란처럼 제목 아래 먹선 한 줄 ── */
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+.form-head,
+.panel-head {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.form-head h2 {
+  font-size: var(--fs-2xl);
+  line-height: 1.3;
+}
+
+.form-head > p:not(.eyebrow),
+.panel-head > p:not(.eyebrow) {
+  color: var(--text-2);
+}
+
+.panel-head h2 {
+  font-size: var(--fs-xl);
+}
+
+.panel-head .eyebrow,
+.form-head .eyebrow {
+  margin-bottom: -4px;
+}
+
+.panel-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  margin-top: auto;
+}
+
+.block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.block h3 {
+  font-size: var(--fs-sm);
+  font-weight: 500;
+}
+
+/* ── 폼 페이지 (① 과제 · ② 첫 질문 · ⑤ 사실 카드 …) ── */
+.form-page {
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 32px 64px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.form-page.wide {
+  max-width: 1040px;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px 20px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+
+.field.wide {
+  grid-column: 1 / -1;
+}
+
+.field .label,
+.field legend {
+  font-weight: 500;
+  padding: 0;
+}
+
+.field.inline {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.form-foot {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.check-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  cursor: pointer;
+}
+
+/* ── 좁은 화면 (휴대폰) ── */
+@media (max-width: 760px) {
+  .app {
+    height: auto;
+    min-height: 100%;
+  }
+
+  .topbar {
+    flex-wrap: wrap;
+    padding: 8px 12px;
+    row-gap: 4px;
+  }
+
+  .crumb,
+  .save-state,
+  .topbar-sep {
+    display: none;
+  }
+
+  .topbar-actions {
+    width: 100%;
+    overflow-x: auto;
+  }
+
+  .workspace {
+    flex-direction: column;
+  }
+
+  .stepper,
+  .stepper.collapsed {
+    width: auto;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+    padding: 4px 8px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .stepper ol {
+    position: relative;
+  }
+
+  .stepper-head {
+    display: none;
+  }
+
+  .stepper ol {
+    flex-direction: row;
+  }
+
+  .step,
+  .stepper.collapsed .step {
+    padding: 8px;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .stepper.collapsed .step-text {
+    display: flex;
+  }
+
+  .step-note,
+  .step-done {
+    display: none;
+  }
+
+  .step-label {
+    white-space: nowrap;
+  }
+
+  .step.current {
+    box-shadow: inset 0 -2px 0 var(--accent);
+  }
+
+  /* 목차가 가로로 놓일 때는 세로줄로만 나눔 */
+  .stepper li.step-group-start,
+  .stepper.collapsed li.step-group-start {
+    margin: 0 0 0 8px;
+    padding: 0 0 0 8px;
+    border-top: 0;
+    border-left: 1px solid var(--line);
+  }
+
+  .step-group {
+    display: none;
+  }
+
+  .workspace-main {
+    overflow: visible;
+  }
+
+  .split {
+    grid-template-columns: 1fr;
+    grid-template-rows: 55vh auto;
+    height: auto;
+  }
+
+  .split-map {
+    grid-row: 1;
+  }
+
+  .split-panel {
+    grid-row: 2;
+    border-right: 0;
+    overflow: visible;
+  }
+
+  .form-page {
+    padding: 20px 16px 48px;
+  }
+
+  .form-head h2 {
+    font-size: var(--fs-xl);
+  }
+
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+}

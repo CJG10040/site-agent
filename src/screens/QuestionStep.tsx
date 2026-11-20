@@ -31,7 +31,7 @@ export default function QuestionStep({ project, update, onNext }: Props) {
   return (
     <div className="form-page">
       <header className="form-head">
-        <p className="eyebrow">② 첫 질문 — 데이터를 모으기 전에</p>
+        <p className="eyebrow">02 첫 질문 — 데이터를 모으기 전에</p>
         <h2>이번 설계에서 이 대지를 통해 가장 궁금한 것은 무엇인가요?</h2>
         <p className="muted">
           자료를 먼저 모으면 자료가 질문을 정해 버립니다. 지금 떠오르는 질문을 먼저 적어 두면, 이후의 사실·해석이 이

@@ -57,7 +57,7 @@ export default function ModelStep({ project, update, config, keys, onGoData, onG
   return (
     <div className="form-page wide model-page">
       <header className="form-head">
-        <p className="eyebrow">⑩ 3D 모형</p>
+        <p className="eyebrow">10 3D 모형</p>
         <h2>렌더링 모델과 콘타 모형 만들기</h2>
         <p className="muted">
           수집한 자료로 대지 주변을 3D로 만들어 라이노(.3dm)·DXF로 내려받습니다. 돌려 보며 무엇이 들어가는지·파일이 얼마나 클지 확인한 뒤 받으세요. 대지 중심 = 원점(m, 위쪽 = 북), 높이 0 = 대지 중심

@@ -1,3 +1,4 @@
+import { Check, X } from 'lucide-react'
 import { useState } from 'react'
 import { runKeyDiagnostics } from '../sources/keyDiagnostics'
 import type { ApiKeys } from '../sources/keys'
@@ -56,7 +57,7 @@ export default function DiagnosticsPanel({ config, keys }: Props) {
             {results.map((r) => (
               <li key={r.id} className={r.ok ? 'ok' : 'fail'}>
                 <span className="mark" aria-hidden="true">
-                  {r.ok ? '✓' : '✕'}
+                  {r.ok ? <Check /> : <X />}
                 </span>
                 <div>
                   <p className="check-label">

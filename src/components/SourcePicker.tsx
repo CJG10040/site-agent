@@ -325,7 +325,7 @@ function ChangeMap({ ca, project, view, setView, y1, y5 }: { ca: ChangeAreas; pr
     const site = siteBoundary(project.site)
     if (site) {
       g.lineWidth = 2.5
-      g.strokeStyle = '#d9480f'
+      g.strokeStyle = '#d42a1e'
       for (const poly of site.type === 'Polygon' ? [site.coordinates] : site.coordinates) {
         ring(poly[0])
         g.stroke()
@@ -390,7 +390,7 @@ function ChangeMap({ ca, project, view, setView, y1, y5 }: { ca: ChangeAreas; pr
           {y5}에만 있는 건물
         </li>
         <li>
-          <i className="line" style={{ background: '#d9480f' }} />
+          <i className="line" style={{ background: '#d42a1e' }} />
           대지
         </li>
         <li>

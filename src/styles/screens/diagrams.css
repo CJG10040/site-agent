@@ -1,0 +1,718 @@
+/* ⑥ 도판: 대지 개요 · 설정 · 도판 카드(그림은 흰 종이) · 도판 고치기 · 도판 색 · 겹쳐 보기 · 분해 · 생성 막대
+   빨강은 '바뀐 도판'·'학생이 고친 색'처럼 고친 흔적에만 */
+.diagrams-page .form-head {
+  margin-bottom: 4px;
+}
+
+.overview-card {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 32px;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+
+.overview-card h3 {
+  margin: 0 0 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line);
+  font-size: var(--fs-md);
+}
+
+.overview-card dl {
+  margin: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.overview-card dl > div {
+  display: grid;
+  grid-template-columns: 9.5em 1fr;
+  gap: 8px;
+  font-size: var(--fs-md);
+}
+
+.overview-card dt {
+  color: var(--muted);
+}
+
+.overview-card dd {
+  margin: 0;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.overview-card dd .muted {
+  font-weight: 400;
+}
+
+.overview-note {
+  grid-column: 1 / -1;
+  margin: 4px 0 0;
+}
+
+.diagram-settings {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px 16px;
+  padding: 12px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+
+.seg-field,
+.num-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.num-field {
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+}
+
+.num-field .label {
+  flex-basis: 100%;
+}
+
+.num-field input[type='number'] {
+  width: 64px;
+}
+
+.segmented.small button {
+  min-height: 24px;
+  padding: 0 8px;
+  font-size: var(--fs-sm);
+}
+
+.diagram-export {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.chat-box summary {
+  cursor: pointer;
+}
+
+.steps-list {
+  margin: 12px 0 0;
+  padding-left: 20px;
+  display: grid;
+  gap: 12px;
+}
+
+.steps-list li > .row,
+.steps-list li > textarea,
+.steps-list li > input {
+  margin-top: 8px;
+}
+
+.steps-list textarea {
+  width: 100%;
+}
+
+.chatbot-name {
+  display: block;
+  max-width: 260px;
+}
+
+.diagram-group h3 {
+  margin: 24px 0 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line);
+  font-size: var(--fs-lg);
+}
+
+.diagram-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 16px;
+}
+
+.diagram-card {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.diagram-card.empty {
+  opacity: 0.75;
+}
+
+.diagram-thumb {
+  display: grid;
+  place-items: center;
+  min-height: 200px;
+  padding: 8px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: #fff;
+  cursor: zoom-in;
+}
+
+.diagram-thumb:focus-visible {
+  outline-offset: -2px;
+}
+
+.diagram-thumb img {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.diagram-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 12px 12px;
+}
+
+.diagram-body h4 {
+  margin: 0;
+  font-size: var(--fs-md);
+}
+
+.diagram-summary {
+  margin: 0;
+  padding-left: 16px;
+  font-size: var(--fs-sm);
+  color: var(--text);
+  display: grid;
+  gap: 2px;
+}
+
+.diagram-body .field textarea {
+  width: 100%;
+}
+
+.suggestions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.chip.suggestion {
+  display: block;
+  padding: 8px 12px;
+  border-radius: var(--r-sm);
+  text-align: left;
+  line-height: 1.5;
+  white-space: normal;
+}
+
+.diagram-actions {
+  align-items: center;
+}
+
+.check-row.small {
+  font-size: var(--fs-sm);
+}
+
+.diagram-viewer {
+  width: min(900px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  padding: 16px;
+  border-radius: var(--r-lg);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.diagram-viewer img,
+.panel-edit-svg {
+  width: 100%;
+  height: auto;
+  background: #fff;
+}
+
+@media screen and (max-width: 760px) {
+  .overview-card {
+    grid-template-columns: 1fr;
+  }
+
+  .overview-card dl > div {
+    grid-template-columns: 8em 1fr;
+  }
+
+  .diagram-export {
+    margin-left: 0;
+  }
+
+  .diagram-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ───────── 도판 고치기 (2026-11-12) ───────── */
+.diagram-viewer.panel-editor.editing {
+  width: min(1240px, calc(100vw - 32px));
+}
+
+.panel-editor-bar {
+  align-items: center;
+  gap: 8px;
+}
+
+.panel-editor-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.panel-editor.editing .panel-editor-body {
+  grid-template-columns: minmax(0, 1fr) 300px;
+}
+
+@media (max-width: 900px) {
+  .panel-editor.editing .panel-editor-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.panel-edit-stage {
+  position: relative;
+  user-select: none;
+  touch-action: none;
+}
+
+.panel-edit-svg svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.panel-edit-marks {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.panel-edit-stage.mode-hide {
+  cursor: crosshair;
+}
+
+.panel-edit-stage.mode-label text[data-lk] {
+  cursor: move;
+}
+
+.panel-edit-stage.mode-label text[data-lk]:hover {
+  fill: #d42a1e;
+}
+
+.panel-editor-side {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.edit-hits,
+.edit-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.edit-hits li,
+.edit-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: var(--fs-sm);
+  padding: 4px 4px;
+  border-radius: var(--r-sm);
+}
+
+.edit-hits li:hover {
+  background: var(--raised);
+}
+
+.edit-missing {
+  color: var(--accent-text);
+  font-weight: 500;
+}
+
+.edits-record h4 {
+  margin: 12px 0 4px;
+  font-size: var(--fs-md);
+}
+
+/* ── 도판 색: 묶음 고르기 + 색 고치기 (14-A) */
+.style-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.style-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+}
+
+.style-head h3 {
+  margin: 0;
+}
+
+.style-target {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.style-target select {
+  max-width: min(320px, 70vw);
+}
+
+.pal-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pal-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.pal-group-label {
+  flex: 0 0 84px;
+  font-size: var(--fs-xs);
+  color: var(--muted);
+}
+
+.pal-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px 4px 4px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+  transition: border-color var(--t-fast) var(--ease);
+}
+
+.pal-btn:hover {
+  border-color: var(--line-2);
+}
+
+.pal-btn.on {
+  border-color: var(--text);
+  box-shadow: 0 0 0 1px var(--text);
+  font-weight: 500;
+}
+
+.pal-strip {
+  display: inline-flex;
+  height: 18px;
+  border-radius: var(--r-xs);
+  overflow: hidden;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12);
+}
+
+.pal-strip i {
+  width: 9px;
+  height: 100%;
+}
+
+.color-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 8px;
+}
+
+.color-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+.color-row-label {
+  flex: 0 0 100%;
+}
+
+.color-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 64px;
+}
+
+.color-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.color-input {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.color-input input[type='color'] {
+  width: 36px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: none;
+  cursor: pointer;
+}
+
+.color-input.edited input[type='color'] {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.color-input .link-btn {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--surface);
+  border: 1px solid var(--line-2);
+  font-size: var(--fs-xs);
+  line-height: 16px;
+  text-align: center;
+}
+
+.color-input .link-btn svg {
+  width: 10px;
+  height: 10px;
+  vertical-align: 0;
+}
+
+.style-overrides {
+  margin: 0;
+}
+
+@media (max-width: 560px) {
+  .pal-group-label {
+    flex-basis: 100%;
+  }
+}
+
+/* 테마색으로 만들기 */
+.theme-maker {
+  padding: 8px;
+  margin-top: 2px;
+  border: 1px dashed var(--line-2);
+  border-radius: var(--r-md);
+}
+
+.theme-maker.on {
+  border-color: var(--text);
+  border-style: solid;
+}
+
+.theme-color {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.theme-color input[type='color'] {
+  width: 40px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: none;
+  cursor: pointer;
+}
+
+.theme-preview {
+  display: inline-flex;
+}
+
+.pal-strip.wide i {
+  width: 12px;
+}
+
+.theme-note {
+  margin: 0;
+}
+
+/* 겹쳐 보기 카드 (14-D) */
+.overlay-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 4px 0 8px;
+  padding: 8px;
+  border: 1px dashed var(--line);
+  border-radius: var(--r-md);
+}
+
+.overlay-controls select {
+  width: 100%;
+}
+
+.overlay-row {
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+.overlay-opacity {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.overlay-opacity input[type='range'] {
+  width: 110px;
+}
+
+.overlay-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  align-items: center;
+}
+
+/* 분해 다이어그램 카드 (14-F) */
+.exploded-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 4px 0 8px;
+  padding: 8px;
+  border: 1px dashed var(--line);
+  border-radius: var(--r-md);
+}
+
+.exploded-list {
+  margin: 0;
+  padding-left: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.exploded-list li {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.exploded-name {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--fs-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.exploded-list .btn.small {
+  min-height: 24px;
+  padding: 0 8px;
+}
+
+.exploded-row {
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+}
+
+.exploded-row select {
+  max-width: 100%;
+}
+
+/* ⑥ 도판 생성 막대 (2026-11-13): 설정은 초안으로 모았다가 '도판 생성'으로 그림, 그리는 동안 진행도 */
+.gen-bar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 8px 12px;
+  margin: 0 0 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  font-size: var(--fs-md);
+}
+
+/* 바꾼 설정이 아직 도판에 안 그려짐: 레드라인 테두리 (뒤 내용이 비치지 않게 불투명한 바탕) */
+.gen-bar.dirty {
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  background: color-mix(in srgb, var(--accent) 5%, var(--surface));
+}
+
+.gen-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: min(100%, 320px);
+  flex: 1 1 320px;
+}
+
+.gen-progress progress {
+  width: 100%;
+  height: 8px;
+  accent-color: var(--ink);
+}
+
+.diagram-card.changed {
+  outline: 2px dashed var(--accent);
+  outline-offset: -2px;
+}
+
+.diagram-thumb {
+  position: relative;
+}
+
+.changed-badge {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  padding: 0 4px;
+  border-radius: var(--r-xs);
+  background: var(--accent);
+  color: #fff;
+  font-size: var(--fs-xs);
+  font-weight: 500;
+}

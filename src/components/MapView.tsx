@@ -59,7 +59,7 @@ export interface MapObservation {
   selected: boolean
 }
 
-const OBS_COLORS: Record<MapObservation['kind'], string> = { normal: '#343a40', differ: '#c92a2a', discovery: '#0c8599' }
+const OBS_COLORS: Record<MapObservation['kind'], string> = { normal: '#27272a', differ: '#d42a1e', discovery: '#1d7770' }
 
 export type MapMode = 'click' | 'draw' | 'modify'
 
@@ -138,7 +138,7 @@ export default function MapView({
   // ── 지도 생성 (한 번)
   useEffect(() => {
     if (!targetRef.current) return
-    const accent = cssVar('--accent', '#d9480f')
+    const accent = cssVar('--accent', '#d42a1e')
 
     const make = (style: Style | ((f: FeatureLike) => Style | Style[]), zIndex: number) => {
       const source = new VectorSource()
@@ -211,7 +211,7 @@ export default function MapView({
       40,
     )
     const boundary = make(
-      new Style({ stroke: new Stroke({ color: accent, width: 3 }), fill: new Fill({ color: 'rgba(217, 72, 15, 0.12)' }) }),
+      new Style({ stroke: new Stroke({ color: accent, width: 3 }), fill: new Fill({ color: 'rgba(212, 42, 30, 0.1)' }) }),
       45,
     )
     const sun = make((f) => {
@@ -261,7 +261,7 @@ export default function MapView({
     const edit = make(
       new Style({
         stroke: new Stroke({ color: accent, width: 3 }),
-        fill: new Fill({ color: 'rgba(217, 72, 15, 0.12)' }),
+        fill: new Fill({ color: 'rgba(212, 42, 30, 0.1)' }),
         image: new CircleStyle({ radius: 5, fill: new Fill({ color: accent }) }),
       }),
       70,

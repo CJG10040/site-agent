@@ -1,8 +1,10 @@
 import { useCallback, useState } from 'react'
+import { Monitor, Moon, Sun } from 'lucide-react'
 import DiagnosticsPanel from './components/DiagnosticsPanel'
 import SettingsDialog from './components/SettingsDialog'
 import Stepper from './components/Stepper'
 import { useHashRoute } from './lib/hashRoute'
+import { THEME_LABEL, useTheme } from './lib/theme'
 import { downloadBlob, nowIso } from './model/project'
 import { exportProjectFile } from './model/transfer'
 import type { StepId } from './model/types'
@@ -37,6 +39,8 @@ export default function App() {
   const [diagOpen, setDiagOpen] = useState(false)
   const [storageBlocked, setStorageBlocked] = useState(false)
   const [baseMap, setBaseMap] = useState<BaseMap>('Base')
+  const [theme, cycleTheme] = useTheme()
+  const ThemeIcon = theme === 'light' ? Sun : theme === 'dark' ? Moon : Monitor
 
   const projectId = route.name === 'project' ? route.id : null
   const { project, loadError, saveState, update } = useProject(projectId)
@@ -81,7 +85,11 @@ export default function App() {
     <div className="app">
       <header className="topbar">
         <button type="button" className="brand" onClick={() => navigate({ name: 'home' })} aria-label="프로젝트 목록으로">
-          <span className="brand-mark" aria-hidden="true" />
+          {/* 표지: 필지 경계선 하나와 대지 중심점 하나 */}
+          <svg className="brand-mark" viewBox="0 0 20 20" aria-hidden="true">
+            <path d="M3.5 6.5 12.5 2.8 17 12.2 7.6 17.2Z" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
+            <circle className="site-dot" cx="10" cy="10" r="2.2" />
+          </svg>
           <h1>대지해석 에이전트</h1>
         </button>
         {project && (
@@ -94,25 +102,37 @@ export default function App() {
           </>
         )}
         <span className="spacer" />
-        {project && <VersionSave project={project} />}
-        {project && (
+        <div className="topbar-actions">
+          {project && <VersionSave project={project} />}
+          {project && (
+            <button
+              type="button"
+              className="btn ghost"
+              onClick={() => void doExport()}
+              disabled={exporting}
+              title="프로젝트를 사진까지 파일 하나로 저장 (다른 기기로 옮기거나 백업)"
+            >
+              {exporting ? '내보내는 중…' : '내보내기'}
+              {!project.lastExportedAt && <span className="dot-warn" aria-label="내보낸 적 없음" />}
+            </button>
+          )}
+          {project && <span className="topbar-sep" aria-hidden="true" />}
+          <button type="button" className="btn ghost" onClick={() => setDiagOpen(true)}>
+            연결 진단
+          </button>
+          <button type="button" className="btn ghost" onClick={() => setSettingsOpen(true)}>
+            설정
+          </button>
           <button
             type="button"
-            className="btn ghost"
-            onClick={() => void doExport()}
-            disabled={exporting}
-            title="프로젝트를 사진까지 파일 하나로 저장 (다른 기기로 옮기거나 백업)"
+            className="btn ghost icon-only"
+            onClick={cycleTheme}
+            title={`테마: ${THEME_LABEL[theme]} — 눌러서 바꾸기`}
+            aria-label={`테마: ${THEME_LABEL[theme]}. 눌러서 바꾸기`}
           >
-            {exporting ? '내보내는 중…' : '내보내기'}
-            {!project.lastExportedAt && <span className="dot-warn" aria-label="내보낸 적 없음" />}
+            <ThemeIcon aria-hidden="true" />
           </button>
-        )}
-        <button type="button" className="btn ghost" onClick={() => setDiagOpen(true)}>
-          연결 진단
-        </button>
-        <button type="button" className="btn ghost" onClick={() => setSettingsOpen(true)}>
-          설정
-        </button>
+        </div>
       </header>
 
       {storageBlocked && (

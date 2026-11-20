@@ -1,0 +1,404 @@
+/* ④ 공간정보: 수집할 자료 고르기 · 수집 진행 · 수치지도 올리기 · 지도 정보 · 바로가기 · 항목별로 쓸 자료 */
+
+/* ───────── 공간정보 수집 ───────── */
+
+.category-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* 고른 묶음은 흰 판, 안 고른 묶음은 한 단계 가라앉은 바탕 + 흐린 글 */
+.category-list li {
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--sunken);
+  color: var(--text-2);
+  transition: border-color var(--t-fast) var(--ease), background-color var(--t-fast) var(--ease);
+}
+
+.category-list li:hover {
+  border-color: var(--line-2);
+}
+
+.category-list li.on {
+  background: var(--surface);
+  color: var(--text);
+}
+
+.category-list label {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+.category-list input {
+  margin-top: 4px;
+}
+
+.category-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.category-label {
+  font-weight: 500;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.category-detail {
+  font-size: var(--fs-sm);
+}
+
+.category-meta {
+  font-size: var(--fs-xs);
+  color: var(--muted);
+}
+
+.collect-group + .collect-group {
+  margin-top: 8px;
+}
+
+.collect-group-title {
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+.collect-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.collect-list li {
+  display: grid;
+  grid-template-columns: 10px 1fr auto;
+  align-items: center;
+  gap: 4px 8px;
+  font-size: var(--fs-sm);
+  padding: 4px 0;
+}
+
+.collect-list .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--line-2);
+}
+
+.collect-list .state-running .dot {
+  background: var(--text);
+  animation: pulse 1.2s var(--ease) infinite;
+}
+
+.collect-list .state-ok .dot {
+  background: var(--ok);
+}
+
+.collect-list .state-empty .dot {
+  background: var(--muted);
+  opacity: 0.4;
+}
+
+.collect-list .state-error .dot {
+  background: var(--err);
+}
+
+.collect-state {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--fs-sm);
+}
+
+.collect-list .state-error .collect-state {
+  color: var(--err);
+}
+
+.collect-msg {
+  grid-column: 2 / -1;
+  font-size: var(--fs-xs);
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .collect-list .state-running .dot {
+    animation: none;
+  }
+}
+
+.ngii-box .ngii-sheets {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.ngii-drop {
+  display: block;
+  padding: 16px;
+  border: 1px dashed var(--line-2);
+  border-radius: var(--r-md);
+  transition: border-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+  text-align: center;
+  font-size: var(--fs-sm);
+  color: var(--muted);
+  cursor: pointer;
+  background: var(--sunken);
+}
+
+.ngii-drop.drag,
+.ngii-drop:hover {
+  border-color: var(--text);
+  color: var(--text);
+}
+
+.ngii-status {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-start;
+}
+
+/* ───────── 데이터 확장 (Phase 6) ───────── */
+.block-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.block-head h3 {
+  margin: 0;
+}
+
+.map-legend {
+  max-height: calc(100% - 120px);
+  overflow-y: auto;
+}
+
+.map-legend i.legend-shape.circle {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border-color: #fff;
+}
+
+.map-legend i.legend-shape.square {
+  width: 10px;
+  height: 10px;
+  border-radius: 1px;
+  border-color: #fff;
+}
+
+.map-legend i.legend-shape.area {
+  border-width: 1.5px;
+  border-style: solid;
+}
+
+.map-info {
+  position: absolute;
+  left: 12px;
+  bottom: 40px;
+  max-width: min(360px, calc(100% - 24px));
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  padding: 8px 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow);
+  font-size: var(--fs-sm);
+  z-index: 5;
+}
+
+.map-info .link-btn {
+  margin-left: auto;
+  font-size: var(--fs-lg);
+  line-height: 1;
+}
+
+.site-links ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.site-links li {
+  display: grid;
+  gap: 2px;
+}
+
+.site-links a {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 500;
+  color: var(--text);
+  text-decoration: underline;
+  text-decoration-color: var(--line-2);
+}
+
+.site-links a:hover {
+  text-decoration-color: currentColor;
+}
+
+/* ───────── ④ 항목별로 쓸 자료 (2026-11-13) ───────── */
+
+.source-pick .pick-table {
+  display: grid;
+  gap: 12px;
+  margin: 8px 0;
+}
+
+.source-pick .pick-group-title {
+  margin: 0 0 4px;
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.source-pick .pick-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  align-items: center;
+  padding: 4px 0;
+  border-top: 1px solid var(--line);
+}
+
+.source-pick .pick-label {
+  flex: 0 0 92px;
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  line-height: 1.3;
+}
+
+.source-pick .pick-opts {
+  flex: 1 1 200px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  min-width: 0;
+}
+
+.source-pick .pick-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.source-pick .pick-chips .chip {
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--fs-sm);
+}
+
+.source-pick .pick-chips .chip:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.source-pick .pick-key {
+  margin: 4px 0 8px;
+  color: var(--muted);
+}
+
+.source-pick .pick-n {
+  font-family: var(--font-mono);
+  font-weight: 400;
+  opacity: 0.8;
+}
+
+.source-pick .pick-def {
+  margin-left: 4px;
+  padding: 0 4px;
+  border: 1px solid currentColor;
+  border-radius: var(--r-xs);
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  opacity: 0.7;
+}
+
+.source-pick .source-auto {
+  align-items: flex-start;
+  margin: 12px 0 8px;
+  font-size: var(--fs-md);
+}
+
+.source-pick .source-auto input {
+  margin-top: 4px;
+}
+
+.source-pick .row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin: 8px 0;
+}
+
+.change-map .change-canvas {
+  display: inline-block;
+  max-width: 100%;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: #fff;
+}
+
+.change-map canvas {
+  display: block;
+  height: auto;
+}
+
+.change-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.change-legend li {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.change-legend i {
+  display: inline-block;
+  width: 14px;
+  height: 12px;
+  border-radius: var(--r-xs);
+}
+
+.change-legend i.line {
+  height: 3px;
+}

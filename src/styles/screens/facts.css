@@ -1,0 +1,185 @@
+/* ⑤ 사실 카드: 요약 숫자 · 주제별 카드 · 출처 칩 · 사실 직접 추가 · 정성 조사 */
+
+.fact-summary {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.topic-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.topic-group h3 {
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  color: var(--text-2);
+}
+
+.card-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* 카드: 색 띠 대신 근거 번호 표(F-01)가 종류를 말함 */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.card.card-fact {
+  --tc: var(--c-fact);
+}
+
+.card.card-unknown {
+  --tc: var(--c-unknown);
+  border-style: dashed;
+  border-color: var(--line-2);
+}
+
+.card.status-rejected {
+  opacity: 0.55;
+}
+
+.card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.card-text {
+  font-size: var(--fs-read);
+  line-height: 1.6;
+}
+
+.card.status-rejected .card-text {
+  text-decoration: line-through;
+}
+
+.card-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.card-note {
+  font-size: var(--fs-sm);
+}
+
+.source-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.source-chip {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: var(--r-xs);
+  border: 1px solid var(--line);
+  background: var(--sunken);
+  color: var(--text-2);
+  font: inherit;
+  font-size: var(--fs-xs);
+  cursor: pointer;
+  transition:
+    border-color var(--t-fast) var(--ease),
+    color var(--t-fast) var(--ease);
+}
+
+.source-chip:hover {
+  border-color: var(--line-2);
+  color: var(--text);
+}
+
+.source-chip.on {
+  border-color: var(--text);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.source-detail {
+  display: grid;
+  grid-template-columns: 72px 1fr;
+  gap: 4px 12px;
+  margin: 0;
+  padding: 12px;
+  border-radius: var(--r-sm);
+  background: var(--sunken);
+  border: 1px solid var(--line);
+  font-size: var(--fs-sm);
+}
+
+.source-detail dt {
+  color: var(--muted);
+}
+
+.source-detail dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.card-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.add-fact {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+
+.add-fact h3 {
+  font-size: var(--fs-lg);
+}
+
+.plan-list {
+  margin: 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* 정성 조사 (챗봇) */
+.research-panel .row.wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 8px 0;
+}
+
+.research-prompt textarea {
+  width: 100%;
+  font-size: var(--fs-xs);
+}
+
+.research-panel .field textarea {
+  width: 100%;
+}
+
+.research-list {
+  margin: 4px 0;
+  padding-left: 16px;
+  max-height: 260px;
+  overflow: auto;
+}

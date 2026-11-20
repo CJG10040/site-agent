@@ -62,7 +62,7 @@ export default function InterpretStep({ project, update, config }: Props) {
     <div className="interpret">
       <header className="interpret-head">
         <div>
-          <p className="eyebrow">⑧ 해석·가설</p>
+          <p className="eyebrow">08 해석·가설</p>
           <h2>사실과 관찰에서 설계 질문과 가설로</h2>
         </div>
         <ul className="mvp-strip" aria-label="MVP 진행">

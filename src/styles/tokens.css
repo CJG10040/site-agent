@@ -1,0 +1,166 @@
+/* ─────────────────────────────────────────────
+   디자인 토큰 — 방향 A '도면: 먹과 레드라인' (2026-11-20)
+   화면 틀은 종이·먹처럼 조용하게, 색은 도판·지도·카드 종류가 맡는다.
+   빨강(레드라인)은 '지금 단계'·'확인 필요'·'학생이 고친 것'처럼 드물게만.
+   ───────────────────────────────────────────── */
+
+:root {
+  /* 종이 (바탕·판) */
+  --bg: #f5f5f4;
+  --surface: #ffffff;
+  --sunken: #f7f7f6;
+  --raised: #efefee;
+
+  /* 먹 (글·선) */
+  --text: #18181b;
+  --text-2: #52525b;
+  --muted: #6e6e76;
+  --line: rgba(24, 24, 27, 0.1);
+  --line-2: rgba(24, 24, 27, 0.2);
+  --rule: #18181b;
+
+  /* 주요 버튼 = 먹 */
+  --ink: #18181b;
+  --ink-hover: #34343a;
+  --on-ink: #ffffff;
+
+  /* 레드라인 */
+  --accent: #d42a1e;
+  --accent-text: #bb2318;
+  --accent-soft: rgba(212, 42, 30, 0.08);
+
+  /* 뜻이 있는 색 (낮춘 채도) */
+  --ok: #2d7a48;
+  --ok-soft: #ecf4ee;
+  --warn: #965800;
+  --warn-soft: #fbf2e2;
+  --err: #b42318;
+  --err-soft: #fcefed;
+
+  /* 카드 종류 — 도면 레이어 색처럼 한 톤으로 맞춤 */
+  --c-fact: #2d5f93;
+  --c-observation: #4a4a50;
+  --c-relation: #5a4d9c;
+  --c-interpretation: #84467f;
+  --c-tension: #b23b2b;
+  --c-opportunity: #1d7770;
+  --c-question: #95600f;
+  --c-hypothesis: #3b7a40;
+  --c-unknown: #85858c;
+
+  /* 글꼴 */
+  --font-sans: 'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Malgun Gothic',
+    sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  --fs-xs: 12px;
+  --fs-sm: 13px;
+  --fs-md: 14px;
+  --fs-read: 15px;
+  --fs-lg: 16px;
+  --fs-xl: 18px;
+  --fs-2xl: 22px;
+  --fs-3xl: 28px;
+
+  /* 모서리: 도면처럼 단단하게 */
+  --r-xs: 4px;
+  --r-sm: 6px;
+  --r-md: 8px;
+  --r-lg: 12px;
+
+  /* 높이 */
+  --h-control: 36px;
+  --h-control-sm: 28px;
+  --topbar-h: 56px;
+
+  /* 그림자: 떠 있는 것(지도 위 도구·대화상자)에만 */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow: 0 8px 24px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.05);
+  --backdrop: rgba(24, 24, 27, 0.4);
+
+  /* 움직임: 곡선 하나, 시간 둘 */
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --t-fast: 140ms;
+  --t-med: 220ms;
+
+  color-scheme: light;
+}
+
+/* 어두운 테마: 흑연. 깊이는 그림자 대신 판의 밝기 단계와 가는 선으로.
+   [data-theme]이 없으면 컴퓨터 설정을 따르고, 위 막대 단추로 고르면 그 값을 따른다. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --bg: #141415;
+    --surface: #1a1a1c;
+    --sunken: #111112;
+    --raised: #252527;
+    --text: #ededed;
+    --text-2: #a8a8ad;
+    --muted: #8c8c92;
+    --line: rgba(237, 237, 237, 0.09);
+    --line-2: rgba(237, 237, 237, 0.18);
+    --rule: #ededed;
+    --ink: #ededed;
+    --ink-hover: #ffffff;
+    --on-ink: #141415;
+    --accent: #ff5b4f;
+    --accent-text: #ff7468;
+    --accent-soft: rgba(255, 91, 79, 0.12);
+    --ok: #5fbf80;
+    --ok-soft: rgba(95, 191, 128, 0.12);
+    --warn: #e0a548;
+    --warn-soft: rgba(224, 165, 72, 0.12);
+    --err: #ff6b5f;
+    --err-soft: rgba(255, 107, 95, 0.12);
+    --c-fact: #82b1e4;
+    --c-observation: #b4b4ba;
+    --c-relation: #a99cf0;
+    --c-interpretation: #d695d0;
+    --c-tension: #ef8a7a;
+    --c-opportunity: #5cc2b8;
+    --c-question: #e0a65a;
+    --c-hypothesis: #84c489;
+    --c-unknown: #8c8c92;
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow: 0 8px 24px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(237, 237, 237, 0.06);
+    --backdrop: rgba(0, 0, 0, 0.6);
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme='dark'] {
+  --bg: #141415;
+  --surface: #1a1a1c;
+  --sunken: #111112;
+  --raised: #252527;
+  --text: #ededed;
+  --text-2: #a8a8ad;
+  --muted: #8c8c92;
+  --line: rgba(237, 237, 237, 0.09);
+  --line-2: rgba(237, 237, 237, 0.18);
+  --rule: #ededed;
+  --ink: #ededed;
+  --ink-hover: #ffffff;
+  --on-ink: #141415;
+  --accent: #ff5b4f;
+  --accent-text: #ff7468;
+  --accent-soft: rgba(255, 91, 79, 0.12);
+  --ok: #5fbf80;
+  --ok-soft: rgba(95, 191, 128, 0.12);
+  --warn: #e0a548;
+  --warn-soft: rgba(224, 165, 72, 0.12);
+  --err: #ff6b5f;
+  --err-soft: rgba(255, 107, 95, 0.12);
+  --c-fact: #82b1e4;
+  --c-observation: #b4b4ba;
+  --c-relation: #a99cf0;
+  --c-interpretation: #d695d0;
+  --c-tension: #ef8a7a;
+  --c-opportunity: #5cc2b8;
+  --c-question: #e0a65a;
+  --c-hypothesis: #84c489;
+  --c-unknown: #8c8c92;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow: 0 8px 24px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(237, 237, 237, 0.06);
+  --backdrop: rgba(0, 0, 0, 0.6);
+  color-scheme: dark;
+}

@@ -250,7 +250,7 @@ export default function ObserveStep({ project, update, config, baseMap, onBaseMa
     <div className="split">
       <aside className="split-panel">
         <header className="panel-head">
-          <p className="eyebrow">⑦ 현장 관찰</p>
+          <p className="eyebrow">07 현장 관찰</p>
           <h2>현장에서 본 것, 느낀 것</h2>
         </header>
 
@@ -521,8 +521,8 @@ export default function ObserveStep({ project, update, config, baseMap, onBaseMa
             <div className="legend-item">
               <p className="legend-title">현장 관찰</p>
               <p className="legend-row">
-                <i className="dot" style={{ background: '#343a40' }} /> 관찰 <i className="dot" style={{ background: '#c92a2a' }} /> 자료와 다름{' '}
-                <i className="dot" style={{ background: '#0c8599' }} /> 새 발견
+                <i className="dot" style={{ background: '#27272a' }} /> 관찰 <i className="dot" style={{ background: '#d42a1e' }} /> 자료와 다름{' '}
+                <i className="dot" style={{ background: '#1d7770' }} /> 새 발견
               </p>
             </div>
           </div>

@@ -1,5 +1,6 @@
 // 14-F 분해 다이어그램 카드: 층 목록(위 → 아래로 보여 줌) · 순서 바꾸기 · 빼기 · 더하기 · 보는 방향 · 기본 구성으로.
 
+import { ArrowDown, ArrowUp } from 'lucide-react'
 import { EXPLODED_DEFAULT, explodedAz, explodedLayers, SITE_LAYER } from '../diagrams/exploded'
 import { OVERLAY_IDS } from '../diagrams/overlay'
 import { ORDERED_PANELS } from '../diagrams/panels'
@@ -41,11 +42,11 @@ export default function ExplodedControls({ settings, setSettings }: Props) {
         {shown.map(({ id, i }) => (
           <li key={id}>
             <span className="exploded-name">{nameOf(id)}</span>
-            <button type="button" className="btn small ghost" aria-label={`${nameOf(id)} 위로`} disabled={i === layers.length - 1} onClick={() => move(i, 1)}>
-              ↑
+            <button type="button" className="btn small ghost icon-only" aria-label={`${nameOf(id)} 위로`} disabled={i === layers.length - 1} onClick={() => move(i, 1)}>
+              <ArrowUp aria-hidden="true" />
             </button>
-            <button type="button" className="btn small ghost" aria-label={`${nameOf(id)} 아래로`} disabled={i === 0} onClick={() => move(i, -1)}>
-              ↓
+            <button type="button" className="btn small ghost icon-only" aria-label={`${nameOf(id)} 아래로`} disabled={i === 0} onClick={() => move(i, -1)}>
+              <ArrowDown aria-hidden="true" />
             </button>
             <button type="button" className="link-btn small" disabled={layers.length <= 1} onClick={() => save(layers.filter((x) => x !== id))}>
               빼기

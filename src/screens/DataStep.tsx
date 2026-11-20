@@ -245,7 +245,7 @@ export default function DataStep(props: Props) {
     <div className="split">
       <aside className="split-panel">
         <header className="panel-head">
-          <p className="eyebrow">④ 공간정보</p>
+          <p className="eyebrow">04 공간정보</p>
           <h2>대지와 주변의 공공데이터 모으기</h2>
         </header>
 

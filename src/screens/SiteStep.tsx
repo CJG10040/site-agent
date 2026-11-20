@@ -161,7 +161,7 @@ export default function SiteStep({ project, update, config, baseMap, onBaseMap, 
     <div className="split">
       <aside className="split-panel">
         <header className="panel-head">
-          <p className="eyebrow">③ 대지</p>
+          <p className="eyebrow">03 대지</p>
           <h2>대지 경계 정하기</h2>
         </header>
 

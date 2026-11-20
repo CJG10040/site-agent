@@ -1,0 +1,130 @@
+/* ⑧ 받은 피드백: 반영 상태 — 아직 = 회색, 반영함 = 초록, 보류 = 주의, 다르게 판단 = 사실 색 */
+
+.feedback {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.feedback-form {
+  padding: 12px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+
+.fb-meta {
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: flex-end;
+}
+
+.field.inline.grow {
+  flex: 1;
+  min-width: 180px;
+}
+
+.fb-refs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.fb-refs select {
+  max-width: 260px;
+}
+
+.fb-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.fb-counts {
+  color: var(--muted);
+}
+
+.fb-group h3 {
+  font-size: var(--fs-md);
+  margin: 4px 0 8px;
+}
+
+.fb-item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 16px;
+  margin-bottom: 8px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--line-2);
+  border-radius: 0 var(--r-sm) var(--r-sm) 0;
+  background: var(--surface);
+}
+
+.fb-item.status-applied {
+  border-left-color: var(--ok);
+}
+
+.fb-item.status-hold {
+  border-left-color: var(--warn);
+}
+
+.fb-item.status-disagree {
+  border-left-color: var(--c-fact);
+}
+
+.fb-item .row {
+  align-items: center;
+  gap: 8px;
+}
+
+.fb-text {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.fb-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.fb-badge {
+  display: inline-block;
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  padding: 0 4px;
+  border-radius: var(--r-xs);
+  background: var(--raised);
+  color: var(--text-2);
+}
+
+.fb-badge.status-applied {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+
+.fb-badge.status-hold {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
+.fb-badge.status-disagree {
+  background: color-mix(in srgb, var(--c-fact) 10%, transparent);
+  color: var(--c-fact);
+}
+
+.diagram-feedback {
+  margin: 2px 0;
+}
+
+.detail-feedback {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: var(--fs-sm);
+}

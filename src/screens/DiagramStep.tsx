@@ -231,7 +231,7 @@ export default function DiagramStep({ project, update, config, keys, onGoData, o
     return (
       <div className="form-page wide">
         <header className="form-head">
-          <p className="eyebrow">⑥ 도판</p>
+          <p className="eyebrow">06 도판</p>
           <h2>도판으로 보고 결론 한 문장 쓰기</h2>
         </header>
         <div className="notice">
@@ -249,7 +249,7 @@ export default function DiagramStep({ project, update, config, keys, onGoData, o
   return (
     <div className="form-page wide diagrams-page">
       <header className="form-head">
-        <p className="eyebrow">⑥ 도판</p>
+        <p className="eyebrow">06 도판</p>
         <h2>도판으로 보고 결론 한 문장 쓰기</h2>
         <p className="muted">
           도판 한 장에는 사실 하나만 담았습니다. 각 도판에서 <strong>무엇을 판단할 수 있는지 한 문장</strong>으로 적어 보세요. 챗봇에게 결론 후보를 받을 수도 있습니다. 적은

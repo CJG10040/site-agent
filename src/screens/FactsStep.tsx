@@ -412,7 +412,7 @@ export default function FactsStep({ project, update, onGoData }: Props) {
   return (
     <div className="form-page wide">
       <header className="form-head">
-        <p className="eyebrow">⑤ 사실 카드</p>
+        <p className="eyebrow">05 사실 카드</p>
         <h2>데이터에서 나온 사실을 확인하기</h2>
         <p className="muted">
           프로그램이 만든 문장은 <strong>처음부터 확인됨</strong>으로 들어옵니다. 출처를 열어 보면서 틀리거나 중요하지 않은 것은

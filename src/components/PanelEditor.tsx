@@ -149,15 +149,15 @@ export default function PanelEditor({ project, update, def, panel, data, setting
 
   // 고르거나 가리킨 것 표시 (도판 위에 겹친 그림)
   const marks: string[] = []
-  if (mode === 'hide' && clickAt) marks.push(`<circle cx="${clickAt[0]}" cy="${clickAt[1]}" r="${HIT_PX}" fill="none" stroke="#c62828" stroke-width="2" stroke-dasharray="4 3"/>`)
+  if (mode === 'hide' && clickAt) marks.push(`<circle cx="${clickAt[0]}" cy="${clickAt[1]}" r="${HIT_PX}" fill="none" stroke="#d42a1e" stroke-width="2" stroke-dasharray="4 3"/>`)
   if (mode === 'hide' && hover) {
     const [x, y] = frame.pt(hover.lon, hover.lat)
-    marks.push(`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="11" fill="#c62828" fill-opacity="0.25" stroke="#c62828" stroke-width="3"/>`)
+    marks.push(`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="11" fill="#d42a1e" fill-opacity="0.25" stroke="#d42a1e" stroke-width="3"/>`)
   }
   if (mode === 'hide')
     for (const h of edits.hides) {
       const [x, y] = frame.pt(h.lon, h.lat)
-      if (inMap([x, y])) marks.push(`<g stroke="#c62828" stroke-width="3" stroke-linecap="round"><path d="M${x - 7} ${y - 7}L${x + 7} ${y + 7}M${x + 7} ${y - 7}L${x - 7} ${y + 7}"/></g>`)
+      if (inMap([x, y])) marks.push(`<g stroke="#d42a1e" stroke-width="3" stroke-linecap="round"><path d="M${x - 7} ${y - 7}L${x + 7} ${y + 7}M${x + 7} ${y - 7}L${x - 7} ${y + 7}"/></g>`)
     }
 
   return (

@@ -1,6 +1,7 @@
 // 도판 색: 묶음 고르기 + 테마색으로 만들기 + 색 직접 고치기 + 도판별 덮어쓰기 (14-A, 2026-11-12 사용자 결정).
 // 보드 전체에 한 묶음(또는 테마색 조합)을 쓰고, 고친 색은 전체(settings.colors) 또는 도판 하나(settings.panelStyles[id])에 저장한다.
 
+import { RotateCcw } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { EDIT_FIELDS, EDIT_LISTS, PALETTE_GROUPS, PALETTES, boardBase, paletteFor, paletteOf, type Palette } from '../diagrams/palette'
 import { ORDERED_PANELS } from '../diagrams/panels'
@@ -50,7 +51,7 @@ function ColorInput({ value, edited, label, onCommit, onReset }: { value: string
       <input type="color" value={draft} aria-label={label} title={`${label} ${draft}`} onChange={(e) => change(e.target.value)} />
       {edited && (
         <button type="button" className="link-btn" aria-label={`${label} 묶음 색으로`} title="묶음 색으로" onClick={onReset}>
-          ↺
+          <RotateCcw aria-hidden="true" />
         </button>
       )}
     </span>
@@ -135,7 +136,7 @@ export default function StylePanel({ settings, setSettings }: Props) {
             {ORDERED_PANELS.map((p) => (
               <option key={p.id} value={p.id}>
                 {panelLabel(p.id)}
-                {styles[p.id] ? ' ✎' : ''}
+                {styles[p.id] ? ' · 고침' : ''}
               </option>
             ))}
           </select>

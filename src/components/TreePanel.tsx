@@ -285,7 +285,7 @@ function TreeMap({ data, trees, edits, tool, vworldKey, onAdd, onErase, onRow }:
           ? new Style({ stroke: new Stroke({ color: '#ffb300', width: 2, lineDash: [6, 4] }) })
           : new Style({ image: new RegularShape({ points: 4, radius: 6, radius2: 0, angle: Math.PI / 4, stroke: new Stroke({ color: '#e53935', width: 2.5 }) }) }),
     })
-    const siteLayer = new VectorLayer({ source: site, zIndex: 2, style: new Style({ stroke: new Stroke({ color: '#d9480f', width: 2.5 }) }) })
+    const siteLayer = new VectorLayer({ source: site, zIndex: 2, style: new Style({ stroke: new Stroke({ color: '#d42a1e', width: 2.5 }) }) })
     const map = new OlMap({
       target: target.current,
       layers: [base, label, siteLayer, treeLayer, markLayer],

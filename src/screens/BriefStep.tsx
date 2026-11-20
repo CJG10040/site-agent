@@ -40,7 +40,7 @@ export default function BriefStep({ project, update, onNext }: Props) {
   return (
     <div className="form-page">
       <header className="form-head">
-        <p className="eyebrow">① 과제</p>
+        <p className="eyebrow">01 과제</p>
         <h2>어떤 과제로 이 대지를 보나요?</h2>
         <p className="muted">모두 채우지 않아도 됩니다. 나중에 챗봇에게 보낼 프롬프트의 맥락이 됩니다.</p>
       </header>

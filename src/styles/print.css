@@ -1,0 +1,62 @@
+/* 인쇄: 화면 틀을 숨기고 리포트만 종이에 */
+
+
+@media print {
+  html,
+  body,
+  #root {
+    height: auto;
+    background: #ffffff !important;
+  }
+
+  .topbar,
+  .stepper,
+  .banner,
+  .no-print,
+  .dialog-backdrop {
+    display: none !important;
+  }
+
+  .app,
+  .workspace,
+  .workspace-main {
+    display: block;
+    height: auto;
+    overflow: visible;
+  }
+
+  .report-page {
+    padding: 0;
+    display: block;
+  }
+
+  .report {
+    max-width: none !important;
+    box-shadow: none;
+    padding: 0;
+    border-radius: 0;
+    gap: 16px;
+  }
+
+  .report-cover {
+    break-after: avoid;
+  }
+
+  .report-hyp-scroll {
+    overflow: visible;
+  }
+
+  .report-table.hyp {
+    font-size: var(--fs-xs);
+  }
+
+  .report-photo {
+    width: 120px;
+    height: 90px;
+  }
+
+  * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}

@@ -1,6 +1,7 @@
 // ④ 공간정보 › 수치지도 올리기: 국토지리정보원 1:5,000 수치지도 2.0 ZIP(도엽별)을 읽어 프로젝트에 넣고, 환경 계산을 다시 한다.
 // 15-F(2026-11-12): 1:1,000 수치지도 2.0(NGI·NDA, 낱개 또는 ZIP)과 정밀도로지도 ZIP도 같은 곳에 — 파일 안을 보고 종류를 가림.
 
+import { Check } from 'lucide-react'
 import { unzipSync } from 'fflate'
 import { useState } from 'react'
 import { centerOf, siteBoundary } from '../lib/geo'
@@ -183,7 +184,7 @@ export default function NgiiUpload({ project, update, config }: Props) {
         {needed.map((code) => (
           <span key={code} className={`chip small${have.has(code) ? ' on' : ''}`} title={have.has(code) ? `${String(have.get(code)?.file ?? '')} 올림` : '아직 안 올림'}>
             {code}
-            {have.has(code) ? ' ✓' : ''}
+            {have.has(code) && <Check className="icon" aria-hidden="true" />}
           </span>
         ))}
       </div>

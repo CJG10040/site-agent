@@ -1,5 +1,6 @@
 // ⑨ 리포트 › 보드: '리포트에 넣기' 도판을 용지 한 장(넘치면 여러 장)에 조판한다.
 
+import { ArrowDown, ArrowUp } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { boardOrder, boardPngWidth, boardSettingsOf, buildBoard, paperSize, PAPER_MM } from '../diagrams/board'
 import type { DiagramData } from '../diagrams/data'
@@ -173,11 +174,11 @@ export default function BoardView({ project, update, defs, panels, busy, data, t
                   <span className="t" title={def.title}>
                     {def.title}
                   </span>
-                  <button type="button" className="btn small ghost" disabled={i === 0} onClick={() => move(id, -1)} aria-label={`${def.title} 앞으로`}>
-                    ↑
+                  <button type="button" className="btn small ghost icon-only" disabled={i === 0} onClick={() => move(id, -1)} aria-label={`${def.title} 앞으로`}>
+                    <ArrowUp aria-hidden="true" />
                   </button>
-                  <button type="button" className="btn small ghost" disabled={i === order.length - 1} onClick={() => move(id, 1)} aria-label={`${def.title} 뒤로`}>
-                    ↓
+                  <button type="button" className="btn small ghost icon-only" disabled={i === order.length - 1} onClick={() => move(id, 1)} aria-label={`${def.title} 뒤로`}>
+                    <ArrowDown aria-hidden="true" />
                   </button>
                 </li>
               )

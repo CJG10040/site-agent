@@ -1,0 +1,145 @@
+/* 거리 슬라이더 — ③ 주변 조사 반경 · ⑩ 3D 모형 범위: 축척 막대처럼 가는 선 + 먹 손잡이 + 고정폭 눈금 */
+
+.range-slider {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-bottom: 24px;
+}
+
+.range-slider-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.range-slider-value {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xl);
+  font-weight: 500;
+}
+
+.range-slider input[type='range'] {
+  width: 100%;
+  height: 20px;
+  margin: 4px 0 0;
+  background: transparent;
+  appearance: none;
+  cursor: pointer;
+}
+
+.range-slider input[type='range']::-webkit-slider-runnable-track {
+  height: 2px;
+  background: var(--line-2);
+  border-radius: 1px;
+}
+
+.range-slider input[type='range']::-moz-range-track {
+  height: 2px;
+  background: var(--line-2);
+  border-radius: 1px;
+}
+
+.range-slider input[type='range']::-moz-range-progress {
+  height: 2px;
+  background: var(--text);
+}
+
+.range-slider input[type='range']::-webkit-slider-thumb {
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  margin-top: -7px;
+  border-radius: 50%;
+  border: 2px solid var(--surface);
+  background: var(--ink);
+  box-shadow: 0 0 0 1px var(--ink);
+  transition: transform var(--t-fast) var(--ease);
+}
+
+.range-slider input[type='range']::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid var(--surface);
+  background: var(--ink);
+  box-shadow: 0 0 0 1px var(--ink);
+}
+
+.range-slider input[type='range']:active::-webkit-slider-thumb {
+  transform: scale(1.1);
+}
+
+.range-slider input[type='range']:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 4px;
+  box-shadow: none;
+}
+
+.range-slider-ticks {
+  position: relative;
+  height: 20px;
+  margin: 0 8px;
+}
+
+.range-tick {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  border: 0;
+  background: none;
+  padding: 0 2px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--muted);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color var(--t-fast) var(--ease);
+}
+
+.range-tick::before {
+  content: '';
+  position: absolute;
+  top: -6px;
+  left: 50%;
+  width: 1px;
+  height: 4px;
+  background: var(--line-2);
+}
+
+.range-tick:hover {
+  color: var(--text);
+}
+
+.range-tick.first {
+  transform: none;
+  margin-left: -8px;
+}
+
+.range-tick.first::before {
+  left: 10px;
+}
+
+.range-tick.last {
+  transform: translateX(-100%);
+  margin-left: 8px;
+}
+
+.range-tick.last::before {
+  left: auto;
+  right: 10px;
+}
+
+.range-tick.on {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.range-tick:disabled {
+  cursor: default;
+}
+
+.range-slider.disabled {
+  opacity: 0.6;
+}

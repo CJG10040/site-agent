@@ -1,0 +1,284 @@
+/* 지도 (③ 대지 · ④ 공간정보 · ⑦ 현장 관찰 · ⑩ 나무): 지도 위 도구는 떠 있는 작은 판 */
+
+.map-wrap,
+.map {
+  position: absolute;
+  inset: 0;
+}
+
+.map {
+  background: var(--sunken);
+}
+
+.map-empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+
+.map-empty p {
+  padding: 12px 16px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow);
+  color: var(--text-2);
+}
+
+.map-toolbar {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  max-width: calc(100% - 72px);
+}
+
+/* 바탕 지도 고르기: 단추 묶음과 같은 모양 */
+.basemap-switch {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  box-shadow: var(--shadow);
+}
+
+.basemap-switch button {
+  min-height: 28px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--r-xs);
+  background: none;
+  color: var(--text-2);
+  font: inherit;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+  transition:
+    background-color var(--t-fast) var(--ease),
+    color var(--t-fast) var(--ease);
+}
+
+.basemap-switch button:hover:not(.active) {
+  background: var(--raised);
+  color: var(--text);
+}
+
+.basemap-switch button.active {
+  background: var(--ink);
+  color: var(--on-ink);
+}
+
+.layer-menu {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  box-shadow: var(--shadow);
+  font-size: var(--fs-sm);
+}
+
+.layer-menu summary {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 32px;
+  padding: 0 12px;
+  cursor: pointer;
+  font-weight: 500;
+  list-style: none;
+}
+
+.layer-menu summary::-webkit-details-marker {
+  display: none;
+}
+
+.layer-menu summary::after {
+  content: '';
+  width: 6px;
+  height: 6px;
+  margin: -2px 0 0 4px;
+  border-right: 1.5px solid var(--muted);
+  border-bottom: 1.5px solid var(--muted);
+  transform: rotate(45deg);
+}
+
+.layer-menu[open] summary::after {
+  margin-top: 4px;
+  transform: rotate(-135deg);
+}
+
+.layer-menu-body {
+  padding: 4px 12px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 220px;
+  max-height: 60vh;
+  overflow: auto;
+  border-top: 1px solid var(--line);
+}
+
+.layer-menu-title {
+  font-size: var(--fs-xs);
+  color: var(--muted);
+  margin-top: 12px;
+}
+
+.layer-menu label {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  cursor: pointer;
+}
+
+.layer-menu label.disabled {
+  color: var(--muted);
+  cursor: default;
+}
+
+/* 범례 */
+.map-legend {
+  position: absolute;
+  right: 12px;
+  bottom: 32px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow);
+  padding: 12px;
+  font-size: var(--fs-xs);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 260px;
+}
+
+.legend-title {
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+
+.legend-row,
+.legend-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.legend-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px 12px;
+}
+
+.map-legend i {
+  display: inline-block;
+  width: 14px;
+  height: 10px;
+  border-radius: 2px;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+}
+
+.map-legend i.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+/* 지도 위 안내 (예: '지도를 눌러 위치 지정') */
+.map-hint {
+  position: absolute;
+  top: 56px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 8px 12px;
+  border-radius: var(--r-sm);
+  background: var(--ink);
+  color: var(--on-ink);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  box-shadow: var(--shadow);
+  pointer-events: none;
+}
+
+/* OpenLayers 기본 도구를 앱 모양으로 */
+.ol-viewport .ol-zoom {
+  top: 12px;
+  left: 12px;
+  padding: 0;
+  background: none;
+}
+
+.ol-viewport .ol-control button {
+  width: 32px;
+  height: 32px;
+  margin: 0;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--line);
+  font-family: var(--font-sans);
+  font-size: var(--fs-lg);
+  font-weight: 400;
+  box-shadow: var(--shadow-sm);
+}
+
+.ol-viewport .ol-zoom .ol-zoom-in {
+  border-radius: var(--r-sm) var(--r-sm) 0 0;
+  border-bottom: 0;
+}
+
+.ol-viewport .ol-zoom .ol-zoom-out {
+  border-radius: 0 0 var(--r-sm) var(--r-sm);
+}
+
+.ol-viewport .ol-control button:hover,
+.ol-viewport .ol-control button:focus {
+  background: var(--raised);
+  color: var(--text);
+  outline: none;
+}
+
+.ol-viewport .ol-control button:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 1px;
+}
+
+.ol-viewport .ol-scale-line {
+  left: 12px;
+  bottom: 12px;
+  padding: 2px 4px;
+  background: color-mix(in srgb, var(--surface) 85%, transparent);
+  border-radius: var(--r-xs);
+}
+
+.ol-viewport .ol-scale-line-inner {
+  border-color: var(--text);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.ol-viewport .ol-attribution {
+  font-size: 11px;
+}
+
+@media (max-width: 760px) {
+  .map-legend {
+    display: none;
+  }
+
+  .basemap-switch button {
+    padding: 0 8px;
+  }
+}

@@ -1,0 +1,105 @@
+/* ③ 대지: 주소 검색 결과 · 고른 필지 목록 */
+
+/* ───────── 검색 ───────── */
+
+.search-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.search-form {
+  display: flex;
+  gap: 8px;
+}
+
+.search-results {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 320px;
+  overflow: auto;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--sunken);
+}
+
+.result-group h3 {
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+
+.result-group ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.result {
+  width: 100%;
+  text-align: left;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  transition: background-color var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.result:hover {
+  border-color: var(--line-2);
+  background: var(--raised);
+}
+
+.result-title {
+  font-weight: 500;
+}
+
+.result-sub {
+  font-size: var(--fs-sm);
+  color: var(--muted);
+}
+
+/* ───────── 대지 ───────── */
+
+.parcel-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 260px;
+  overflow: auto;
+}
+
+.parcel-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+
+.parcel-list li > div {
+  flex: 1;
+  min-width: 0;
+}
+
+.parcel-addr {
+  font-weight: 500;
+  font-size: var(--fs-sm);
+  overflow-wrap: anywhere;
+}

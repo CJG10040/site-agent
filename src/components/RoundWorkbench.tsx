@@ -1,3 +1,4 @@
+import { Check } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { buildContactSheets, type SheetItem } from '../lib/contactSheet'
 import { importItems, parseAnswer, type ParseResult } from '../model/answerParser'
@@ -145,7 +146,7 @@ export default function RoundWorkbench({ project, round, update, onImported }: P
               {parts.map((_, i) => (
                 <button key={i} type="button" className={`btn small${copied === i ? ' primary' : ''}`} onClick={() => void copyPart(i)}>
                   {parts.length > 1 ? `${i + 1}/${parts.length} 복사` : '복사'}
-                  {copied === i ? ' ✓' : ''}
+                  {copied === i && <Check aria-hidden="true" />}
                 </button>
               ))}
             </div>

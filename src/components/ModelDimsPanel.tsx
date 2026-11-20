@@ -1,6 +1,7 @@
 // ⑩ 3D 모형 '어림 치수' 칸 (2026-11-17 사용자 요청: 어림으로 넣는 모든 치수를 고칠 수 있게, 기본값은 그대로).
 // 인터뷰: 묶음별로 접어 두고, 고친 값은 색으로, 칸마다·묶음마다 '기본값'. 프로젝트마다 저장 + '내 기본값'(이 브라우저, 새 프로젝트가 이 값으로 시작).
 
+import { RotateCcw } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { changedDims, DIM_DEFS, DIM_GROUPS, dimsOf, loadUserDims, saveUserDims, type DimDef, type DimGroup, type ModelDims } from '../export/modelDims'
 
@@ -127,7 +128,7 @@ export default function ModelDimsPanel({ value, onChange, disabled }: Props) {
                       <td className="muted small">
                         {ch ? (
                           <button type="button" className="btn small ghost" disabled={disabled} title={`기본값 ${def.def}${def.unit}로`} onClick={() => setOne(def.key, def.def)}>
-                            ↺ {def.def}
+                            <RotateCcw aria-hidden="true" /> {def.def}
                           </button>
                         ) : (
                           `기본 ${def.def}`
