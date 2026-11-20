@@ -4,9 +4,13 @@
 //  - 건물: 높이(실측 또는 층수 × 용도별 층고)만큼 세운 매스. 보는 쪽 벽만, 먼 건물부터 그림(가려지는 순서)
 //  - 글자: 바닥에서 떼어 똑바로 세움 (기울면 읽기 어려워서)
 //  - 도판마다 덧그림(태양 궤적 반구 등)
+//  - 틀에 걸친 건물 (2026-11-21 사용자 결정): 모형을 톱으로 자른 것처럼 발자국을 틀 모양으로 잘라 틀 안쪽만 세우고,
+//    잘린 경계의 벽은 더 진한 '잘린 면'으로. (예전엔 가운데 점이 틀 안이면 통째로 그려 긴 건물이 틀 밖으로 나갔음)
 
+import { featureCollection, intersect, polygon } from '@turf/turf'
+import type { Feature, MultiPolygon, Polygon } from 'geojson'
 import type { Areal } from '../lib/geo'
-import type { DiagramSettings } from '../model/types'
+import type { DiagramSettings, FrameShape } from '../model/types'
 import type { PanelLayer, PanelOutput } from './compose'
 import { bldHeight, type Bld } from './data'
 import { MAP_CX, MAP_CY, MAP_R, type Frame } from './frame'
@@ -59,18 +63,21 @@ export function projector(cam: Cam3d, f: Frame): Projector {
   const cosT = Math.cos(T)
   // 바닥 판을 조금 내려 높은 건물이 위로 솟을 자리를 둠
   const cy = MAP_CY + MAP_R * (1 - sinT) * 0.6
-  const zs = f.s * cam.vex * cosT
+  // 사각 판을 비스듬히(모서리 쪽에서) 보면 화면 폭이 최대 √2배로 넓어져 도판 밖으로 잘리고 제목과 겹침 →
+  // 판 전체가 원 틀과 같은 폭에 들어오게 줄임 (원·정면 방향은 그대로 1)
+  const k = f.shape === 'square' ? 1 / (Math.abs(cosA) + Math.abs(sinA)) : 1
+  const zs = f.s * cam.vex * cosT * k
   const P = (px: number, py: number, zM = 0): [number, number] => {
-    const X = px - MAP_CX
-    const Y = MAP_CY - py
+    const X = (px - MAP_CX) * k
+    const Y = (MAP_CY - py) * k
     return [MAP_CX - X * cosA + Y * sinA, cy + (X * sinA + Y * cosA) * sinT - zM * zs]
   }
-  const a = -cosA
-  const c = -sinA
-  const e = MAP_CX + MAP_CX * cosA + MAP_CY * sinA
-  const b = sinA * sinT
-  const d = -cosA * sinT
-  const ff = cy - MAP_CX * sinA * sinT + MAP_CY * cosA * sinT
+  const a = -cosA * k
+  const c = -sinA * k
+  const e = MAP_CX + k * (MAP_CX * cosA + MAP_CY * sinA)
+  const b = sinA * sinT * k
+  const d = -cosA * sinT * k
+  const ff = cy + k * sinT * (MAP_CY * cosA - MAP_CX * sinA)
   return {
     P,
     away: (px, py) => -((px - MAP_CX) * sinA + (MAP_CY - py) * cosA),
@@ -100,6 +107,119 @@ function liftTexts(svg: string, pr: Projector): { ground: string; texts: string 
 
 function outerRings(g: Areal): number[][][] {
   return g.type === 'Polygon' ? [g.coordinates[0]] : g.coordinates.map((p) => p[0])
+}
+
+// ───────────────────────── 틀 모양으로 자르기 (도판 픽셀 좌표) ─────────────────────────
+
+type XY = [number, number]
+const TAU = Math.PI * 2
+/** 원 틀을 이 정다각형으로 봄 (원과의 차이 0.04px 미만) */
+const CIRCLE_N = 256
+const COS_HALF = Math.cos(Math.PI / CIRCLE_N)
+/** 틀 경계 위로 볼 거리(px) */
+const EDGE_EPS = 0.05
+
+/** 틀 모양 고리 (닫힘) — 원은 정256각형, 꼭짓점 k의 각 = k·2π/N */
+export function frameRing(shape: FrameShape): XY[] {
+  if (shape === 'square') {
+    const l = MAP_CX - MAP_R
+    const r = MAP_CX + MAP_R
+    const t = MAP_CY - MAP_R
+    const b = MAP_CY + MAP_R
+    return [[l, t], [r, t], [r, b], [l, b], [l, t]]
+  }
+  const out: XY[] = []
+  for (let k = 0; k <= CIRCLE_N; k++) {
+    const a = ((k % CIRCLE_N) * TAU) / CIRCLE_N
+    out.push([MAP_CX + MAP_R * Math.cos(a), MAP_CY + MAP_R * Math.sin(a)])
+  }
+  return out
+}
+
+function insideFrame(shape: FrameShape, x: number, y: number): boolean {
+  if (shape === 'square') return Math.abs(x - MAP_CX) <= MAP_R && Math.abs(y - MAP_CY) <= MAP_R
+  return (x - MAP_CX) ** 2 + (y - MAP_CY) ** 2 <= (MAP_R * COS_HALF) ** 2
+}
+
+/** 원 틀(정다각형)의 변 위에 있는 점인지 */
+function onCircleEdge(x: number, y: number): boolean {
+  const ang = (((Math.atan2(y - MAP_CY, x - MAP_CX) % TAU) + TAU) % TAU)
+  const k = Math.min(CIRCLE_N - 1, Math.floor(ang / (TAU / CIRCLE_N)))
+  const al = ((k + 0.5) * TAU) / CIRCLE_N
+  const d = (x - MAP_CX) * Math.cos(al) + (y - MAP_CY) * Math.sin(al)
+  return Math.abs(d - MAP_R * COS_HALF) < EDGE_EPS
+}
+
+/** 변 a→b가 틀 경계를 따라가는지 (= 자른 자리) */
+export function isCutEdge(shape: FrameShape, a: XY, b: XY): boolean {
+  if (shape === 'square') {
+    const near = (v: number, w: number) => Math.abs(v - w) < EDGE_EPS
+    for (const L of [MAP_CX - MAP_R, MAP_CX + MAP_R]) if (near(a[0], L) && near(b[0], L)) return true
+    for (const L of [MAP_CY - MAP_R, MAP_CY + MAP_R]) if (near(a[1], L) && near(b[1], L)) return true
+    return false
+  }
+  const rMin = MAP_R * COS_HALF - EDGE_EPS
+  const r = (p: XY) => Math.hypot(p[0] - MAP_CX, p[1] - MAP_CY)
+  if (r(a) < rMin || r(b) < rMin) return false
+  return onCircleEdge((a[0] + b[0]) / 2, (a[1] + b[1]) / 2)
+}
+
+/**
+ * 원 틀 대신 쓸 부채꼴: 가운데 + 건물이 걸친 각도 범위의 정다각형 꼭짓점만 (256각형 전체보다 수십 배 빠름).
+ * 건물의 모든 점이 부채꼴 각도 안에 있으므로 자른 결과는 원 전체로 자른 것과 같음. 각도 폭이 반 바퀴를 넘으면 null
+ */
+function circleWedge(pts: XY[]): Feature<Polygon> | null {
+  const step = TAU / CIRCLE_N
+  const base = Math.atan2(pts[0][1] - MAP_CY, pts[0][0] - MAP_CX)
+  let lo = 0
+  let hi = 0
+  for (const [x, y] of pts) {
+    let a = Math.atan2(y - MAP_CY, x - MAP_CX) - base
+    a = ((((a + Math.PI) % TAU) + TAU) % TAU) - Math.PI
+    if (a < lo) lo = a
+    if (a > hi) hi = a
+  }
+  if (hi - lo > Math.PI * 0.9) return null
+  // 정다각형 꼭짓점 번호로 (양쪽 한 칸씩 넉넉히)
+  const k0 = Math.floor((base + lo) / step) - 1
+  const k1 = Math.ceil((base + hi) / step) + 1
+  const ring: XY[] = [[MAP_CX, MAP_CY]]
+  for (let k = k0; k <= k1; k++) {
+    const a = k * step
+    ring.push([MAP_CX + MAP_R * Math.cos(a), MAP_CY + MAP_R * Math.sin(a)])
+  }
+  ring.push([MAP_CX, MAP_CY])
+  return polygon([ring])
+}
+
+/**
+ * 발자국(도판 픽셀, 닫지 않은 고리)을 틀 모양으로 자름 → 틀 안쪽 조각들(닫지 않은 고리).
+ * 모두 안이면 그대로, 모두 밖이면 빈 목록. 자르기가 실패하면(꼬인 도형 등) 가운데 점 기준으로 예전처럼.
+ */
+export function clipToFrame(pts: XY[], shape: FrameShape, frame: Feature<Polygon>): { pieces: XY[][]; cut: boolean } {
+  if (pts.every(([x, y]) => insideFrame(shape, x, y))) return { pieces: [pts], cut: false }
+  let x0 = Infinity
+  let y0 = Infinity
+  let x1 = -Infinity
+  let y1 = -Infinity
+  for (const [x, y] of pts) {
+    if (x < x0) x0 = x
+    if (x > x1) x1 = x
+    if (y < y0) y0 = y
+    if (y > y1) y1 = y
+  }
+  if (x1 < MAP_CX - MAP_R || x0 > MAP_CX + MAP_R || y1 < MAP_CY - MAP_R || y0 > MAP_CY + MAP_R) return { pieces: [], cut: false }
+  try {
+    const g = intersect(featureCollection<Polygon | MultiPolygon>([polygon([[...pts, pts[0]]]), shape === 'circle' ? circleWedge(pts) ?? frame : frame]))
+    if (!g) return { pieces: [], cut: false }
+    const polys = g.geometry.type === 'Polygon' ? [g.geometry.coordinates] : g.geometry.coordinates
+    const pieces = polys.map((p) => p[0].slice(0, -1).map(([x, y]) => [x, y] as XY)).filter((r) => r.length >= 3)
+    return { pieces, cut: pieces.length > 0 }
+  } catch {
+    const cx = pts.reduce((s, p) => s + p[0], 0) / pts.length
+    const cy = pts.reduce((s, p) => s + p[1], 0) / pts.length
+    return { pieces: insideFrame(shape, cx, cy) ? [pts] : [], cut: false }
+  }
 }
 
 export interface View3dOpts {
@@ -154,7 +274,8 @@ export function to3d(
   const la = ((cam.az - 70) * Math.PI) / 180
   const lx = Math.sin(la)
   const ly = Math.cos(la)
-  const R2 = (MAP_R * 0.985) ** 2
+  const frame = polygon([frameRing(f.shape)])
+  let cutCount = 0
   type Mass = { away: number; svg: string }
   const masses: Mass[] = []
   for (const b of ctx.d.buildings) {
@@ -166,61 +287,68 @@ export function to3d(
     for (const ring of outerRings(b.geom)) {
       const px = ring.map(([lon, lat]) => f.pt(lon, lat))
       // 너무 촘촘한 점은 건너뜀
-      const pts: [number, number][] = []
+      const raw: XY[] = []
       for (const p of px) {
-        const q = pts[pts.length - 1]
-        if (!q || Math.hypot(p[0] - q[0], p[1] - q[1]) >= 1.2) pts.push(p)
+        const q = raw[raw.length - 1]
+        if (!q || Math.hypot(p[0] - q[0], p[1] - q[1]) >= 1.2) raw.push(p)
       }
-      if (pts.length > 2 && Math.hypot(pts[0][0] - pts[pts.length - 1][0], pts[0][1] - pts[pts.length - 1][1]) < 0.1) pts.pop()
-      if (pts.length < 3) continue
-      const cx = pts.reduce((s, p) => s + p[0], 0) / pts.length
-      const cyy = pts.reduce((s, p) => s + p[1], 0) / pts.length
-      if ((cx - MAP_CX) ** 2 + (cyy - MAP_CY) ** 2 > R2) continue
-      // 고리 방향 (위쪽 = 북 좌표계에서 반시계면 +)
-      let area2 = 0
-      for (let i = 0; i < pts.length; i++) {
-        const [x1, y1] = pts[i]
-        const [x2, y2] = pts[(i + 1) % pts.length]
-        area2 += x1 * -y2 - x2 * -y1
+      if (raw.length > 2 && Math.hypot(raw[0][0] - raw[raw.length - 1][0], raw[0][1] - raw[raw.length - 1][1]) < 0.1) raw.pop()
+      if (raw.length < 3) continue
+      const clipped = clipToFrame(raw, f.shape, frame)
+      if (clipped.cut) cutCount++
+      for (const pts of clipped.pieces) {
+        const cx = pts.reduce((s, p) => s + p[0], 0) / pts.length
+        const cyy = pts.reduce((s, p) => s + p[1], 0) / pts.length
+        // 고리 방향 (위쪽 = 북 좌표계에서 반시계면 +)
+        let area2 = 0
+        for (let i = 0; i < pts.length; i++) {
+          const [x1, y1] = pts[i]
+          const [x2, y2] = pts[(i + 1) % pts.length]
+          area2 += x1 * -y2 - x2 * -y1
+        }
+        const ccw = area2 > 0
+        let lit = ''
+        let dark = ''
+        let cut = ''
+        for (let i = 0; i < pts.length; i++) {
+          const [x1, y1] = pts[i]
+          const [x2, y2] = pts[(i + 1) % pts.length]
+          const ex = x2 - x1
+          const ey = -(y2 - y1)
+          // 바깥쪽 법선 (동, 북)
+          let nx = ccw ? ey : -ey
+          let ny = ccw ? -ex : ex
+          const nl = Math.hypot(nx, ny) || 1
+          nx /= nl
+          ny /= nl
+          if (nx * vx + ny * vy <= 0) continue
+          const a0 = pr.P(x1, y1)
+          const a1 = pr.P(x2, y2)
+          const b1 = pr.P(x2, y2, h)
+          const b0 = pr.P(x1, y1, h)
+          const q = `M${a0[0].toFixed(1)} ${a0[1].toFixed(1)}L${a1[0].toFixed(1)} ${a1[1].toFixed(1)}L${b1[0].toFixed(1)} ${b1[1].toFixed(1)}L${b0[0].toFixed(1)} ${b0[1].toFixed(1)}Z`
+          if (clipped.cut && isCutEdge(f.shape, pts[i], pts[(i + 1) % pts.length])) cut += q
+          else if (nx * lx + ny * ly > 0) lit += q
+          else dark += q
+        }
+        const top = pts.map((p, i) => {
+          const [sx, sy] = pr.P(p[0], p[1], h)
+          return `${i ? 'L' : 'M'}${sx.toFixed(1)} ${sy.toFixed(1)}`
+        })
+        // 벽 그늘: 더 어두운 쪽 색(밝은 바탕 = 글자색, 어두운 바탕 = 종이색)으로. 지붕이 아주 어두우면 밝은 쪽으로
+        const veryDark = luminance(roof) < 0.08
+        const toward = veryDark ? lighter : darker
+        const edge = mix(roof, toward, 0.45)
+        masses.push({
+          away: pr.away(cx, cyy),
+          svg:
+            (lit ? `<path d="${lit}" fill="${mix(roof, toward, veryDark ? 0.22 : 0.12)}" stroke="${edge}" stroke-width="0.35" stroke-opacity="0.6"/>` : '') +
+            (dark ? `<path d="${dark}" fill="${mix(roof, toward, veryDark ? 0.4 : 0.32)}" stroke="${edge}" stroke-width="0.35" stroke-opacity="0.6"/>` : '') +
+            // 잘린 면: 단면처럼 가장 진하게
+            (cut ? `<path d="${cut}" fill="${mix(roof, toward, veryDark ? 0.62 : 0.58)}" stroke="${edge}" stroke-width="0.35" stroke-opacity="0.8"/>` : '') +
+            `<path d="${top.join('')}Z" fill="${roof}" stroke="${edge}" stroke-width="0.4" stroke-opacity="0.7"/>`,
+        })
       }
-      const ccw = area2 > 0
-      let lit = ''
-      let dark = ''
-      for (let i = 0; i < pts.length; i++) {
-        const [x1, y1] = pts[i]
-        const [x2, y2] = pts[(i + 1) % pts.length]
-        const ex = x2 - x1
-        const ey = -(y2 - y1)
-        // 바깥쪽 법선 (동, 북)
-        let nx = ccw ? ey : -ey
-        let ny = ccw ? -ex : ex
-        const nl = Math.hypot(nx, ny) || 1
-        nx /= nl
-        ny /= nl
-        if (nx * vx + ny * vy <= 0) continue
-        const a0 = pr.P(x1, y1)
-        const a1 = pr.P(x2, y2)
-        const b1 = pr.P(x2, y2, h)
-        const b0 = pr.P(x1, y1, h)
-        const q = `M${a0[0].toFixed(1)} ${a0[1].toFixed(1)}L${a1[0].toFixed(1)} ${a1[1].toFixed(1)}L${b1[0].toFixed(1)} ${b1[1].toFixed(1)}L${b0[0].toFixed(1)} ${b0[1].toFixed(1)}Z`
-        if (nx * lx + ny * ly > 0) lit += q
-        else dark += q
-      }
-      const top = pts.map((p, i) => {
-        const [sx, sy] = pr.P(p[0], p[1], h)
-        return `${i ? 'L' : 'M'}${sx.toFixed(1)} ${sy.toFixed(1)}`
-      })
-      // 벽 그늘: 더 어두운 쪽 색(밝은 바탕 = 글자색, 어두운 바탕 = 종이색)으로. 지붕이 아주 어두우면 밝은 쪽으로
-      const veryDark = luminance(roof) < 0.08
-      const toward = veryDark ? lighter : darker
-      const edge = mix(roof, toward, 0.45)
-      masses.push({
-        away: pr.away(cx, cyy),
-        svg:
-          (lit ? `<path d="${lit}" fill="${mix(roof, toward, veryDark ? 0.22 : 0.12)}" stroke="${edge}" stroke-width="0.35" stroke-opacity="0.6"/>` : '') +
-          (dark ? `<path d="${dark}" fill="${mix(roof, toward, veryDark ? 0.4 : 0.32)}" stroke="${edge}" stroke-width="0.35" stroke-opacity="0.6"/>` : '') +
-          `<path d="${top.join('')}Z" fill="${roof}" stroke="${edge}" stroke-width="0.4" stroke-opacity="0.7"/>`,
-      })
     }
   }
   masses.sort((a, b) => b.away - a.away)
@@ -250,6 +378,6 @@ export function to3d(
     layers,
     noFrame: true,
     hideBase: true,
-    caption: `${out.caption ? `${out.caption} · ` : ''}${over ? `${over.note} · ` : ''}3D: ${camDirLabel(cam.az)}쪽에서 ${Math.round(cam.tilt)}° 내려다봄${cam.vex !== 1 ? `, 높이 ×${cam.vex}` : ''} · 건물 높이는 실측 높이 또는 층수 × 용도별 층고(모르면 3m) · 바닥은 평평하게 그림(지형 높낮이는 반영 안 함) · 축척 막대 없음(깊이에 따라 다름)`,
+    caption: `${out.caption ? `${out.caption} · ` : ''}${over ? `${over.note} · ` : ''}3D: ${camDirLabel(cam.az)}쪽에서 ${Math.round(cam.tilt)}° 내려다봄${cam.vex !== 1 ? `, 높이 ×${cam.vex}` : ''}${cutCount ? ' · 틀에 걸친 건물은 틀에서 잘라 냄(가장 진한 면이 잘린 면)' : ''} · 건물 높이는 실측 높이 또는 층수 × 용도별 층고(모르면 3m) · 바닥은 평평하게 그림(지형 높낮이는 반영 안 함) · 축척 막대 없음(깊이에 따라 다름)`,
   }
 }
