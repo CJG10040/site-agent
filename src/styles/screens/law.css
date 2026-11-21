@@ -1,0 +1,232 @@
+/* ⑪ 법규 검토 (2026-11-21 묶음 E3) — '도면: 먹과 레드라인': 확인 필요는 먹 테두리, 확인함은 옅게, 해당 없음은 흐리게 */
+
+.law-site {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  gap: 16px 32px;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+
+.law-site h3 {
+  margin: 0 0 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line);
+  font-size: var(--fs-md);
+}
+
+.law-site dl {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+}
+
+.law-site dl > div {
+  display: grid;
+  grid-template-columns: 6.5em minmax(0, 1fr);
+  gap: 8px;
+  font-size: var(--fs-md);
+}
+
+.law-site dt {
+  color: var(--muted);
+}
+
+.law-site dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.law-site a {
+  color: var(--text);
+}
+
+.law-warn {
+  color: var(--warn);
+}
+
+.law-issues {
+  margin-top: 8px;
+}
+
+.law-issues summary {
+  cursor: pointer;
+  color: var(--text-2);
+}
+
+.law-issues ul,
+.law-issues p {
+  margin: 6px 0;
+}
+
+.law-source {
+  margin: 8px 0 0;
+}
+
+.law-plan {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.law-plan select {
+  max-width: 100%;
+}
+
+.law-plan-nums {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+
+.law-plan-nums input[type='number'] {
+  width: 88px;
+}
+
+.law-plan p {
+  margin: 0;
+}
+
+.law-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border: 1px solid var(--rule);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  font-size: var(--fs-sm);
+}
+
+.law-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.law-group > h3 {
+  margin: 8px 0 0;
+  font-size: var(--fs-md);
+}
+
+.law-item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 16px;
+  border: 1px solid var(--line-2);
+  border-left: 3px solid var(--rule);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+
+.law-item.status-ok {
+  border-left-color: var(--ok);
+}
+
+.law-item.status-na {
+  border-left-color: var(--line-2);
+  opacity: 0.7;
+}
+
+.law-item-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+}
+
+.law-item-head h4 {
+  margin: 0;
+  font-size: var(--fs-read);
+}
+
+.law-what {
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+}
+
+.law-values {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding-left: 18px;
+  font-size: var(--fs-md);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.law-bases {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+}
+
+.law-basis {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 6px;
+}
+
+.law-basis a {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--text);
+}
+
+.law-article {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex-basis: 100%;
+  padding: 8px 10px;
+  border-radius: var(--r-sm);
+  background: var(--sunken);
+}
+
+.law-article-text {
+  white-space: pre-wrap;
+  max-height: 16em;
+  overflow: auto;
+}
+
+.law-ordinance summary {
+  cursor: pointer;
+  color: var(--text-2);
+}
+
+.law-ordinance pre {
+  max-height: 20em;
+  overflow: auto;
+  margin: 6px 0;
+  padding: 8px 10px;
+  border-radius: var(--r-sm);
+  background: var(--sunken);
+  font-family: var(--font-sans);
+  font-size: var(--fs-sm);
+  white-space: pre-wrap;
+}
+
+.law-memo {
+  width: 100%;
+}
+
+.law-foot {
+  margin: 8px 0 0;
+}
+
+@media (max-width: 760px) {
+  .law-site {
+    grid-template-columns: 1fr;
+    padding: 16px;
+  }
+}

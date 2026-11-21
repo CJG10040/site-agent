@@ -24,5 +24,6 @@
 @import './styles/screens/diagrams.css';
 @import './styles/screens/report.css';
 @import './styles/screens/model.css';
+@import './styles/screens/law.css';
 
 @import './styles/print.css';

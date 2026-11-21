@@ -5,7 +5,7 @@ import type { Geometry, Polygon, MultiPolygon } from 'geojson'
 
 export const SCHEMA_VERSION = 1
 
-export type StepId = 'brief' | 'question' | 'site' | 'data' | 'facts' | 'diagrams' | 'observe' | 'interpret' | 'report' | 'model'
+export type StepId = 'brief' | 'question' | 'site' | 'data' | 'facts' | 'diagrams' | 'observe' | 'interpret' | 'report' | 'model' | 'law'
 
 /** F-02 과제 맥락 + 6.1 시작 입력 */
 export interface Brief {
@@ -269,6 +269,8 @@ export interface Project {
   modelDims?: Partial<Record<string, number>>
   /** 설계안 (2026-11-21 묶음 C): 라이노 .3dm에서 올린 내 매스 — 여러 안을 저장해 골라 봄 */
   designs?: DesignScheme[]
+  /** ⑪ 법규 검토 (2026-11-21 묶음 E3) */
+  law?: LawState
   /** 보는 안: 설계안 id. 없으면 현황(대지 안 건물을 비운 빈 대지) */
   scenario?: string | null
 }
@@ -634,4 +636,24 @@ export interface BoardSettings {
   overview: boolean
   /** 도판 아래 결론 문장 */
   conclusions: boolean
+}
+
+// ───────────────────────── ⑪ 법규 검토 (2026-11-21 묶음 E3) ─────────────────────────
+// 사용자 결정: 새 단계 ⑪ / 주용도 = 건축법 시행령 별표 1 큰 분류 + 자주 쓰는 세부 / 참고용(판정 아님).
+
+export interface LawCheckState {
+  status: 'todo' | 'ok' | 'na'
+  memo?: string
+  at: string
+}
+
+export interface LawState {
+  /** 주용도: 별표 1 호 번호 + 세부 */
+  use?: { no: string; sub?: string }
+  floors?: number
+  basement?: number
+  /** 연면적(㎡) */
+  gfa?: number
+  /** 항목 id → 내 확인 상태 */
+  checks?: Record<string, LawCheckState>
 }

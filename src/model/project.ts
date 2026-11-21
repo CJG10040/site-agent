@@ -86,6 +86,8 @@ export const STEPS: { id: StepId; label: string; phase: number; group?: string }
   { id: 'interpret', label: '해석·가설', phase: 4 },
   { id: 'report', label: '리포트', phase: 5 },
   { id: 'model', label: '3D 모형', phase: 7, group: '모형 만들기' },
+  // 2026-11-21 묶음 E 사용자 결정: 새 단계 ⑪ 법규 검토
+  { id: 'law', label: '법규 검토', phase: 7, group: '설계 검토' },
 ]
 
 /** 대지 경계가 바뀌었는지 비교하기 위한 짧은 식별값 */
@@ -153,6 +155,11 @@ export function stepStatus(project: Project, step: StepId): { done: boolean; not
       const hd = (project.collected['hd:files']?.features.length ?? 0) > 0
       const src = [m1000 ? '1:1,000' : '', hd ? '정밀도로' : ''].filter(Boolean).join('·')
       return { done: !!project.modelExportedAt, note: project.modelExportedAt ? `내려받음${src ? ` · ${src}` : ''}` : src }
+    }
+    case 'law': {
+      const checks = Object.values(project.law?.checks ?? {})
+      const done = checks.filter((c) => c.status !== 'todo').length
+      return { done: !!project.law?.use && checks.length > 0 && checks.every((c) => c.status !== 'todo'), note: project.law?.use ? `확인 ${done}` : '' }
     }
     default:
       return { done: false, note: '' }
