@@ -394,6 +394,11 @@ def building_values(root: ET.Element, arts: list[dict]) -> tuple[dict, list[str]
             entry = {'article': a['no'], 'title': a['title'], 'text': a['text'][:1500]}
             if m:
                 t, ttitle, why = table_text(root, int(m.group(1)))
+                if not t and why and '찾지 못함' in why:
+                    alt = next((int(re.match(r'\[?\s*별표\s*(\d+)', flat(u.findtext('별표제목'))).group(1)) for u in root.findall('.//별표단위')
+                                if re.search(r'대지\s*안?\S?\s*공지|대지의\s*공지', flat(u.findtext('별표제목'))) and re.match(r'\[?\s*별표\s*(\d+)', flat(u.findtext('별표제목')))), None)
+                    if alt is not None and alt != int(m.group(1)):
+                        t, ttitle, why = table_text(root, alt)
                 entry['table'] = f'별표 {m.group(1)}' + (f' {ttitle}' if ttitle else '')
                 if t:
                     entry['tableText'] = t[:12000]
@@ -496,8 +501,9 @@ def region_entry(r: dict) -> dict:
     entry['org'] = r['org']
 
     base = re.escape(norm(n))
-    urban = find_ordinance(n, r['org'], [f'{n} 도시계획 조례', f'{n} 계획 조례', f'{n} 군계획', f'{n} 도시 군계획'],
-                           base + r'(?:도시|군|시|도시군|도시시)?계획조례')
+    # 군은 '○○군 계획 조례'·'○○군 관리계획 조례'(장흥·무안)처럼 이름이 여러 꼴
+    urban = find_ordinance(n, r['org'], [f'{n} 도시계획 조례', f'{n} 계획 조례', f'{n} 군계획', f'{n} 도시 군계획', f'{n} 관리계획'],
+                           base + r'(?:도시|군|시|도시군|도시시|관리)?계획조례')
     if urban:
         root = body(urban['mst'])
         arts = articles(root)

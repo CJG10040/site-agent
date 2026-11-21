@@ -1,10 +1,20 @@
 # main 브랜치에 올리면 자동으로 빌드해서 GitHub Pages에 배포합니다.
+# 조례 표(2026-11-21 묶음 E2): 배포할 때마다 지금 사이트의 표를 받아 두고, 7일보다 오래됐거나 매주 정해진 때·손으로 '새로 받기'를
+# 고르면 국가법령정보센터에서 새로 받습니다(인증값은 저장소 비밀 값 LAW_OC — 사용자가 직접 넣음). 받기에 실패해도 배포는 지난 표로 계속.
 name: Deploy to GitHub Pages
 
 on:
   push:
     branches: [main]
+  schedule:
+    # 매주 월요일 03:00 (한국 시각) — 조례 표 새로 받기
+    - cron: '0 18 * * 0'
   workflow_dispatch:
+    inputs:
+      law_refresh:
+        description: '조례 표를 지금 새로 받기'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -20,6 +30,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+      - name: 조례 표 (지난 표를 받아 두고, 오래됐으면 새로)
+        continue-on-error: true
+        timeout-minutes: 40
+        env:
+          LAW_OC: ${{ secrets.LAW_OC }}
+          FORCE: ${{ github.event_name == 'schedule' || inputs.law_refresh == true }}
+        run: |
+          mkdir -p public/law
+          curl -sf https://cjg10040.github.io/site-agent/law/ordinances.json -o "$RUNNER_TEMP/prev.json" || echo "지난 표 없음"
+          ARGS="--out public/law/ordinances.json --prev $RUNNER_TEMP/prev.json --max-age-days 7"
+          if [ "$FORCE" = "true" ]; then ARGS="$ARGS --force"; fi
+          python3 tools/law/update_ordinances.py $ARGS
       - uses: actions/setup-node@v5
         with:
           node-version: 24
