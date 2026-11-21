@@ -1,6 +1,6 @@
 # 법령 API 시험 (2026-11-21 묶음 E1, 손으로만 실행): 국가법령정보센터 공식 API가 GitHub에서 불러지는지 확인.
-# 인증값은 저장소 비밀 값 LAW_OC(사용자가 직접 넣음)에서만 읽고, 로그에는 답 메시지·건수만 남긴다.
-# 두 가지로 부름: 그냥 / 사이트 주소(cjg10040.github.io)를 밝히고 — '도메인 등록'이 서버에서 부를 때도 통하는지 보려고.
+# 인증값은 저장소 비밀 값 LAW_OC(사용자가 직접 넣음)에서만 읽고, 로그에는 답 메시지·건수·조문 제목만 남긴다.
+# 시험 결과(2026-11-21): 그냥 부르면 거절, 사이트 주소(등록한 도메인 cjg10040.github.io)를 밝히면 통과 → 사용자 결정으로 밝혀서 부름.
 name: 법령 API 시험 (수동)
 
 on:
@@ -13,17 +13,60 @@ jobs:
   probe:
     runs-on: ubuntu-latest
     steps:
-      - name: 공식 API 부르기
+      - name: 조례 찾기·본문 받기 (광주 도시계획·건축 조례)
         env:
           LAW_OC: ${{ secrets.LAW_OC }}
+        shell: python
         run: |
-          if [ -z "$LAW_OC" ]; then echo "비밀 값 LAW_OC가 없습니다 — 저장소 Settings > Secrets and variables > Actions 에서 넣어 주세요"; exit 1; fi
-          # 광주광역시 도시계획 조례 (주소용으로 바꾼 글)
-          Q='%EA%B4%91%EC%A3%BC%EA%B4%91%EC%97%AD%EC%8B%9C%20%EB%8F%84%EC%8B%9C%EA%B3%84%ED%9A%8D%20%EC%A1%B0%EB%A1%80'
-          for mode in plain site; do
-            if [ "$mode" = site ]; then REF=(-H "Referer: https://cjg10040.github.io/site-agent/"); else REF=(); fi
-            body=$(curl -s -m 30 "${REF[@]}" "https://www.law.go.kr/DRF/lawSearch.do?OC=${LAW_OC}&target=ordin&type=XML&display=3&query=${Q}" || echo "(연결 실패)")
-            echo "== ${mode}"
-            echo "$body" | grep -o '<result>[^<]*</result>\|<msg>[^<]*</msg>\|<totalCnt>[^<]*</totalCnt>' | head -5
-            echo "$body" | grep -c '<자치법규명>' | sed 's/^/찾은 자치법규 수: /'
-          done
+          import os, re, sys, urllib.parse, urllib.request
+          import xml.etree.ElementTree as ET
+
+          OC = os.environ.get('LAW_OC', '')
+          if not OC:
+              sys.exit('비밀 값 LAW_OC가 없습니다')
+          HEAD = {'Referer': 'https://cjg10040.github.io/site-agent/', 'User-Agent': 'site-agent-law-table'}
+
+          def get(path, **q):
+              q = {'OC': OC, 'type': 'XML', **q}
+              req = urllib.request.Request(f'https://www.law.go.kr/DRF/{path}?' + urllib.parse.urlencode(q), headers=HEAD)
+              with urllib.request.urlopen(req, timeout=40) as r:
+                  return ET.fromstring(r.read())
+
+          def tags(el, n=0, out=None, depth=0):
+              out = {} if out is None else out
+              for c in el:
+                  out[c.tag] = out.get(c.tag, 0) + 1
+                  if depth < 3:
+                      tags(c, n, out, depth + 1)
+              return out
+
+          for name in ['광주광역시 도시계획 조례', '광주광역시 건축 조례']:
+              s = get('lawSearch.do', target='ordin', query=name, display=20)
+              err = s.findtext('result') or s.findtext('msg')
+              if err:
+                  print(name, '→', err, s.findtext('msg'))
+                  continue
+              items = s.findall('.//law')
+              print(f'== {name}: 찾은 수 {s.findtext("totalCnt")}')
+              exact = None
+              for it in items[:20]:
+                  nm = (it.findtext('자치법규명') or '').strip()
+                  print('   후보:', nm, '|', it.findtext('지자체기관명'), '| 시행', it.findtext('시행일자'), '| MST', it.findtext('자치법규일련번호'), '| ID', it.findtext('자치법규ID'))
+                  if nm.replace(' ', '') == name.replace(' ', '') and exact is None:
+                      exact = it
+              if exact is None:
+                  print('   정확히 같은 이름 없음')
+                  continue
+              b = get('lawService.do', target='ordin', MST=exact.findtext('자치법규일련번호'))
+              print('   본문 태그:', dict(list(tags(b).items())[:40]))
+              # 조문 찾기: 태그 이름과 상관없이 '제n조(…)' 글을 가진 마디
+              texts = [(' '.join(''.join(e.itertext()).split())) for e in b.iter() if len(list(e)) == 0 and (e.text or '').strip()]
+              joined = ' '.join(texts)
+              heads = re.findall(r'제\d+조(?:의\d+)?\s*\([^)]{2,40}\)', joined)
+              key = [h for h in heads if re.search(r'건폐율|용적률|공지|높이|건축선|일조|조경|주차', h)]
+              print('   관련 조문 제목:', key[:30])
+              for kw in ['용도지역안에서의 건폐율', '용도지역 안에서의 건폐율', '대지안의 공지', '대지 안의 공지']:
+                  i = joined.find(kw)
+                  if i >= 0:
+                      print(f'   [{kw}]', joined[i:i + 400])
+                      break
