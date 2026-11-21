@@ -54,7 +54,7 @@ def redact(s: str) -> str:
     return s.replace(OC, '***') if OC else s
 
 
-def fetch(url: str, tries: int = 3) -> bytes:
+def fetch(url: str, tries: int = 5) -> bytes:
     last = None
     for k in range(tries):
         try:
@@ -65,7 +65,7 @@ def fetch(url: str, tries: int = 3) -> bytes:
             return data
         except (urllib.error.URLError, TimeoutError, ConnectionError) as e:
             last = e
-            time.sleep(2 + 3 * k)
+            time.sleep(3 * 2 ** k)  # 3·6·12·24초
     raise RuntimeError(redact(f'받기 실패: {last}'))
 
 
@@ -91,13 +91,14 @@ def ordin_link(mst: str) -> str:
 
 # ───────────────────────── 조례 찾기 ─────────────────────────
 
-def find_ordinance(name: str, org: str, candidates: list[str]) -> dict | None:
-    """이름이 정확히 같고 지자체가 맞는 현행 조례"""
-    for cand in candidates:
-        root = api('lawSearch.do', target='ordin', query=cand, display=50)
+def find_ordinance(name: str, org: str, queries: list[str], pattern: str) -> dict | None:
+    """이름이 꼴(pattern, 띄어쓰기·가운뎃점 뺀 이름에 맞춤)에 맞고 지자체가 맞는 현행 조례"""
+    pat = re.compile(pattern)
+    for q in queries:
+        root = api('lawSearch.do', target='ordin', query=q, display=100)
         for it in root.findall('.//law'):
             nm = flat(it.findtext('자치법규명'))
-            if norm(nm) != norm(cand):
+            if not pat.fullmatch(norm(nm)):
                 continue
             if norm(it.findtext('지자체기관명')) != norm(org):
                 continue
@@ -132,10 +133,11 @@ def articles(root: ET.Element) -> list[dict]:
 # ───────────────────────── 도시계획 조례: 용도지역별 건폐율·용적률 ─────────────────────────
 
 # 호 하나: '3. 제1종일반주거지역 : 60퍼센트 이하(다만 …) 다만, …'
-ITEM_START = re.compile(r'(?<!\S)(\d{1,2})\.\s+')
+ITEM_START = re.compile(r'(?<!\S)(\d{1,2})\.(?!\d)\s*')
 ITEM_RE = re.compile(
     r'^([가-힣0-9]+(?:[ ·ㆍ][가-힣0-9]+)*?지역)\s*[:：]\s*'
-    r'(\d+(?:\.\d+)?)\s*퍼센트(?:\s*(이하|이상|이내|미만))?(.*)$',
+    r'(?:100분의\s*([\d,]+(?:\.\d+)?)|([\d,]+(?:\.\d+)?)\s*(?:퍼센트|%))'
+    r'(?:\s*(이하|이상|이내|미만))?(.*)$',
     re.S,
 )
 
@@ -148,7 +150,8 @@ def first_paragraph(text: str) -> str:
 
 def zone_values(text: str) -> dict:
     out: dict = {}
-    text = first_paragraph(text)
+    # 개정·신설 표시(<개정 2022. 9. 15.>)의 '9.'가 호 번호로 잘못 읽히지 않게 먼저 뺌
+    text = re.sub(r'<[^<>]*>|〈[^〈〉]*〉', ' ', first_paragraph(text))
     starts = list(ITEM_START.finditer(text))
     for k, s in enumerate(starts):
         item = text[s.end(): starts[k + 1].start() if k + 1 < len(starts) else len(text)].strip()
@@ -159,12 +162,13 @@ def zone_values(text: str) -> dict:
         if zone in out:
             continue
         # 덧붙임: 괄호·'다만' 글 (개정 표시는 뺌)
-        note = re.sub(r'<[^>]*>', '', m.group(4))
+        note = re.sub(r'<[^>]*>|〈[^〉]*〉', '', m.group(5))
         note = flat(note).strip(' .,')
         if note.startswith('(') and note.endswith(')'):
             note = note[1:-1]
         note = note.replace(')', ') ', 1) if note.startswith('(') else note
-        out[zone] = {'pct': float(m.group(2)) if '.' in m.group(2) else int(m.group(2)), 'bound': m.group(3) or '이하', **({'note': note.strip()} if note.strip() else {})}
+        num = (m.group(2) or m.group(3)).replace(',', '')
+        out[zone] = {'pct': float(num) if '.' in num else int(num), 'bound': m.group(4) or '이하', **({'note': note.strip()} if note.strip() else {})}
     return out
 
 
@@ -172,14 +176,12 @@ def urban_values(arts: list[dict], key: str) -> tuple[dict, list[str]]:
     """key = '건폐율' 또는 '용적률' — 용도지역·관리지역 등 조문에서 지역별 값"""
     vals: dict = {}
     used: list[str] = []
-    for a in arts:
+    cands = [a for a in arts if key in a['title']]
+    cands.sort(key=lambda a: 0 if re.search(r'용도지역|용도구역|지역\s*안|지역에서', a['title']) else 1)
+    for a in cands:
         t = a['title']
-        if key not in t:
-            continue
-        if not re.search(r'(용도지역|관리지역|농림지역|자연환경보전지역)', t):
-            continue
         got = zone_values(a['text'])
-        if not got:
+        if len(got) < 3:
             continue
         used.append(f"{a['no']}({t})")
         for z, v in got.items():
@@ -207,15 +209,20 @@ def hwpx_text(data: bytes) -> str | None:
 def table_text(root: ET.Element, no: int) -> tuple[str | None, str, str | None]:
     """별표 no의 글: (글, 제목, 못 읽은 까닭)"""
     for u in root.findall('.//별표단위'):
-        if (u.findtext('별표구분') or '').strip() not in ('', '별표'):
-            continue
-        try:
-            n = int(re.sub(r'\D', '', u.findtext('별표번호') or '') or -1)
-        except ValueError:
-            continue
-        if n != no:
-            continue
         title = flat(u.findtext('별표제목'))
+        if re.search(r'서식|별지', title):
+            continue
+        tm = re.match(r'\[?\s*별표\s*(\d+)(?:\s*의\s*(\d+))?\s*\]?', title)
+        if tm:
+            n, branch = int(tm.group(1)), int(tm.group(2) or 0)
+        else:
+            try:
+                n = int(re.sub(r'\D', '', u.findtext('별표번호') or '') or -1)
+                branch = int(re.sub(r'\D', '', u.findtext('별표가지번호') or '') or 0)
+            except ValueError:
+                continue
+        if n != no or branch:
+            continue
         txt = (u.findtext('별표내용') or '').strip()
         if txt:
             return txt, title, None
@@ -235,7 +242,7 @@ def building_values(root: ET.Element, arts: list[dict]) -> tuple[dict, list[str]
     out: dict = {}
     issues: list[str] = []
     for a in arts:
-        if re.search(r'대지\s*안의\s*공지', a['title']):
+        if re.search(r'대지\s*안\S?\s*공지', a['title']):
             m = re.search(r'별표\s*(\d+)', a['text'])
             entry = {'article': a['no'], 'title': a['title'], 'text': a['text'][:1500]}
             if m:
@@ -267,12 +274,18 @@ def transition_note() -> dict | None:
     b = api('lawService.do', target='law', MST=mst)
     found = []
     for e in b.iter():
-        if e.tag not in ('부칙내용', '조문내용', '항내용'):
+        if e.tag not in ('부칙내용', '조문내용'):
             continue
         t = flat(''.join(e.itertext()))
-        if '조례' in t and re.search(r'종전|경과', t) and re.search(r'효력|적용|본다', t):
-            found.append(t)
-    found = sorted(set(found), key=len)[:3]
+        # 부칙은 한 덩어리로 오므로 '제n조(…)'마다 나눔
+        for part in re.split(r'(?=제\d+조(?:의\d+)?\()', t):
+            head = re.match(r'제\d+조(?:의\d+)?\(([^)]*)\)', part)
+            title = head.group(1) if head else ''
+            if re.search(r'조례|규칙|계획', title) and re.search(r'경과|종전|효력|적용', title + part[:200]):
+                found.append(part.strip())
+            elif '조례' in part and re.search(r'종전의\s*(광주광역시|전라남도)', part) and re.search(r'효력|본다', part):
+                found.append(part.strip())
+    found = sorted(set(found), key=len)[:4]
     return {
         'law': '전남광주통합특별시 설치를 위한 특별법',
         'effective': flat(law.findtext('시행일자')),
@@ -289,7 +302,9 @@ def region_entry(r: dict) -> dict:
     entry = {k: v for k, v in r.items() if k != 'org'}
     entry['org'] = r['org']
 
-    urban = find_ordinance(n, r['org'], [f'{n} 도시계획 조례', f'{n} 계획 조례', f'{n} 군계획 조례', f'{n} 시계획 조례'])
+    base = re.escape(norm(n))
+    urban = find_ordinance(n, r['org'], [f'{n} 도시계획 조례', f'{n} 계획 조례', f'{n} 군계획', f'{n} 도시 군계획'],
+                           base + r'(?:도시|군|시|도시군|도시시)?계획조례')
     if urban:
         root = body(urban['mst'])
         arts = articles(root)
@@ -304,7 +319,7 @@ def region_entry(r: dict) -> dict:
     else:
         issues.append('도시계획 조례를 찾지 못함')
 
-    building = find_ordinance(n, r['org'], [f'{n} 건축 조례'])
+    building = find_ordinance(n, r['org'], [f'{n} 건축 조례', f'{n} 건축조례'], base + r'건축조례')
     if building:
         root = body(building['mst'])
         vals, more = building_values(root, articles(root))
