@@ -1,6 +1,7 @@
 # 법령 API 시험 (2026-11-21 묶음 E1, 손으로만 실행): 국가법령정보센터 공식 API가 GitHub에서 불러지는지 확인.
-# 인증값은 저장소 비밀 값 LAW_OC(사용자가 직접 넣음)에서만 읽고, 로그에는 답 메시지·건수·조문 제목만 남긴다.
+# 인증값은 저장소 비밀 값 LAW_OC(사용자가 직접 넣음)에서만 읽고, 로그에는 답 메시지·건수·조례 이름·조문 제목만 남긴다.
 # 시험 결과(2026-11-21): 그냥 부르면 거절, 사이트 주소(등록한 도메인 cjg10040.github.io)를 밝히면 통과 → 사용자 결정으로 밝혀서 부름.
+# 2차: 광주·전남 통합(전남광주통합특별시) 뒤 조례 이름·지자체 이름, 별표(대지 안의 공지) 글 확인.
 name: 법령 API 시험 (수동)
 
 on:
@@ -13,7 +14,7 @@ jobs:
   probe:
     runs-on: ubuntu-latest
     steps:
-      - name: 조례 찾기·본문 받기 (광주 도시계획·건축 조례)
+      - name: 통합 뒤 조례 이름·별표 확인
         env:
           LAW_OC: ${{ secrets.LAW_OC }}
         shell: python
@@ -32,41 +33,22 @@ jobs:
               with urllib.request.urlopen(req, timeout=40) as r:
                   return ET.fromstring(r.read())
 
-          def tags(el, n=0, out=None, depth=0):
-              out = {} if out is None else out
-              for c in el:
-                  out[c.tag] = out.get(c.tag, 0) + 1
-                  if depth < 3:
-                      tags(c, n, out, depth + 1)
-              return out
+          def search(q, n=30):
+              s = get('lawSearch.do', target='ordin', query=q, display=n)
+              return s.findtext('totalCnt'), [(i.findtext('자치법규명'), i.findtext('지자체기관명'), i.findtext('시행일자'), i.findtext('자치법규일련번호')) for i in s.findall('.//law')]
 
-          for name in ['광주광역시 도시계획 조례', '광주광역시 건축 조례']:
-              s = get('lawSearch.do', target='ordin', query=name, display=20)
-              err = s.findtext('result') or s.findtext('msg')
-              if err:
-                  print(name, '→', err, s.findtext('msg'))
-                  continue
-              items = s.findall('.//law')
-              print(f'== {name}: 찾은 수 {s.findtext("totalCnt")}')
-              exact = None
-              for it in items[:20]:
-                  nm = (it.findtext('자치법규명') or '').strip()
-                  print('   후보:', nm, '|', it.findtext('지자체기관명'), '| 시행', it.findtext('시행일자'), '| MST', it.findtext('자치법규일련번호'), '| ID', it.findtext('자치법규ID'))
-                  if nm.replace(' ', '') == name.replace(' ', '') and exact is None:
-                      exact = it
-              if exact is None:
-                  print('   정확히 같은 이름 없음')
-                  continue
-              b = get('lawService.do', target='ordin', MST=exact.findtext('자치법규일련번호'))
-              print('   본문 태그:', dict(list(tags(b).items())[:40]))
-              # 조문 찾기: 태그 이름과 상관없이 '제n조(…)' 글을 가진 마디
-              texts = [(' '.join(''.join(e.itertext()).split())) for e in b.iter() if len(list(e)) == 0 and (e.text or '').strip()]
-              joined = ' '.join(texts)
-              heads = re.findall(r'제\d+조(?:의\d+)?\s*\([^)]{2,40}\)', joined)
-              key = [h for h in heads if re.search(r'건폐율|용적률|공지|높이|건축선|일조|조경|주차', h)]
-              print('   관련 조문 제목:', key[:30])
-              for kw in ['용도지역안에서의 건폐율', '용도지역 안에서의 건폐율', '대지안의 공지', '대지 안의 공지']:
-                  i = joined.find(kw)
-                  if i >= 0:
-                      print(f'   [{kw}]', joined[i:i + 400])
-                      break
+          # 1) 이름에 '도시계획 조례'·'군계획 조례'·'건축 조례'가 들어간 것 중 통합특별시·전남·전북
+          for q in ['전남광주통합특별시 도시계획 조례', '전남광주통합특별시 건축 조례', '통합특별시 조례 경과조치', '목포시 도시계획 조례', '담양군 군계획 조례', '전주시 도시계획 조례', '진안군 군계획 조례', '전라남도 건축 조례']:
+              cnt, rows = search(q)
+              print(f'== {q}: {cnt}')
+              for r in rows[:12]:
+                  print('   ', r[0], '|', r[1], '|', r[2], '|', r[3])
+
+          # 2) 광주 건축 조례 별표(대지안의 공지) 글
+          b = get('lawService.do', target='ordin', MST='2084489')
+          for u in b.findall('.//별표단위'):
+              t = (u.findtext('별표제목') or '').strip()
+              body = ' '.join((u.findtext('별표내용') or '').split())
+              print('   별표', u.findtext('별표번호'), t[:60], '| 글 길이', len(body), '| 파일', u.findtext('별표첨부파일구분'))
+              if '공지' in t:
+                  print('     ', body[:900])
