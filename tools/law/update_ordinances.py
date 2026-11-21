@@ -454,9 +454,65 @@ def transition_note() -> dict | None:
 LAW_ARTICLES = {
     '국토의 계획 및 이용에 관한 법률': ['제54조', '제76조', '제84조'],
     '국토의 계획 및 이용에 관한 법률 시행령': ['제71조', '제84조', '제85조'],
-    '건축법': ['제2조', '제11조', '제42조', '제43조', '제44조', '제46조', '제47조', '제55조', '제56조', '제58조', '제60조', '제61조'],
-    '건축법 시행령': ['제27조', '제27조의2', '제28조', '제31조', '제80조의2', '제86조', '제119조'],
+    '건축법': ['제2조', '제11조', '제42조', '제43조', '제44조', '제46조', '제47조', '제49조', '제55조', '제56조', '제58조', '제60조', '제61조', '제64조'],
+    '건축법 시행령': ['제2조', '제27조', '제27조의2', '제28조', '제31조', '제34조', '제35조', '제46조', '제80조의2', '제86조', '제119조'],
+    # 묶음 E4: 나머지 법
+    '주차장법': ['제19조'],
+    '주차장법 시행령': ['제6조'],
+    '장애인ㆍ노인ㆍ임산부 등의 편의증진 보장에 관한 법률': ['제7조'],
+    '녹색건축물 조성 지원법': ['제14조'],
+    '녹색건축물 조성 지원법 시행령': ['제10조'],
+    '문화예술진흥법': ['제9조'],
+    '문화예술진흥법 시행령': ['제12조'],
+    '교육환경 보호에 관한 법률': ['제8조', '제9조'],
+    '문화유산의 보존 및 활용에 관한 법률': ['제13조'],
 }
+
+# 법령 별표 (용도별 기준 표 — 화면에서 고른 용도 줄을 뽑아 보여 줌)
+LAW_TABLES = {
+    '주차장법 시행령': [1],
+    '장애인ㆍ노인ㆍ임산부 등의 편의증진 보장에 관한 법률 시행령': [1, 2],
+}
+
+
+def find_law(name: str):
+    root = api('lawSearch.do', target='law', query=name, display=20)
+    return next((i for i in root.findall('.//law') if norm(i.findtext('법령명한글')) == norm(name)), None)
+
+
+def law_tables() -> dict:
+    out = {}
+    for name, nos in LAW_TABLES.items():
+        law = find_law(name)
+        if law is None:
+            out[name] = {'error': '법령을 찾지 못함'}
+            continue
+        mst = flat(law.findtext('법령일련번호'))
+        b = api('lawService.do', target='law', MST=mst)
+        tables = {}
+        for u in b.iter('별표단위'):
+            title = flat(u.findtext('별표제목'))
+            if re.search(r'서식|별지', title):
+                continue
+            try:
+                n = int(re.sub(r'\D', '', u.findtext('별표번호') or '') or -1)
+                br = int(re.sub(r'\D', '', u.findtext('별표가지번호') or '') or 0)
+            except ValueError:
+                continue
+            if n not in nos or br or str(n) in tables:
+                continue
+            text = (u.findtext('별표내용') or '').strip()
+            if not text:
+                # 첨부 파일 주소: 이름에 '파일'·'링크'가 든 칸 중 주소인 것
+                url = next((c.text.strip() for c in u if c.text and c.text.strip().startswith('http') and re.search(r'파일|링크', c.tag)), '')
+                if url:
+                    data = fetch(url)
+                    text = (hwpx_text(data) if data[:2] == b'PK' else hwp_text(data) if data[:4] == bytes([0xD0, 0xCF, 0x11, 0xE0]) else None) or ''
+            tables[str(n)] = {'title': title, 'text': text[:40000]}
+        out[name] = {'mst': mst, 'effective': flat(law.findtext('시행일자')), 'url': 'https://www.law.go.kr/법령/' + name.replace(' ', ''), 'tables': tables,
+                     'missing': [n for n in nos if str(n) not in tables or not tables[str(n)]['text']]}
+        print(f"{name} 별표: {len([t for t in tables.values() if t['text']])}/{len(nos)}")
+    return out
 
 
 def law_articles() -> dict:
@@ -593,12 +649,19 @@ def main() -> int:
         print('법령 조문 받기 실패:', redact(str(ex)))
         laws = (prev or {}).get('laws')
 
+    try:
+        tables = law_tables()
+    except Exception as ex:
+        print('법령 별표 받기 실패:', redact(str(ex)))
+        tables = (prev or {}).get('lawTables')
+
     out = {
         'version': VERSION,
         'checkedAt': now.isoformat(timespec='seconds'),
         'source': SOURCE,
         'transition': trans,
         'laws': laws,
+        'lawTables': tables,
         'regions': regions,
     }
     json.dump(out, open(a.out, 'w', encoding='utf-8'), ensure_ascii=False, separators=(',', ':'))
