@@ -58,25 +58,25 @@ export const RESEARCH_PANEL: PanelDef = {
       // 왼쪽: 스케일·지역
       const lx = x + 18
       const labW = 178
-      parts.push(`<text x="${lx}" y="${y + 34}" font-family="${FONT}" font-size="23" font-weight="600" fill="${pal.ink}">${esc(t.scale)}</text>`)
-      if (t.place) parts.push(`<text x="${lx}" y="${y + 60}" font-family="${FONT}" font-size="15" fill="${pal.subtle}">${esc(fit(t.place, labW - 10, 15))}</text>`)
-      parts.push(`<text x="${lx}" y="${y + H - 16}" font-family="${FONT}" font-size="13" fill="${pal.subtle}">${t.items.length ? `이슈 ${t.items.length}개` : ''}</text>`)
+      parts.push(`<text x="${lx}" y="${y + 34}" font-family="${FONT}" font-size="${c.ty.v('label', 23)}" font-weight="600" fill="${pal.ink}">${esc(t.scale)}</text>`)
+      if (t.place) parts.push(`<text x="${lx}" y="${y + 60}" font-family="${FONT}" font-size="${c.ty.v('note', 15)}" fill="${pal.subtle}">${esc(fit(t.place, labW - 10, 15 * c.ty.k('note')))}</text>`)
+      parts.push(`<text x="${lx}" y="${y + H - 16}" font-family="${FONT}" font-size="${c.ty.v('note', 13)}" fill="${pal.subtle}">${t.items.length ? `이슈 ${t.items.length}개` : ''}</text>`)
       // 오른쪽: 이슈 (주제 색 점 + 제목 + 시점)
       const rx = x + labW + 12
       const rw = X1 - rx - 16
       const shown = t.items.slice(0, MAX_ITEMS)
       const lh = Math.min(34, (H - 24) / Math.max(1, shown.length + (t.items.length > MAX_ITEMS ? 1 : 0)))
-      if (!shown.length) parts.push(`<text x="${rx}" y="${y + 36}" font-family="${FONT}" font-size="16" fill="${pal.subtle}">조사 없음</text>`)
+      if (!shown.length) parts.push(`<text x="${rx}" y="${y + 36}" font-family="${FONT}" font-size="${c.ty.v('label', 16)}" fill="${pal.subtle}">조사 없음</text>`)
       shown.forEach((it, k) => {
         const ty = y + 30 + k * lh
         const when = it.when && it.when !== '모름' ? ` (${it.when})` : ''
-        const size = 17
+        const size = 17 * c.ty.k('label')
         parts.push(`<circle cx="${rx + 7}" cy="${ty - 6}" r="6" fill="${themeColor(it.theme)}"/>`)
         parts.push(
-          `<text x="${rx + 20}" y="${ty}" font-family="${FONT}" font-size="${size}" fill="${pal.ink}">${esc(fit(it.title, rw - 20 - textWidth(when, 14), size))}<tspan font-size="14" fill="${pal.subtle}">${esc(when)}</tspan></text>`,
+          `<text x="${rx + 20}" y="${ty}" font-family="${FONT}" font-size="${c.ty.v('label', 17)}" fill="${pal.ink}">${esc(fit(it.title, rw - 20 - textWidth(when, 14 * c.ty.k('note')), size))}<tspan font-size="${c.ty.v('note', 14)}" fill="${pal.subtle}">${esc(when)}</tspan></text>`,
         )
       })
-      if (t.items.length > MAX_ITEMS) parts.push(`<text x="${rx + 20}" y="${y + 30 + shown.length * lh}" font-family="${FONT}" font-size="14" fill="${pal.subtle}">외 ${t.items.length - MAX_ITEMS}개</text>`)
+      if (t.items.length > MAX_ITEMS) parts.push(`<text x="${rx + 20}" y="${y + 30 + shown.length * lh}" font-family="${FONT}" font-size="${c.ty.v('note', 14)}" fill="${pal.subtle}">외 ${t.items.length - MAX_ITEMS}개</text>`)
       lines.push(`${t.scale}${t.place ? `(${t.place})` : ''}: ${t.items.length ? t.items.map((it) => it.title).join(' · ') : '조사 없음'}`)
     })
     const used = RESEARCH_THEMES.filter((th) => tiers.some((t) => t.items.some((it) => it.theme === th)))

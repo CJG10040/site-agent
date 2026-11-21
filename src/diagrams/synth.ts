@@ -162,7 +162,7 @@ export const SYNTH_PANEL: PanelDef = {
     const judged = items.filter(needsEvidence)
     const nEv = { total: judged.length, linked: judged.filter((i) => hasEvidence(evidenceOf(i, s.cards))).length }
     return {
-      layers: [...base, { id: '종합_기호', svg: synthItemsSvg(items, c.f, s.cards, null, false, ink) }],
+      layers: [...base, { id: '종합_기호', svg: synthItemsSvg(items, c.f, s.cards, null, false, ink, c.ty) }],
       legendTitle: hasCond && hasDir ? '먹색 = 대지의 조건 · 색 = 설계 방향' : hasDir ? '색 = 설계 방향' : '먹색 = 대지의 조건',
       legend,
       summary: summaryOf(items, s.cards, c.panelLabel),

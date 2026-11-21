@@ -1,6 +1,7 @@
 // 도판 정의. 도판 하나 = 사실 하나 (주제색 한 계열 + 회색 바탕, 모르는 값은 회색 '미상').
 // 각 도판은 그림(레이어)·범례·읽은 수치(summary)·출처와 한계(caption)를 돌려준다.
 
+import type { TypeScale } from './typeScale'
 import { contours } from 'd3-contour'
 import { area, booleanPointInPolygon, feature, featureCollection, intersect, point } from '@turf/turf'
 import type { Position } from 'geojson'
@@ -52,6 +53,8 @@ export interface PanelCtx {
   scenarios?: { id: string; name: string; d: DiagramData; editedAt?: string }[]
   /** 다른 도판을 다른 자료(안)로 그림 (설계안 비교) */
   renderOther?: (id: string, d: DiagramData) => Promise<PanelOutput | null>
+  /** 글자 단계 배율 (2026-11-21 묶음 D1): 보통 도판은 모두 1, 패널 모드는 규칙에서 */
+  ty: TypeScale
 }
 
 export type PanelGroup = '위치' | '땅의 조건' | '지형' | '주변 현황' | '연계와 접근' | '환경' | '사회·경제' | '현장' | '겹쳐 보기' | '종합' | '설계안 비교'
@@ -813,7 +816,7 @@ export const PANELS: PanelDef[] = [
         .slice(0, 3)
         .map((x) => {
           const [px, py] = c.f.pt(x.p.lon, x.p.lat)
-          return `<text x="${(px + 14).toFixed(1)}" y="${(py + 5).toFixed(1)}" font-size="16" font-weight="600" fill="${c.pal.ink}" stroke="${c.pal.paper}" stroke-width="4" paint-order="stroke">${esc(x.p.name.replace(/\s.*$/, ''))}</text>`
+          return `<text x="${(px + 14).toFixed(1)}" y="${(py + 5 * c.ty.k('label')).toFixed(1)}" font-size="${c.ty.v('label', 16)}" font-weight="600" fill="${c.pal.ink}" stroke="${c.pal.paper}" stroke-width="${c.ty.v('label', 4)}" paint-order="stroke">${esc(x.p.name.replace(/\s.*$/, ''))}</text>`
         })
         .join('')
       return {
@@ -860,7 +863,7 @@ export const PANELS: PanelDef[] = [
           const [x, y] = c.f.pt(sf.geometry.coordinates[0], sf.geometry.coordinates[1])
           const col = pathColors[sf.properties.day as 'summer']
           pathSvg += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3.5" fill="${col}"/>`
-          if (sf.properties.label) pathSvg += `<text x="${x.toFixed(1)}" y="${(y - 9).toFixed(1)}" font-size="13" text-anchor="middle" fill="${col}" stroke="${c.pal.paper}" stroke-width="3" paint-order="stroke">${esc(String(sf.properties.label))}</text>`
+          if (sf.properties.label) pathSvg += `<text x="${x.toFixed(1)}" y="${(y - 9 * c.ty.k('note')).toFixed(1)}" font-size="${c.ty.v('note', 13)}" text-anchor="middle" fill="${col}" stroke="${c.pal.paper}" stroke-width="${c.ty.v('note', 3)}" paint-order="stroke">${esc(String(sf.properties.label))}</text>`
         }
       }
       const layers: PanelLayer[] = [baseBuildings(c, c.pal.base)]
@@ -1061,7 +1064,7 @@ export const PANELS: PanelDef[] = [
       const marks = os
         .map((o) => {
           const [x, y] = c.f.pt(o.lon, o.lat)
-          return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="13" fill="${colors[o.kind as 'normal']}" stroke="${c.pal.paper}" stroke-width="2"/><text x="${x.toFixed(1)}" y="${(y + 5).toFixed(1)}" font-size="13" font-weight="600" text-anchor="middle" fill="${c.pal.paper}">${esc(o.label ?? '')}</text>`
+          return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${c.ty.v('note', 13)}" fill="${colors[o.kind as 'normal']}" stroke="${c.pal.paper}" stroke-width="2"/><text x="${x.toFixed(1)}" y="${(y + 5 * c.ty.k('note')).toFixed(1)}" font-size="${c.ty.v('note', 13)}" font-weight="600" text-anchor="middle" fill="${c.pal.paper}">${esc(o.label ?? '')}</text>`
         })
         .join('')
       const far = Math.max(...os.map((o) => c.f.polar(o.lon, o.lat).d))
@@ -1229,7 +1232,7 @@ function sunDome3d(c: PanelCtx, pr: Projector): string {
       if (m % 60 === 0) {
         dots.push(`<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="3" fill="${col}"/>`)
         if (d.key === c.st.sunDay && (m / 60) % 3 === 0)
-          dots.push(`<text x="${p[0].toFixed(1)}" y="${(p[1] - 9).toFixed(1)}" font-size="13" text-anchor="middle" fill="${col}" stroke="${c.pal.paper}" stroke-width="3" paint-order="stroke">${m / 60}시</text>`)
+          dots.push(`<text x="${p[0].toFixed(1)}" y="${(p[1] - 9 * c.ty.k('note')).toFixed(1)}" font-size="${c.ty.v('note', 13)}" text-anchor="middle" fill="${col}" stroke="${c.pal.paper}" stroke-width="${c.ty.v('note', 3)}" paint-order="stroke">${m / 60}시</text>`)
       }
     }
     if (pts.length > 1) svg += `<path d="${pts.map(([x, y], i) => `${i ? 'L' : 'M'}${x.toFixed(1)} ${y.toFixed(1)}`).join('')}" fill="none" stroke="${col}" stroke-width="2.6" stroke-linecap="round"/>` + dots.join('')

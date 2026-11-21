@@ -1,8 +1,9 @@
 // 도판 그리기 진입점: 설정 기본값, 도판 한 장 그리기, 파일 이름.
 
 import { applyLabelEdits, editNote } from '../model/edits'
-import type { DiagramSettings, LabelEdit, Project } from '../model/types'
-import { composePanel, siteMarkSvg, type PanelOutput } from './compose'
+import type { DiagramSettings, LabelEdit, PanelRules, Project } from '../model/types'
+import { composePanel, composePanelMode, siteMarkSvg, type PanelOutput } from './compose'
+import { ruleScale, scaleStrokes } from './panelRules'
 import type { DiagramData } from './data'
 import { makeFrame } from './frame'
 import { paletteFor } from './palette'
@@ -10,6 +11,7 @@ import type { TerrainAnalysis } from '../lib/terrainSite'
 import { ORDERED_PANELS, panelNumber, type PanelCtx, type PanelDef } from './panels'
 import { NOT_MAP_PANELS, type SynthCtx } from './synth'
 import { is3d, to3d } from './view3d'
+import { UNIT_TYPE } from './typeScale'
 import { COMPARE_IDS } from './panelsCompare'
 
 /** 3D로 볼 수 있는 도판 (단면·그래프·하늘 그림·바람장미는 제외, 종합 다이어그램은 됨) */
@@ -66,7 +68,7 @@ export async function renderPanel(
   vworldKey: string,
   date: string,
   terrain: TerrainAnalysis | null = null,
-  extra: { synth?: SynthCtx | null; labels?: LabelEdit[]; scenarios?: { id: string; name: string; d: DiagramData; editedAt?: string }[] } = {},
+  extra: { synth?: SynthCtx | null; labels?: LabelEdit[]; scenarios?: { id: string; name: string; d: DiagramData; editedAt?: string }[]; panel?: PanelRules | null } = {},
 ): Promise<RenderedPanel> {
   // 겹쳐 보기는 아래 도판의 틀을 빌림
   const borrow = def.frameFrom?.(settings)
@@ -75,7 +77,10 @@ export async function renderPanel(
   const frame = makeFrame(data.center[0], data.center[1], R, settings.frame)
   const pal = paletteFor(settings, def.id)
   let out: PanelOutput
-  const ctx: PanelCtx = { d: data, f: frame, pal, st: settings, vworldKey, date, t: terrain, synth: extra.synth ?? null }
+  // 패널 모드(2026-11-21 묶음 D2): 규칙에서 글자·선 단계 배율. 보통 도판은 모두 1
+  const rs = extra.panel ? ruleScale(extra.panel) : null
+  const ty = rs ? rs.ty : UNIT_TYPE
+  const ctx: PanelCtx = { d: data, f: frame, pal, st: settings, vworldKey, date, t: terrain, synth: extra.synth ?? null, ty }
   try {
     // 종합 도판은 다른 도판의 그림을 같은 틀로 다시 그려 바탕에 깔 수 있다
     ctx.basePanel = async (id) => {
@@ -97,7 +102,7 @@ export async function renderPanel(
   const labels = extra.labels ?? []
   const note = editNote(data.hidden?.applied ?? 0, labels.length)
   if (note && !out.empty) out = { ...out, caption: out.caption ? `${out.caption} · ${note}` : note }
-  const site = siteMarkSvg(frame, frame.path(data.boundary, false), data.center, settings, pal)
+  const site = siteMarkSvg(frame, frame.path(data.boundary, false), data.center, settings, pal, rs ? rs.kl.site : 1)
   // 14-E: 이 도판을 3D로 (지도 도판만)
   if (is3d(settings, def.id) && can3d(def.id) && !out.empty && !out.noFrame) {
     try {
@@ -106,15 +111,11 @@ export async function renderPanel(
       out = { ...out, caption: `${out.caption} · 3D로 그리지 못함: ${e instanceof Error ? e.message : String(e)}` }
     }
   }
+  const meta = { id: def.id, number: panelNumber(def.id), title: def.title, subtitle: `반경 ${R.toLocaleString('ko-KR')}m · ${date} 수집` }
+  // 패널 모드: 그림 속 선 굵기를 규칙 단계로 바꾸고, 제목·출처 없이 mm 크기로
+  if (rs) out = { ...out, layers: out.layers.map((l) => ({ ...l, svg: scaleStrokes(l.svg, rs.kl) })) }
   const svg = applyLabelEdits(
-    composePanel(
-      { id: def.id, number: panelNumber(def.id), title: def.title, subtitle: `반경 ${R.toLocaleString('ko-KR')}m · ${date} 수집` },
-      out,
-      frame,
-      settings,
-      pal,
-      site,
-    ),
+    rs ? composePanelMode(meta, out, frame, settings, pal, site, { rules: rs.rules, unit: rs.unit, ty }) : composePanel(meta, out, frame, settings, pal, site, ty),
     labels,
   )
   return { id: def.id, svg, out }

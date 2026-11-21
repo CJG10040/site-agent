@@ -327,7 +327,7 @@ export const MOVE_PANELS: PanelDef[] = [
         .filter((x) => c.f.inside(x.pt.lon, x.pt.lat))
         .map((x) => {
           const [px, py] = c.f.pt(x.pt.lon, x.pt.lat)
-          return `<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="8" fill="${c.pal.ink}" stroke="${c.pal.paper}" stroke-width="2"/><text x="${(px + 12).toFixed(1)}" y="${(py + 5).toFixed(1)}" font-size="15" font-weight="600" fill="${c.pal.ink}" stroke="${c.pal.paper}" stroke-width="4" paint-order="stroke">${esc(x.pt.name.replace(/\s.*$/, ''))}</text>`
+          return `<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="8" fill="${c.pal.ink}" stroke="${c.pal.paper}" stroke-width="2"/><text x="${(px + 12).toFixed(1)}" y="${(py + 5 * c.ty.k('label')).toFixed(1)}" font-size="${c.ty.v('label', 15)}" font-weight="600" fill="${c.pal.ink}" stroke="${c.pal.paper}" stroke-width="${c.ty.v('label', 4)}" paint-order="stroke">${esc(x.pt.name.replace(/\s.*$/, ''))}</text>`
         })
         .join('')
       const ring = (m: number) => `<circle cx="${MAP_CX}" cy="${MAP_CY}" r="${(m * c.f.s).toFixed(1)}" fill="none" stroke="${c.pal.subtle}" stroke-width="1" stroke-dasharray="4 6"/>`
@@ -497,14 +497,14 @@ export const MOVE_PANELS: PanelDef[] = [
         grid += `<circle cx="${MAP_CX}" cy="${MAP_CY}" r="${rad(g).toFixed(1)}" fill="none" stroke="${c.pal.subtle}" stroke-width="0.8" stroke-dasharray="3 5"/>`
         // 꽃잎이 적은 남남동 쪽(157.5°)에 눈금 글자
         const th = (157.5 * Math.PI) / 180
-        gridText += `<text x="${(MAP_CX + rad(g) * Math.sin(th)).toFixed(1)}" y="${(MAP_CY - rad(g) * Math.cos(th) + 4).toFixed(1)}" font-size="13" text-anchor="middle" fill="${c.pal.ink}" stroke="${c.pal.paper}" stroke-width="3.5" paint-order="stroke">${Math.round(g * 100)}%</text>`
+        gridText += `<text x="${(MAP_CX + rad(g) * Math.sin(th)).toFixed(1)}" y="${(MAP_CY - rad(g) * Math.cos(th) + 4 * c.ty.k('note')).toFixed(1)}" font-size="${c.ty.v('note', 13)}" text-anchor="middle" fill="${c.pal.ink}" stroke="${c.pal.paper}" stroke-width="${c.ty.v('note', 3.5)}" paint-order="stroke">${Math.round(g * 100)}%</text>`
       }
       grid += `<circle cx="${MAP_CX}" cy="${MAP_CY}" r="${r0}" fill="${c.pal.paper}" fill-opacity="0.75" stroke="${c.pal.subtle}" stroke-width="0.8"/>`
       const labels = DIR16.map((name, i) => {
         if (i % 2) return ''
         const th = (i * 22.5 * Math.PI) / 180
         const rr = R1 + 34
-        return `<text x="${(MAP_CX + rr * Math.sin(th)).toFixed(1)}" y="${(MAP_CY - rr * Math.cos(th) + 6).toFixed(1)}" font-size="${i % 4 ? 15 : 19}" font-weight="${i % 4 ? 500 : 700}" text-anchor="middle" fill="${c.pal.ink}">${name}</text>`
+        return `<text x="${(MAP_CX + rr * Math.sin(th)).toFixed(1)}" y="${(MAP_CY - rr * Math.cos(th) + 6 * c.ty.k('mark')).toFixed(1)}" font-size="${c.ty.v('mark', i % 4 ? 15 : 19)}" font-weight="${i % 4 ? 500 : 700}" text-anchor="middle" fill="${c.pal.ink}">${name}</text>`
       }).join('')
       const pv = prevailing(t)
       const seasonTop = SEASONS.slice(1)

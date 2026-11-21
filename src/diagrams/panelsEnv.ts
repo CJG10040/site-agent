@@ -258,7 +258,7 @@ const skyDomePanel: PanelDef = {
     }
     let grid = ''
     for (const alt of [30, 60]) grid += `<circle cx="${MAP_CX}" cy="${MAP_CY}" r="${((Rd * (90 - alt)) / 90).toFixed(1)}" fill="none" stroke="${c.pal.subtle}" stroke-width="0.8" stroke-dasharray="3 5"/>`
-    grid += `<text x="${MAP_CX + 4}" y="${(MAP_CY - (Rd * 60) / 90 - 4).toFixed(1)}" font-size="13" fill="${c.pal.subtle}">30°</text><text x="${MAP_CX + 4}" y="${(MAP_CY - (Rd * 30) / 90 - 4).toFixed(1)}" font-size="13" fill="${c.pal.subtle}">60°</text>`
+    grid += `<text x="${MAP_CX + 4}" y="${(MAP_CY - (Rd * 60) / 90 - 4).toFixed(1)}" font-size="${c.ty.v('note', 13)}" fill="${c.pal.subtle}">30°</text><text x="${MAP_CX + 4}" y="${(MAP_CY - (Rd * 30) / 90 - 4).toFixed(1)}" font-size="${c.ty.v('note', 13)}" fill="${c.pal.subtle}">60°</text>`
     const sp = sunPathColors(c.pal)
     const pathColors = isStock(c.pal, 'default') ? ['#d6455d', '#e8a33b', '#3d7dca'] : [sp.summer, sp.equinox, sp.winter]
     let sun = ''
@@ -275,13 +275,13 @@ const skyDomePanel: PanelDef = {
         if (s.altitude <= 0) continue
         const [x, y] = pt(s.azimuth, s.altitude)
         sun += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3.5" fill="${pathColors[i]}"/>`
-        if (i === 1) sun += `<text x="${(x + 6).toFixed(1)}" y="${(y - 6).toFixed(1)}" font-size="13" fill="${c.pal.ink}" stroke="${c.pal.paper}" stroke-width="3" paint-order="stroke">${h}시</text>`
+        if (i === 1) sun += `<text x="${(x + 6).toFixed(1)}" y="${(y - 6).toFixed(1)}" font-size="${c.ty.v('note', 13)}" fill="${c.pal.ink}" stroke="${c.pal.paper}" stroke-width="${c.ty.v('note', 3)}" paint-order="stroke">${h}시</text>`
       }
     })
     const labels = ['북', '동', '남', '서']
       .map((t, i) => {
         const [x, y] = pt(i * 90, -12)
-        return `<text x="${x.toFixed(1)}" y="${(y + 6).toFixed(1)}" font-size="18" font-weight="600" text-anchor="middle" fill="${c.pal.ink}">${t}</text>`
+        return `<text x="${x.toFixed(1)}" y="${(y + 6 * c.ty.k('mark')).toFixed(1)}" font-size="${c.ty.v('mark', 18)}" font-weight="600" text-anchor="middle" fill="${c.pal.ink}">${t}</text>`
       })
       .join('')
     const maxA = e.sky.horizon.reduce((bi, v, i, arr) => (v > arr[bi] ? i : bi), 0)

@@ -62,8 +62,8 @@ function placeMap(c: PanelCtx, layers: PanelLayer[], box: { x: number; y: number
 
 function label(x: number, y: number, w: number, text: string, sub: string, c: PanelCtx): string {
   return (
-    `<text x="${(x + w / 2).toFixed(1)}" y="${(y - 12).toFixed(1)}" font-size="16" font-weight="600" text-anchor="middle" fill="${c.pal.ink}">${esc(text)}` +
-    (sub ? `<tspan font-size="12" font-weight="400" fill="${c.pal.subtle}"> ${esc(sub)}</tspan>` : '') +
+    `<text x="${(x + w / 2).toFixed(1)}" y="${(y - 12).toFixed(1)}" font-size="${c.ty.v('label', 16)}" font-weight="600" text-anchor="middle" fill="${c.pal.ink}">${esc(text)}` +
+    (sub ? `<tspan font-size="${c.ty.v('note', 12)}" font-weight="400" fill="${c.pal.subtle}"> ${esc(sub)}</tspan>` : '') +
     `</text>`
   )
 }
@@ -109,7 +109,7 @@ const compareSunPanel: PanelDef = {
         const set = s.d.env!.fine
         grids.set(s.id, unpackGrid(set[day.key]))
       } else {
-        svg += `<rect x="${box.x}" y="${box.y}" width="${box.size}" height="${box.size}" fill="none" stroke="${c.pal.subtle}" stroke-dasharray="4 4"/><text x="${box.x + box.size / 2}" y="${box.y + box.size / 2}" font-size="14" text-anchor="middle" fill="${c.pal.subtle}">환경 계산 없음</text>`
+        svg += `<rect x="${box.x}" y="${box.y}" width="${box.size}" height="${box.size}" fill="none" stroke="${c.pal.subtle}" stroke-dasharray="4 4"/><text x="${box.x + box.size / 2}" y="${box.y + box.size / 2}" font-size="${c.ty.v('note', 14)}" text-anchor="middle" fill="${c.pal.subtle}">환경 계산 없음</text>`
       }
       svg += label(box.x, box.y, box.size, scenarioName(s), s.id ? '' : '대지 안 기존 건물 뺌', c)
     }
@@ -122,7 +122,7 @@ const compareSunPanel: PanelDef = {
         const s = ss[i]
         const box = L.cell(i, 1)
         if (!s.id) {
-          svg += `<text x="${(box.x + box.size / 2).toFixed(1)}" y="${(box.y + box.size / 2).toFixed(1)}" font-size="14" text-anchor="middle" fill="${c.pal.subtle}"><tspan x="${(box.x + box.size / 2).toFixed(1)}">아래 줄: 현황보다</tspan><tspan x="${(box.x + box.size / 2).toFixed(1)}" dy="20">일조가 줄어든 곳</tspan></text>`
+          svg += `<text x="${(box.x + box.size / 2).toFixed(1)}" y="${(box.y + box.size / 2).toFixed(1)}" font-size="${c.ty.v('note', 14)}" text-anchor="middle" fill="${c.pal.subtle}"><tspan x="${(box.x + box.size / 2).toFixed(1)}">아래 줄: 현황보다</tspan><tspan x="${(box.x + box.size / 2).toFixed(1)}" dy="${c.ty.v('note', 20)}">일조가 줄어든 곳</tspan></text>`
           continue
         }
         const g = grids.get(s.id)
@@ -182,7 +182,7 @@ const compare3dPanel: PanelDef = {
       const box = L.cell(i, 0)
       const flat: PanelOutput = { layers: [{ id: '건물', svg: '' }], legend: [], summary: [], caption: '' }
       const site = `<path d="${c.f.path(s.d.boundary, false)}" fill="${c.pal.accent}" fill-opacity="0.08" stroke="${c.pal.accent}" stroke-width="2.5"/>`
-      const out = to3d(flat, { d: s.d, f: c.f, pal: c.pal, st: c.st }, site, `cmp3d-${i}`)
+      const out = to3d(flat, { d: s.d, f: c.f, pal: c.pal, st: c.st, ty: c.ty }, site, `cmp3d-${i}`)
       const k = box.size / 1000
       svg += `<g transform="translate(${box.x.toFixed(1)} ${box.y.toFixed(1)}) scale(${k.toFixed(4)})">${out.layers.map((l) => l.svg).join('')}</g>`
       const sc = s.d.scenario

@@ -191,7 +191,7 @@ export const LAW_PANEL: PanelDef = {
     const names = [...new Set(d.zoning.map((z) => z.name))]
     const zoneSvg = d.zoning.map((z) => `<path d="${c.f.path(z.geom)}" fill="${zoningColor(z.name, c.pal)}" fill-opacity="0.45" stroke="${c.pal.paper}" stroke-width="1.2"/>`).join('')
     const bld = d.buildings.filter((b) => !b.onSite).map((b) => c.f.path(b.geom, false)).join('')
-    const north = sunSvg ? `<text x="${MAP_CX}" y="${MAP_CY - MAP_R + 40}" font-size="15" text-anchor="middle" fill="${c.pal.ink}" stroke="${c.pal.paper}" stroke-width="4" paint-order="stroke">↑ 정북 — 북쪽 경계에서 띄움</text>` : ''
+    const north = sunSvg ? `<text x="${MAP_CX}" y="${MAP_CY - MAP_R + 40}" font-size="${c.ty.v('label', 15)}" text-anchor="middle" fill="${c.pal.ink}" stroke="${c.pal.paper}" stroke-width="${c.ty.v('label', 4)}" paint-order="stroke">↑ 정북 — 북쪽 경계에서 띄움</text>` : ''
 
     const legend: LegendItem[] = [
       ...names.filter((n) => zones.some((z) => z.name === n) || names.length <= 4).map((n) => ({ color: zoningColor(n, c.pal), label: n })),

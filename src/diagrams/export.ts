@@ -1,21 +1,22 @@
 // 도판 내보내기: SVG 그대로, PNG(캔버스), 여러 장을 ZIP 하나로.
 
 import { zipSync, strToU8 } from 'fflate'
+import { svgBlobWithFont } from '../lib/fonts'
 
 export function svgBlob(svg: string): Blob {
   return new Blob([`<?xml version="1.0" encoding="UTF-8"?>\n${svg}`], { type: 'image/svg+xml;charset=utf-8' })
 }
 
 function svgSize(svg: string): { w: number; h: number } {
-  const m = svg.match(/viewBox="0 0 ([\d.]+) ([\d.]+)"/)
+  const m = svg.match(/viewBox="[-\d.]+ [-\d.]+ ([\d.]+) ([\d.]+)"/)
   return m ? { w: Number(m[1]), h: Number(m[2]) } : { w: 1000, h: 1300 }
 }
 
-/** SVG → PNG (가로 width 픽셀) */
-export async function svgToPng(svg: string, width: number, background: string | null = null): Promise<Blob> {
+/** SVG → PNG (가로 width 픽셀). font = SVG 안에 넣을 올린 글꼴 (패널 모드, 묶음 D3) */
+export async function svgToPng(svg: string, width: number, background: string | null = null, font: Blob | null = null): Promise<Blob> {
   const { w, h } = svgSize(svg)
   const scale = width / w
-  const url = URL.createObjectURL(svgBlob(svg))
+  const url = URL.createObjectURL(font ? svgBlobWithFont(svg, font) : svgBlob(svg))
   try {
     const img = new Image()
     img.decoding = 'async'

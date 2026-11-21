@@ -19,6 +19,8 @@ import { isOverlayId, overlaySpec } from './overlay'
 import { EXPLODED_ID, explodedAz, explodedLayers, SITE_LAYER } from './exploded'
 import { ORDERED_PANELS } from './panels'
 import { collectedDate, renderPanel, settingsOf, type RenderedPanel } from './render'
+import { panelRulesKey, rulesFor } from './panelRules'
+import { fontStyleBlob, svgBlobWithFont } from '../lib/fonts'
 
 export interface CachedPanel extends RenderedPanel {
   url: string
@@ -83,8 +85,12 @@ function flatKey(id: string, s: DiagramSettings): string {
   return common
 }
 
-export function useDiagrams(project: Project, vworldKey: string, only?: string[]) {
+export function useDiagrams(project: Project, vworldKey: string, only?: string[], opts: { panel?: boolean; fontsSig?: string } = {}) {
   const settings = settingsOf(project)
+  // 패널 모드 (2026-11-21 묶음 D2): ⑥ 화면에서만 켬 — 보드·리포트는 늘 보통 도판
+  const panel = !!opts.panel
+  // 올린 글꼴이 바뀌면 그 글꼴을 쓰는 패널 도판만 다시 (묶음 D3)
+  const fSig = panel ? (opts.fontsSig ?? '') : ''
   const obsSig = observationsOf(project)
     .map((o) => {
       const d = o.observation!
@@ -114,7 +120,7 @@ export function useDiagrams(project: Project, vworldKey: string, only?: string[]
   const data: DiagramData | null = useMemo(() => buildDiagramData(project), [dataSig, project.collected])
   const date = collectedDate(project)
   const ids = (only ?? ORDERED_PANELS.map((p) => p.id)).join(',')
-  const allKey = ORDERED_PANELS.map((p) => settingsKey(p.id, settings)).join(';')
+  const allKey = ORDERED_PANELS.map((p) => settingsKey(p.id, settings) + (panel ? `|p:${panelRulesKey(settings, p.id)}` : '')).join(';')
   // 종합 다이어그램: 그림·카드가 바뀌면 그 도판만 다시
   const synthSig = JSON.stringify([project.synth ?? null, project.cards.filter((c) => ['TENSION', 'OPPORTUNITY', 'HYPOTHESIS'].includes(c.type)).map((c) => [c.id, c.status, c.text, c.fields?.['제목'], c.fields?.['방향'], c.fields?.['근거'], c.related_card_ids])])
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -171,7 +177,8 @@ export function useDiagrams(project: Project, vworldKey: string, only?: string[]
         const lKey = labels.length ? `|labels:${hashOf(labels.map((l) => `${l.key}:${l.dx.toFixed(1)},${l.dy.toFixed(1)}:${l.hidden ? 1 : 0}`).join('|'))}` : ''
         // 설계안 비교: 고른 안들의 서명(안·위치·환경 계산 시각)
         const cKey = COMPARE_IDS.includes(def.id) ? `|cmp:${hashOf(compareSig)}` : ''
-        const key = `${dataSig}|${def.id}|${settingsKey(def.id, settings)}|${vworldKey ? 'k' : '-'}${tKey}${sKey}${yKey}${lKey}${cKey}`
+        const pKey = panel ? `|panel:${hashOf(panelRulesKey(settings, def.id))}${rulesFor(settings, def.id).font ? `|f:${hashOf(fSig)}` : ''}` : ''
+        const key = `${dataSig}|${def.id}|${settingsKey(def.id, settings)}|${vworldKey ? 'k' : '-'}${tKey}${sKey}${yKey}${lKey}${cKey}${pKey}`
         return { def, key, labels }
       })
       const total = jobs.filter((j) => !cache.has(j.key)).length
@@ -183,8 +190,11 @@ export function useDiagrams(project: Project, vworldKey: string, only?: string[]
           // 진행도를 먼저 그리게 한 번 쉼
           await new Promise((r) => setTimeout(r, 0))
           if (!alive) return
-          const r = await renderPanel(def, data, settings, vworldKey, date, t, def.id === 'synth' ? { synth, labels } : COMPARE_IDS.includes(def.id) ? { labels, scenarios: compareScenarios() } : { labels })
-          hit = { ...r, url: URL.createObjectURL(svgBlob(r.svg)), key }
+          const pr = panel ? rulesFor(settings, def.id) : null
+          const r = await renderPanel(def, data, settings, vworldKey, date, t, def.id === 'synth' ? { synth, labels, panel: pr } : COMPARE_IDS.includes(def.id) ? { labels, scenarios: compareScenarios(), panel: pr } : { labels, panel: pr })
+          // 패널 모드의 올린 글꼴은 그림 안에 넣어 화면에 보이게 (받는 SVG 글에는 이름만)
+          const fontCss = pr?.font ? await fontStyleBlob(pr.font) : null
+          hit = { ...r, url: URL.createObjectURL(fontCss ? svgBlobWithFont(r.svg, fontCss) : svgBlob(r.svg)), key }
           cachePut(hit)
           drawn++
         }
@@ -202,7 +212,7 @@ export function useDiagrams(project: Project, vworldKey: string, only?: string[]
       alive = false
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, allKey, vworldKey, ids, date, synthSig, labelSig])
+  }, [data, allKey, vworldKey, ids, date, synthSig, labelSig, panel, fSig])
 
   return { data, settings, panels, busy, terrain, progress }
 }

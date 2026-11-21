@@ -3,6 +3,7 @@
 // 범위는 기본 '대지와 주변'(2026-11-12 사용자 요청), 설정에서 '반경 전체'. 높이는 기본 실제 비율.
 // 지도 틀 없이 도판 영역 전체에 그리고, 아래에 단면 위치를 보여 주는 작은 지도를 둔다.
 
+import type { TextStep } from './typeScale'
 import { wgs84ToUtmk } from '../lib/proj'
 import { terrainSourceLabel } from '../lib/terrain'
 import { relAt } from '../lib/terrainSite'
@@ -68,7 +69,7 @@ function groundSampler(c: PanelCtx): (x: number, y: number) => number {
 
 /** 높이 글: +1.2 / −0.4 / ±0 */
 const sgn = (z: number) => `${z >= 0.05 ? '+' : z <= -0.05 ? '−' : '±'}${fmt(Math.abs(z), 1)}`
-const halo = (c: PanelCtx) => `stroke="${c.pal.paper}" stroke-width="4" paint-order="stroke" stroke-linejoin="round"`
+const halo = (c: PanelCtx, s: TextStep = 'note') => `stroke="${c.pal.paper}" stroke-width="${c.ty.v(s, 4)}" paint-order="stroke" stroke-linejoin="round"`
 
 function sectionPanel(which: 'A' | 'B'): PanelDef {
   return {
@@ -176,7 +177,7 @@ function sectionPanel(which: 'A' | 'B'): PanelDef {
       }
       if (visSite.length) {
         const mid = (visSite[0][0] + visSite[visSite.length - 1][1]) / 2
-        siteSvg += `<text x="${px(mid).toFixed(1)}" y="${(TOP - 16).toFixed(1)}" font-size="16" font-weight="600" text-anchor="middle" fill="${c.pal.accent}">대지</text>`
+        siteSvg += `<text x="${px(mid).toFixed(1)}" y="${(TOP - 16).toFixed(1)}" font-size="${c.ty.v('label', 16)}" font-weight="600" text-anchor="middle" fill="${c.pal.accent}">대지</text>`
       }
 
       // ── 주요 높이·거리 표기 (2026-11-12 사용자 요청: 주요 부분의 높이도 함께)
@@ -190,16 +191,16 @@ function sectionPanel(which: 'A' | 'B'): PanelDef {
         const a0 = visSite[0][0]
         const b0 = visSite[visSite.length - 1][1]
         const mid = (a0 + b0) / 2
-        notes += `<text x="${px(mid).toFixed(1)}" y="${(py(gz(mid)) + 24).toFixed(1)}" font-size="13" font-weight="600" text-anchor="middle" fill="${c.pal.accent}">대지 지반 ${sgn(gz(mid))}m</text>`
+        notes += `<text x="${px(mid).toFixed(1)}" y="${(py(gz(mid)) + 24).toFixed(1)}" font-size="${c.ty.v('note', 13)}" font-weight="600" text-anchor="middle" fill="${c.pal.accent}">대지 지반 ${sgn(gz(mid))}m</text>`
         if ((b0 - a0) * sx >= 180)
           for (const s of [a0, b0]) {
             if (Math.abs(gz(s) - gz(mid)) < 0.5) continue
-            notes += `<text x="${(px(s) + (s === a0 ? 4 : -4)).toFixed(1)}" y="${(py(gz(s)) + 24).toFixed(1)}" font-size="12" text-anchor="${s === a0 ? 'start' : 'end'}" fill="${c.pal.accent}">${sgn(gz(s))}m</text>`
+            notes += `<text x="${(px(s) + (s === a0 ? 4 : -4)).toFixed(1)}" y="${(py(gz(s)) + 24).toFixed(1)}" font-size="${c.ty.v('note', 12)}" text-anchor="${s === a0 ? 'start' : 'end'}" fill="${c.pal.accent}">${sgn(gz(s))}m</text>`
           }
       }
       // 양 끝 지반
-      notes += `<text x="${(X0 + 4).toFixed(1)}" y="${(py(prof[0].z) + 20).toFixed(1)}" font-size="12" fill="${c.pal.subtle}">${sgn(prof[0].z)}m</text>`
-      notes += `<text x="${(X1 - 4).toFixed(1)}" y="${(py(prof[prof.length - 1].z) + 20).toFixed(1)}" font-size="12" text-anchor="end" fill="${c.pal.subtle}">${sgn(prof[prof.length - 1].z)}m</text>`
+      notes += `<text x="${(X0 + 4).toFixed(1)}" y="${(py(prof[0].z) + 20).toFixed(1)}" font-size="${c.ty.v('note', 12)}" fill="${c.pal.subtle}">${sgn(prof[0].z)}m</text>`
+      notes += `<text x="${(X1 - 4).toFixed(1)}" y="${(py(prof[prof.length - 1].z) + 20).toFixed(1)}" font-size="${c.ty.v('note', 12)}" text-anchor="end" fill="${c.pal.subtle}">${sgn(prof[prof.length - 1].z)}m</text>`
       // 왼쪽 높이 눈금 글자 자리
       boxes.push({ x0: 0, x1: X0 + 2, y0: TOP - 40, y1: BASE + 40 })
       // 지형 기복이 3m 넘으면 가장 높은 곳·낮은 곳
@@ -217,7 +218,7 @@ function sectionPanel(which: 'A' | 'B'): PanelDef {
           const t = `${top ? '높은 곳' : '낮은 곳'} ${sgn(q.z)}m`
           const ty = Y + (top ? -15 : 27)
           boxes.push({ x0: X - textW(t, 12) / 2, x1: X + textW(t, 12) / 2, y0: ty - 12, y1: ty + 3 })
-          notes += `<path d="M${X.toFixed(1)} ${(Y + (top ? -3 : 3)).toFixed(1)}l-5 ${top ? -8 : 8}h10z" fill="${c.pal.subtle}"/><text x="${X.toFixed(1)}" y="${(Y + (top ? -15 : 27)).toFixed(1)}" font-size="12" text-anchor="middle" fill="${c.pal.subtle}" ${halo(c)}>${top ? '높은 곳' : '낮은 곳'} ${sgn(q.z)}m</text>`
+          notes += `<path d="M${X.toFixed(1)} ${(Y + (top ? -3 : 3)).toFixed(1)}l-5 ${top ? -8 : 8}h10z" fill="${c.pal.subtle}"/><text x="${X.toFixed(1)}" y="${(Y + (top ? -15 : 27)).toFixed(1)}" font-size="${c.ty.v('note', 12)}" text-anchor="middle" fill="${c.pal.subtle}" ${halo(c)}>${top ? '높은 곳' : '낮은 곳'} ${sgn(q.z)}m</text>`
         }
       }
       // 대지 양옆 첫 건물(단면에 잘린 것): 대지 경계에서 거리 치수
@@ -234,7 +235,7 @@ function sectionPanel(which: 'A' | 'B'): PanelDef {
         return (
           `<g stroke="${c.pal.ink}" stroke-width="1"><line x1="${x0.toFixed(1)}" y1="${y.toFixed(1)}" x2="${x1.toFixed(1)}" y2="${y.toFixed(1)}"/>` +
           `<line x1="${x0.toFixed(1)}" y1="${(y - 5).toFixed(1)}" x2="${x0.toFixed(1)}" y2="${(y + 5).toFixed(1)}"/><line x1="${x1.toFixed(1)}" y1="${(y - 5).toFixed(1)}" x2="${x1.toFixed(1)}" y2="${(y + 5).toFixed(1)}"/></g>` +
-          `<text x="${((x0 + x1) / 2).toFixed(1)}" y="${(y - 5).toFixed(1)}" font-size="12" text-anchor="middle" fill="${c.pal.ink}" ${halo(c)}>${fmt(gap)}m</text>`
+          `<text x="${((x0 + x1) / 2).toFixed(1)}" y="${(y - 5).toFixed(1)}" font-size="${c.ty.v('note', 12)}" text-anchor="middle" fill="${c.pal.ink}" ${halo(c)}>${fmt(gap)}m</text>`
         )
       }
       if (leftAdj) notes += dim(leftAdj.s1, sMinSite)
@@ -260,7 +261,7 @@ function sectionPanel(which: 'A' | 'B'): PanelDef {
           boxes.push(bx)
           placed = true
           if (tryN || Math.abs(cx - bc) > 2) notes += `<line x1="${cx.toFixed(1)}" y1="${(y + 3).toFixed(1)}" x2="${bc.toFixed(1)}" y2="${(topY - 2).toFixed(1)}" stroke="${c.pal.subtle}" stroke-width="0.8"/>`
-          notes += `<text x="${cx.toFixed(1)}" y="${y.toFixed(1)}" font-size="12.5" font-weight="${k === leftAdj || k === rightAdj ? 700 : 500}" text-anchor="middle" fill="${c.pal.ink}" ${halo(c)}>${text}</text>`
+          notes += `<text x="${cx.toFixed(1)}" y="${y.toFixed(1)}" font-size="${c.ty.v('note', 12.5)}" font-weight="${k === leftAdj || k === rightAdj ? 700 : 500}" text-anchor="middle" fill="${c.pal.ink}" ${halo(c)}>${text}</text>`
         }
         if (placed) nLabels++
       }
@@ -269,14 +270,14 @@ function sectionPanel(which: 'A' | 'B'): PanelDef {
       const tick = niceLength((zMax - zMin) / 4)
       let axis = `<line x1="${X0}" y1="${py(zMin)}" x2="${X0}" y2="${py(zMax)}" stroke="${c.pal.subtle}" stroke-width="1"/>`
       for (let z = Math.ceil(zMin / tick) * tick; z <= zMax; z += tick) {
-        axis += `<line x1="${X0 - 6}" y1="${py(z).toFixed(1)}" x2="${X0}" y2="${py(z).toFixed(1)}" stroke="${c.pal.subtle}"/><text x="${X0 - 9}" y="${(py(z) + 4).toFixed(1)}" font-size="12" text-anchor="end" fill="${c.pal.subtle}">${z > 0 ? '+' : ''}${fmt(z)}</text>`
+        axis += `<line x1="${X0 - 6}" y1="${py(z).toFixed(1)}" x2="${X0}" y2="${py(z).toFixed(1)}" stroke="${c.pal.subtle}"/><text x="${X0 - 9}" y="${(py(z) + 4).toFixed(1)}" font-size="${c.ty.v('note', 12)}" text-anchor="end" fill="${c.pal.subtle}">${z > 0 ? '+' : ''}${fmt(z)}</text>`
       }
-      axis += `<text x="${X0 - 9}" y="${(py(zMax) - 12).toFixed(1)}" font-size="12" text-anchor="end" fill="${c.pal.subtle}">m</text>`
+      axis += `<text x="${X0 - 9}" y="${(py(zMax) - 12).toFixed(1)}" font-size="${c.ty.v('note', 12)}" text-anchor="end" fill="${c.pal.subtle}">m</text>`
       // 끝 표시
-      const ends = `<text x="${X0}" y="${BASE + 56}" font-size="17" font-weight="600" fill="${c.pal.ink}">${which}  ${dir8(leftAz)}</text><text x="${X1}" y="${BASE + 56}" font-size="17" font-weight="600" text-anchor="end" fill="${c.pal.ink}">${dir8(rightAz)}  ${which}′</text>`
+      const ends = `<text x="${X0}" y="${BASE + 56}" font-size="${c.ty.v('label', 17)}" font-weight="600" fill="${c.pal.ink}">${which}  ${dir8(leftAz)}</text><text x="${X1}" y="${BASE + 56}" font-size="${c.ty.v('label', 17)}" font-weight="600" text-anchor="end" fill="${c.pal.ink}">${dir8(rightAz)}  ${which}′</text>`
       // 가로 축척
       const len = niceLength(L * 0.4)
-      const scale = `<rect x="${X0}" y="${BASE + 72}" width="${(len * sx).toFixed(1)}" height="5" fill="${c.pal.ink}"/><text x="${(X0 + len * sx + 8).toFixed(1)}" y="${BASE + 79}" font-size="13" fill="${c.pal.ink}">${len >= 1000 ? `${len / 1000}km` : `${len}m`} (높이 ×${fmt(vexShown, 1)})</text>`
+      const scale = `<rect x="${X0}" y="${BASE + 72}" width="${(len * sx).toFixed(1)}" height="5" fill="${c.pal.ink}"/><text x="${(X0 + len * sx + 8).toFixed(1)}" y="${BASE + 79}" font-size="${c.ty.v('mark', 13)}" fill="${c.pal.ink}">${len >= 1000 ? `${len / 1000}km` : `${len}m`} (높이 ×${fmt(vexShown, 1)})</text>`
       // 위치 작은 지도
       const MR = 120
       const MCX = 500
@@ -301,8 +302,8 @@ function sectionPanel(which: 'A' | 'B'): PanelDef {
       mini += seg(other, c.pal.subtle, 1, '4 4') + seg(u, c.pal.ink, 2.4)
       const [la, lb] = mp([-u[0] * (L + 14 / ms), -u[1] * (L + 14 / ms)])
       const [ra, rb] = mp([u[0] * (L + 14 / ms), u[1] * (L + 14 / ms)])
-      mini += `<text x="${la.toFixed(1)}" y="${(lb + 5).toFixed(1)}" font-size="14" font-weight="600" text-anchor="middle" fill="${c.pal.ink}">${which}</text><text x="${ra.toFixed(1)}" y="${(rb + 5).toFixed(1)}" font-size="14" font-weight="600" text-anchor="middle" fill="${c.pal.ink}">${which}′</text>`
-      mini += `<path d="M${MCX + MR - 6} ${MCY - MR + 8} l7 18 l-7 -5 l-7 5 z" fill="${c.pal.ink}"/><text x="${MCX + MR - 6}" y="${MCY - MR + 40}" font-size="12" font-weight="600" text-anchor="middle" fill="${c.pal.ink}">N</text>`
+      mini += `<text x="${la.toFixed(1)}" y="${(lb + 5).toFixed(1)}" font-size="${c.ty.v('label', 14)}" font-weight="600" text-anchor="middle" fill="${c.pal.ink}">${which}</text><text x="${ra.toFixed(1)}" y="${(rb + 5).toFixed(1)}" font-size="${c.ty.v('label', 14)}" font-weight="600" text-anchor="middle" fill="${c.pal.ink}">${which}′</text>`
+      mini += `<path d="M${MCX + MR - 6} ${MCY - MR + 8} l7 18 l-7 -5 l-7 5 z" fill="${c.pal.ink}"/><text x="${MCX + MR - 6}" y="${MCY - MR + 40}" font-size="${c.ty.v('mark', 12)}" font-weight="600" text-anchor="middle" fill="${c.pal.ink}">N</text>`
       // 요약
       const siteZ = visSite.length ? gz((visSite[0][0] + visSite[visSite.length - 1][1]) / 2) : 0
       const tallest = [...cuts].sort((a, b) => b.h - a.h)[0]

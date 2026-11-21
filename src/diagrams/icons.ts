@@ -40,6 +40,7 @@ function glyph(code: string): string {
     case 'SW8': // 지하철: 차량 앞모습
       return `<rect x="-5" y="-6" width="10" height="10" rx="2.5" ${w}/><rect x="-3.4" y="-4.4" width="6.8" height="3.4" rx="0.8" fill="currentColor"/><circle cx="-2.6" cy="1.6" r="1" fill="currentColor"/><circle cx="2.6" cy="1.6" r="1" fill="currentColor"/><path d="M-3.5 4 L-5 6.5 M3.5 4 L5 6.5" ${s} stroke-width="1.4"/>`
     case 'PK6': // 주차장
+      // 기호 안 글자(P·24)는 기호 그림의 일부 — 글자 단계 밖
       return `<text x="0" y="4.6" font-size="13" font-weight="800" text-anchor="middle" ${w}>P</text>`
     case 'SC4': // 학교: 깃발
       return `<path d="M-3.5 6.5 V-6" ${s} stroke-width="1.6"/><path d="M-3 -6 L5 -3.6 L-3 -1.2 Z" ${w}/>`

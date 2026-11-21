@@ -451,7 +451,42 @@ export interface DiagramSettings {
   cam3d?: { az?: number; tilt?: number; vex?: number }
   /** 설계안 비교 도판에 넣을 안 (2026-11-21): 설계안 id, '' = 현황. 2~3개 */
   compare?: string[]
+  /** ⑥ 보기: 패널 모드 (2026-11-21 묶음 D2) — 제목·출처 없이 다이어그램만, 규칙대로. ⑥ 화면에만 (보드·리포트는 늘 보통 도판) */
+  panelView?: boolean
+  /** 패널 규칙 (프로젝트에 하나, 비운 칸은 처음 값) */
+  panelRules?: PanelRulesEdit
+  /** 도판 하나만 따로 (도판 id → 바꾼 칸만) */
+  panelOver?: Record<string, PanelRulesEdit>
 }
+
+// ───────────────────────── 패널 규칙 (2026-11-21 묶음 D) ─────────────────────────
+// 사용자 결정: 판 크기 = 지도 지름 mm(범례는 필요한 만큼 붙음) / 범례·방위표·축척 각각 켜고 끄기(처음엔 켬) /
+// 규칙은 패널 모드에만(보통 도판은 그대로) / 글자 pt·선 mm.
+
+/** 글자 단계: 범례 · 지도 위 이름 · 작은 글자(숫자·주석) · 방위표·축척 */
+export type TextStep = 'legend' | 'label' | 'note' | 'mark'
+/** 선 단계: 대지 경계 · 지도 틀 · 굵은·보통·가는 선(지금 굵기 2.5 이상 · 1~2.5 · 1 미만) */
+export type LineStep = 'site' | 'frame' | 'bold' | 'line' | 'fine'
+
+export interface PanelRules {
+  /** 지도 지름(정사각이면 한 변) mm */
+  mapMM: number
+  /** 범례 자리 */
+  legend: 'below' | 'right' | 'none'
+  north: boolean
+  scale: boolean
+  /** 글자 크기 pt */
+  text: Record<TextStep, number>
+  /** 선 굵기 mm */
+  line: Record<LineStep, number>
+  /** 글꼴 이름 (비우면 기본 Pretendard) */
+  font: string
+  /** PNG 해상도 */
+  dpi: number
+}
+
+/** 바꾼 칸만 (글자·선은 단계별로) */
+export type PanelRulesEdit = Partial<Omit<PanelRules, 'text' | 'line'>> & { text?: Partial<Record<TextStep, number>>; line?: Partial<Record<LineStep, number>> }
 
 /** 도판 하나의 결론 */
 export interface PanelNote {

@@ -57,8 +57,12 @@ export default function PanelEditor({ project, update, def, panel, data, setting
     return makeFrame(data.center[0], data.center[1], R, settings.frame)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [def, data, settings.frame, settings.overlays])
-  const viewH = Number(panel.svg.match(/viewBox="0 0 [\d.]+ ([\d.]+)"/)?.[1] ?? 1300)
-  const viewW = Number(panel.svg.match(/viewBox="0 0 ([\d.]+) /)?.[1] ?? 1000)
+  // 패널 모드 도판은 viewBox 원점이 0이 아님 (2026-11-21 묶음 D2)
+  const vb = panel.svg.match(/viewBox="([-\d.]+) ([-\d.]+) ([\d.]+) ([\d.]+)"/)
+  const viewX = Number(vb?.[1] ?? 0)
+  const viewY = Number(vb?.[2] ?? 0)
+  const viewW = Number(vb?.[3] ?? 1000)
+  const viewH = Number(vb?.[4] ?? 1300)
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
@@ -272,7 +276,7 @@ export default function PanelEditor({ project, update, def, panel, data, setting
             onPointerUp={mode === 'label' ? onLabelUp : undefined}
           >
             <div ref={stageRef} className="panel-edit-svg" dangerouslySetInnerHTML={{ __html: panel.svg }} />
-            {marks.length > 0 && <svg className="panel-edit-marks" viewBox={`0 0 ${viewW} ${viewH}`} dangerouslySetInnerHTML={{ __html: marks.join('') }} />}
+            {marks.length > 0 && <svg className="panel-edit-marks" viewBox={`${viewX} ${viewY} ${viewW} ${viewH}`} dangerouslySetInnerHTML={{ __html: marks.join('') }} />}
           </div>
           {mode !== 'view' && (
             <aside className="panel-editor-side">

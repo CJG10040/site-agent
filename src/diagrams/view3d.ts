@@ -7,6 +7,7 @@
 //  - 틀에 걸친 건물 (2026-11-21 사용자 결정): 모형을 톱으로 자른 것처럼 발자국을 틀 모양으로 잘라 틀 안쪽만 세우고,
 //    잘린 경계의 벽은 더 진한 '잘린 면'으로. (예전엔 가운데 점이 틀 안이면 통째로 그려 긴 건물이 틀 밖으로 나갔음)
 
+import { UNIT_TYPE, type TypeScale } from './typeScale'
 import { featureCollection, intersect, polygon } from '@turf/turf'
 import type { Feature, MultiPolygon, Polygon } from 'geojson'
 import type { Areal } from '../lib/geo'
@@ -235,12 +236,13 @@ export interface View3dOpts {
 
 export function to3d(
   out: PanelOutput,
-  ctx: { d: { buildings: Bld[]; scenario?: { name: string; mesh: { positions: number[]; indices: number[] }; baseZ: number } | null }; f: Frame; pal: Palette; st: DiagramSettings },
+  ctx: { d: { buildings: Bld[]; scenario?: { name: string; mesh: { positions: number[]; indices: number[] }; baseZ: number } | null }; f: Frame; pal: Palette; st: DiagramSettings; ty?: TypeScale },
   site: string,
   clipId: string,
   opts: View3dOpts = {},
 ): PanelOutput {
   const { f, pal } = ctx
+  const ty = ctx.ty ?? UNIT_TYPE
   const asked = camOf(ctx.st)
   const over = opts.cam?.(asked) ?? null
   const cam = over?.cam ?? asked
@@ -417,7 +419,7 @@ export function to3d(
   const uy = nyv / nlen
   const ax = MAP_CX + MAP_R - 30
   const ay = 70
-  const north = `<g id="방위표_3D"><path d="M${(ax + ux * 22).toFixed(1)} ${(ay + uy * 22).toFixed(1)}L${(ax - uy * 9 - ux * 12).toFixed(1)} ${(ay + ux * 9 - uy * 12).toFixed(1)}L${(ax - ux * 6).toFixed(1)} ${(ay - uy * 6).toFixed(1)}L${(ax + uy * 9 - ux * 12).toFixed(1)} ${(ay - ux * 9 - uy * 12).toFixed(1)}Z" fill="${pal.ink}"/><text x="${(ax + ux * 38).toFixed(1)}" y="${(ay + uy * 38 + 5).toFixed(1)}" font-size="15" font-weight="600" text-anchor="middle" fill="${pal.ink}">N</text></g>`
+  const north = `<g id="방위표_3D"><path d="M${(ax + ux * 22).toFixed(1)} ${(ay + uy * 22).toFixed(1)}L${(ax - uy * 9 - ux * 12).toFixed(1)} ${(ay + ux * 9 - uy * 12).toFixed(1)}L${(ax - ux * 6).toFixed(1)} ${(ay - uy * 6).toFixed(1)}L${(ax + uy * 9 - ux * 12).toFixed(1)} ${(ay - ux * 9 - uy * 12).toFixed(1)}Z" fill="${pal.ink}"/><text x="${(ax + ux * 38).toFixed(1)}" y="${(ay + uy * 38 + 5 * ty.k('mark')).toFixed(1)}" font-size="${ty.v('mark', 15)}" font-weight="600" text-anchor="middle" fill="${pal.ink}">N</text></g>`
 
   const layers: PanelLayer[] = [
     { id: '3D_판_두께', svg: slab, noClip: true },

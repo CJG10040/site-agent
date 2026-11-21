@@ -3,6 +3,7 @@
 // 사용자 결정: 뜻이 있는 기호 세트 + 굵기(주·부·작은 것)·선 모양 위계 / 색은 '조건은 먹색, 방향을 정한 해석만 방향색'.
 // 편집 화면과 완성 도판, 범례·도구 단추 그림이 모두 이 파일을 쓴다. 1판 그림(sym 없음)은 symOf로 읽는다.
 
+import { UNIT_TYPE, type TypeScale } from './typeScale'
 import type { SynthItem, SynthKind, SynthSym, SynthTone } from '../model/types'
 import { esc, textWidth, wrap } from './compose'
 import type { Frame } from './frame'
@@ -246,15 +247,18 @@ function midOf(px: P[]): P {
 
 // ───────────────────────── 작은 그림 조각 ─────────────────────────
 
-const HALO = 'paint-order="stroke" stroke="#ffffff" stroke-width="4.5" stroke-linejoin="round"'
+/** 그리는 동안의 글자 단계 배율 (synthItemsSvg가 정함 — 동기라 섞이지 않음) */
+let TY: TypeScale = UNIT_TYPE
+const halo = () => `paint-order="stroke" stroke="#ffffff" stroke-width="${TY.v('label', 4.5)}" stroke-linejoin="round"`
 
 function label(x: number, y: number, text: string, color: string, size = 16, anchor: 'start' | 'middle' = 'middle', bold = true): string {
   if (!text.trim()) return ''
-  const lines = wrap(text.trim(), size, 230).slice(0, 4)
+  const s = size * TY.k('label')
+  const lines = wrap(text.trim(), s, 230).slice(0, 4)
   return lines
     .map(
       (l, i) =>
-        `<text x="${f1(x)}" y="${f1(y + i * size * 1.25)}" font-size="${size}" ${bold ? 'font-weight="600"' : ''} text-anchor="${anchor}" fill="${color}" ${HALO}>${esc(l)}</text>`,
+        `<text x="${f1(x)}" y="${f1(y + i * s * 1.25)}" font-size="${TY.v('label', size)}" ${bold ? 'font-weight="600"' : ''} text-anchor="${anchor}" fill="${color}" ${halo()}>${esc(l)}</text>`,
     )
     .join('')
 }
@@ -289,9 +293,10 @@ export function bolt(x: number, y: number, s: number): string {
 
 /** 카드 배지: 앱의 근거 번호(F-01)처럼 흰 바탕 + 종류 색 테두리·글자의 '도면 번호' 표 */
 function cardBadge(x: number, y: number, id: string, color: string): { svg: string; w: number } {
-  const w = textWidth(id, 14) + 14
+  const k = TY.k('note')
+  const w = textWidth(id, 14 * k) + 14 * k
   return {
-    svg: `<rect x="${f1(x - w / 2)}" y="${f1(y - 13)}" width="${f1(w)}" height="26" rx="3" fill="#ffffff" stroke="${color}" stroke-width="2"/><text x="${f1(x)}" y="${f1(y + 5)}" font-size="14" font-weight="600" text-anchor="middle" fill="${color}">${esc(id)}</text>`,
+    svg: `<rect x="${f1(x - w / 2)}" y="${f1(y - 13 * k)}" width="${f1(w)}" height="${TY.v('note', 26)}" rx="3" fill="#ffffff" stroke="${color}" stroke-width="2"/><text x="${f1(x)}" y="${f1(y + 5 * k)}" font-size="${TY.v('note', 14)}" font-weight="600" text-anchor="middle" fill="${color}">${esc(id)}</text>`,
     w,
   }
 }
@@ -588,9 +593,10 @@ function itemBody(it: SynthItem, f: Frame, cards: Record<string, SynthCard>, sel
   // ── 글상자
   if (def.geo === 'note' && px.length) {
     const [x, y] = px[0]
-    const lines = wrap(it.label.trim() || '메모', 15, 230).slice(0, 6)
-    const w = Math.max(60, ...lines.map((l) => textWidth(l, 15))) + 18
-    const h = lines.length * 19 + 14
+    const k = TY.k('note')
+    const lines = wrap(it.label.trim() || '메모', 15 * k, 230 * k).slice(0, 6)
+    const w = Math.max(60 * k, ...lines.map((l) => textWidth(l, 15 * k))) + 18 * k
+    const h = lines.length * 19 * k + 14 * k
     let leader = ''
     if (px[1]) {
       const [tx, ty] = px[1]
@@ -602,7 +608,7 @@ function itemBody(it: SynthItem, f: Frame, cards: Record<string, SynthCard>, sel
     return (
       leader +
       `<rect x="${f1(x)}" y="${f1(y)}" width="${f1(w)}" height="${h}" rx="4" fill="#ffffff" fill-opacity="0.94" stroke="${color}" stroke-width="${sel ? 3.5 : 2}"/>` +
-      lines.map((l, i) => `<text x="${f1(x + 9)}" y="${f1(y + 22 + i * 19)}" font-size="15" fill="${mix('#000000', color, 0.75)}">${esc(l)}</text>`).join('')
+      lines.map((l, i) => `<text x="${f1(x + 9 * k)}" y="${f1(y + 22 * k + i * 19 * k)}" font-size="${TY.v('note', 15)}" fill="${mix('#000000', color, 0.75)}">${esc(l)}</text>`).join('')
     )
   }
   return ''
@@ -613,7 +619,17 @@ const LAYER: Record<SymGroup, number> = { 면: 0, 선: 1, 흐름: 2, 점: 3, 글
 
 /** 기호들 (편집 화면과 완성 도판이 함께 씀) — 기호마다 data-id */
 /** ink = 조건(먹색) 기호 색 — 어두운 바탕이면 묶음의 글자색 */
-export function synthItemsSvg(items: SynthItem[], f: Frame, cards: Record<string, SynthCard>, selectedId: string | null = null, hit = false, ink: string = TONES.neutral.color): string {
+export function synthItemsSvg(items: SynthItem[], f: Frame, cards: Record<string, SynthCard>, selectedId: string | null = null, hit = false, ink: string = TONES.neutral.color, ty: TypeScale = UNIT_TYPE): string {
+  const prev = TY
+  TY = ty
+  try {
+    return itemsSvg(items, f, cards, selectedId, hit, ink)
+  } finally {
+    TY = prev
+  }
+}
+
+function itemsSvg(items: SynthItem[], f: Frame, cards: Record<string, SynthCard>, selectedId: string | null, hit: boolean, ink: string): string {
   const order = (it: SynthItem) => {
     const sym = symOf(it)
     return sym === 'note' ? 5 : sym === 'card' ? 4 : LAYER[SYMS[sym].group]

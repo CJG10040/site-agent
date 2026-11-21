@@ -21,10 +21,31 @@ export interface PhotoRecord {
   createdAt: string
 }
 
+/** 올린 글꼴 (2026-11-21 묶음 D3) — 프로젝트와 따로, 이 브라우저에만 */
+export interface FontRecord {
+  id: string
+  /** 글꼴 집안 이름 (파일에서 읽음, 못 읽으면 파일 이름에서 — 목록에서 골라 맞출 수 있음) */
+  family: string
+  /** 처음 읽은 이름 */
+  readName?: string
+  /** 파일 안 이름을 못 읽어 파일 이름에서 짐작함 (woff2 등) */
+  guessed?: boolean
+  fileName: string
+  /** 100~900 */
+  weight: number
+  italic: boolean
+  /** ttf·otf·woff·woff2 */
+  ext: string
+  size: number
+  data: Blob
+  addedAt: string
+}
+
 const db = new Dexie('site-agent') as Dexie & {
   projects: EntityTable<Project, 'id'>
   photos: EntityTable<PhotoRecord, 'id'>
   versions: EntityTable<VersionRecord, 'id'>
+  fonts: EntityTable<FontRecord, 'id'>
 }
 
 db.version(1).stores({
@@ -39,6 +60,13 @@ db.version(3).stores({
   projects: 'id, updatedAt',
   photos: 'id, projectId',
   versions: 'id, projectId, createdAt',
+})
+// 묶음 D3: 올린 글꼴
+db.version(4).stores({
+  projects: 'id, updatedAt',
+  photos: 'id, projectId',
+  versions: 'id, projectId, createdAt',
+  fonts: 'id, family',
 })
 
 export interface ProjectSummary {
@@ -150,4 +178,22 @@ export async function storageEstimate(): Promise<{ usage: number; quota: number 
   } catch {
     return null
   }
+}
+
+// ───────────────────────── 올린 글꼴 (2026-11-21 묶음 D3) ─────────────────────────
+
+export async function listFontRecords(): Promise<FontRecord[]> {
+  try {
+    return (await db.fonts.toArray()).sort((a, b) => a.family.localeCompare(b.family) || a.weight - b.weight)
+  } catch {
+    return []
+  }
+}
+
+export async function putFont(rec: FontRecord): Promise<void> {
+  await db.fonts.put(rec)
+}
+
+export async function deleteFont(id: string): Promise<void> {
+  await db.fonts.delete(id)
 }

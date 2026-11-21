@@ -9,11 +9,15 @@ import { svgBlob, svgToPng, zipBlob } from '../diagrams/export'
 import { siteOverview } from '../diagrams/overview'
 import { ORDERED_PANELS, PANEL_GROUP_ORDER, panelNumber, type PanelDef } from '../diagrams/panels'
 import { buildPanelPrompt, parsePanelAnswer } from '../diagrams/prompt'
-import { DEFAULT_SETTINGS, panelFileName } from '../diagrams/render'
+import { DEFAULT_SETTINGS, panelFileName, settingsOf } from '../diagrams/render'
 import { settingsKey, useDiagrams } from '../diagrams/useDiagrams'
 import PanelEditor from '../components/PanelEditor'
 import { addDesc, editsOf, newEditId } from '../model/edits'
 import StylePanel from '../components/StylePanel'
+import PanelRules, { PanelRulesOne } from '../components/PanelRules'
+import { panelRulesKey, pngWidthForMM, rulesFor } from '../diagrams/panelRules'
+import { fontsSig, fontStyleBlob } from '../lib/fonts'
+import { useFonts } from '../lib/useFonts'
 
 import OverlayControls from '../components/OverlayControls'
 import ExplodedControls from '../components/ExplodedControls'
@@ -69,7 +73,11 @@ function Seg<T extends string | number>({ value, options, onChange, label }: { v
 export default function DiagramStep({ project, update, config, keys, onGoData, onGoModel, onNext }: Props) {
   // 그려진 도판은 저장된 설정(applied)으로. 설정 칸에서 고친 것은 초안(draft)에 모았다가 '도판 생성'을 누르면 저장·그리기
   // (2026-11-13 사용자 요청: 설정을 바꿀 때마다 다시 그려 버벅임)
-  const { data, settings: applied, panels, busy, terrain, progress } = useDiagrams(project, config.key)
+  // 패널 모드 (2026-11-21 묶음 D2): ⑥ 화면에서만 — 보드·리포트는 늘 보통 도판
+  const panelView = !!settingsOf(project).panelView
+  // 올린 글꼴 (묶음 D3, 이 브라우저에만)
+  const fonts = useFonts()
+  const { data, settings: applied, panels, busy, terrain, progress } = useDiagrams(project, config.key, undefined, { panel: panelView, fontsSig: fontsSig(fonts) })
   const [draft, setDraft] = useState<Partial<DiagramSettings>>({})
   const settings: DiagramSettings = { ...applied, ...draft }
   const [viewing, setViewing] = useState<string | null>(null)
@@ -106,7 +114,8 @@ export default function DiagramStep({ project, update, config, keys, onGoData, o
   }
   const draftKeys = Object.keys(draft)
   // 설정이 바뀌어 다시 그려야 하는 도판
-  const changedIds = new Set(draftKeys.length ? ORDERED_PANELS.filter((p) => settingsKey(p.id, settings) !== settingsKey(p.id, applied)).map((p) => p.id) : [])
+  const keyOf = (id: string, s: DiagramSettings) => settingsKey(id, s) + (panelView ? `|${panelRulesKey(s, id)}` : '')
+  const changedIds = new Set(draftKeys.length ? ORDERED_PANELS.filter((p) => keyOf(p.id, settings) !== keyOf(p.id, applied)).map((p) => p.id) : [])
   const generate = () => {
     if (!draftKeys.length) return
     applySettings(draft)
@@ -208,15 +217,20 @@ export default function DiagramStep({ project, update, config, keys, onGoData, o
     setMsg({ kind: 'ok', text: `${ids.length}개 도판에 결론 후보를 붙였습니다. 각 도판에서 후보를 눌러 고르거나 고쳐 쓰세요.${r.unknown.length ? ` (알아보지 못한 제목 ${r.unknown.length}개)` : ''}` })
   }
 
+  const fileName = (def: PanelDef, ext: 'svg' | 'png') => (panelView ? panelFileName(project, def, ext).replace(new RegExp(`\\.${ext}$`), `_패널.${ext}`) : panelFileName(project, def, ext))
+  /** PNG 가로 픽셀: 패널 모드는 판 크기(mm) × 해상도 */
+  const pngWidthOf = (def: PanelDef, svg: string) => (panelView ? (pngWidthForMM(svg, rulesFor(applied, def.id).dpi) ?? settings.pngWidth) : settings.pngWidth)
+  /** PNG에 넣을 올린 글꼴 (패널 모드) */
+  const pngFont = async (def: PanelDef) => (panelView && rulesFor(applied, def.id).font ? await fontStyleBlob(rulesFor(applied, def.id).font) : null)
   const downloadSvg = (def: PanelDef) => {
     const p = panels[def.id]
-    if (p) downloadBlob(panelFileName(project, def, 'svg'), svgBlob(p.svg))
+    if (p) downloadBlob(fileName(def, 'svg'), svgBlob(p.svg))
   }
   const downloadPng = async (def: PanelDef) => {
     const p = panels[def.id]
     if (!p) return
     try {
-      downloadBlob(panelFileName(project, def, 'png'), await svgToPng(p.svg, settings.pngWidth, applied.background === 'white' ? '#ffffff' : null))
+      downloadBlob(fileName(def, 'png'), await svgToPng(p.svg, pngWidthOf(def, p.svg), applied.background === 'white' ? '#ffffff' : null, await pngFont(def)))
     } catch (e) {
       setMsg({ kind: 'error', text: e instanceof Error ? e.message : String(e) })
     }
@@ -228,12 +242,12 @@ export default function DiagramStep({ project, update, config, keys, onGoData, o
       for (const def of ready) {
         const p = panels[def.id]
         files.push({
-          name: panelFileName(project, def, kind),
-          data: kind === 'svg' ? `<?xml version="1.0" encoding="UTF-8"?>\n${p.svg}` : await svgToPng(p.svg, settings.pngWidth, applied.background === 'white' ? '#ffffff' : null),
+          name: fileName(def, kind),
+          data: kind === 'svg' ? `<?xml version="1.0" encoding="UTF-8"?>\n${p.svg}` : await svgToPng(p.svg, pngWidthOf(def, p.svg), applied.background === 'white' ? '#ffffff' : null, await pngFont(def)),
         })
       }
       const name = (project.brief.projectName || '대지').replace(/[\\/:*?"<>|\s]+/g, '_')
-      downloadBlob(`${name}_도판_${kind.toUpperCase()}.zip`, await zipBlob(files))
+      downloadBlob(`${name}_${panelView ? '패널' : '도판'}_${kind.toUpperCase()}.zip`, await zipBlob(files))
     } catch (e) {
       setMsg({ kind: 'error', text: e instanceof Error ? e.message : String(e) })
     } finally {
@@ -329,7 +343,9 @@ export default function DiagramStep({ project, update, config, keys, onGoData, o
             설정을 바꿨습니다 — <strong>도판 {changedIds.size}장</strong>을 다시 그립니다{changedIds.size === 0 ? ' (그림이 바뀌지 않는 설정)' : ''}
           </span>
         ) : (
-          <span className="muted">도판 {Object.keys(panels).filter((id) => (project.designs ?? []).length > 0 || !COMPARE_IDS.includes(id)).length}장 · 지금 설정으로 그렸습니다. 설정을 바꾼 뒤 '도판 생성'을 누르세요.</span>
+          <span className="muted">
+            {panelView ? '패널 모드 · ' : ''}도판 {Object.keys(panels).filter((id) => (project.designs ?? []).length > 0 || !COMPARE_IDS.includes(id)).length}장 · 지금 설정으로 그렸습니다. 설정을 바꾼 뒤 '도판 생성'을 누르세요.
+          </span>
         )}
         <span className="spacer" />
         {draftKeys.length > 0 && (
@@ -341,6 +357,8 @@ export default function DiagramStep({ project, update, config, keys, onGoData, o
           도판 생성
         </button>
       </div>
+
+      <PanelRules settings={settings} fonts={fonts} setView={(v) => applySettings({ panelView: v || undefined })} setSettings={setSettings} />
 
       <StylePanel settings={settings} setSettings={setSettings} />
 
@@ -476,7 +494,7 @@ export default function DiagramStep({ project, update, config, keys, onGoData, o
             <Seg label="3D 높이" value={cam.vex} options={[1, 1.5, 2, 3].map((x) => ({ v: x, label: `×${x}` }))} onChange={(v) => setSettings({ cam3d: { ...settings.cam3d, vex: v } })} />
           </>
         )}
-        <Seg label="PNG 크기" value={settings.pngWidth} options={[{ v: 2000, label: '2000px' }, { v: 4000, label: '4000px' }]} onChange={(v) => setSettings({ pngWidth: v })} />
+        {!panelView && <Seg label="PNG 크기" value={settings.pngWidth} options={[{ v: 2000, label: '2000px' }, { v: 4000, label: '4000px' }]} onChange={(v) => setSettings({ pngWidth: v })} />}
         <div className="diagram-export">
           <button type="button" className="btn small" disabled={!!exporting || busy || !ready.length} onClick={() => void downloadAll('svg')}>
             {exporting === 'svg' ? '묶는 중…' : 'SVG 모두 (ZIP)'}
@@ -632,6 +650,7 @@ export default function DiagramStep({ project, update, config, keys, onGoData, o
                         </ul>
                       )}
                       {!empty && p?.out.basis && <BasisList basis={p.out.basis} onHide={hideBasis} />}
+                      {panelView && !empty && <PanelRulesOne id={def.id} settings={settings} fonts={fonts} setSettings={setSettings} />}
                       {feedbackForPanel(project, def.id).map((f) => (
                         <p key={f.id} className="small diagram-feedback">
                           <span className={`fb-badge status-${f.status}`}>{FB_STATUS_LABEL[f.status]}</span> {f.id} {f.who}: {f.text}

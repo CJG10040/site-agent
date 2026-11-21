@@ -213,7 +213,7 @@ const storesComparePanel: PanelDef = {
     const top = 110
     const rowH = Math.min(62, Math.floor(760 / Math.max(1, rows.length)))
     const bx = (v: number) => X0 + (v / maxShare) * (X1 - X0)
-    let svg = `<text x="${X0}" y="${top - 30}" font-size="15" fill="${c.pal.subtle}">업종이 차지하는 비율</text>`
+    let svg = `<text x="${X0}" y="${top - 30}" font-size="${c.ty.v('label', 15)}" fill="${c.pal.subtle}">업종이 차지하는 비율</text>`
     svg += `<line x1="${X0}" y1="${top - 12}" x2="${X0}" y2="${top + rows.length * rowH}" stroke="${c.pal.subtle}" stroke-width="1"/>`
     rows.forEach((k, i) => {
       const y = top + i * rowH
@@ -221,10 +221,10 @@ const storesComparePanel: PanelDef = {
       const nShare = nearN ? (nearC.get(k) ?? 0) / nearN : 0
       const q = lq(k)
       const tag = nearN >= 5 && (nearC.get(k) ?? 0) >= 3 && q >= 1.5 ? `×${fmt(q, 1)} 많음` : nearN >= 5 && !(nearC.get(k) ?? 0) && a >= 0.03 ? '대지 주변엔 없음' : ''
-      svg += `<text x="${X0 - 14}" y="${(y + rowH * 0.48).toFixed(1)}" font-size="16" font-weight="${tag ? 700 : 500}" text-anchor="end" fill="${c.pal.ink}">${esc(k)}</text>`
+      svg += `<text x="${X0 - 14}" y="${(y + rowH * 0.48).toFixed(1)}" font-size="${c.ty.v('label', 16)}" font-weight="${tag ? 700 : 500}" text-anchor="end" fill="${c.pal.ink}">${esc(k)}</text>`
       svg += `<rect x="${X0}" y="${(y + 6).toFixed(1)}" width="${(bx(nShare) - X0).toFixed(1)}" height="${(rowH * 0.32).toFixed(1)}" fill="${nearColor}"/>`
       svg += `<rect x="${X0}" y="${(y + 6 + rowH * 0.36).toFixed(1)}" width="${(bx(a) - X0).toFixed(1)}" height="${(rowH * 0.32).toFixed(1)}" fill="${allColor}"/>`
-      svg += `<text x="${(Math.max(bx(nShare), bx(a)) + 8).toFixed(1)}" y="${(y + rowH * 0.48).toFixed(1)}" font-size="13" fill="${c.pal.subtle}">${pctText(nShare)} / ${pctText(a)}${tag ? `  <tspan font-weight="600" fill="${nearColor}">${tag}</tspan>` : ''}</text>`
+      svg += `<text x="${(Math.max(bx(nShare), bx(a)) + 8).toFixed(1)}" y="${(y + rowH * 0.48).toFixed(1)}" font-size="${c.ty.v('note', 13)}" fill="${c.pal.subtle}">${pctText(nShare)} / ${pctText(a)}${tag ? `  <tspan font-weight="600" fill="${nearColor}">${tag}</tspan>` : ''}</text>`
     })
     const more = rows.filter((k) => nearN >= 5 && (nearC.get(k) ?? 0) >= 3 && lq(k) >= 1.5).map((k) => `${k}(×${fmt(lq(k), 1)}${subText(k) ? `: ${subText(k)}` : ''})`)
     const none = rows.filter((k) => nearN >= 5 && !(nearC.get(k) ?? 0) && (allC.get(k) ?? 0) / allN >= 0.03)
@@ -352,7 +352,7 @@ const poiMapPanel: PanelDef = {
       const anchor = px >= MAP_CX ? 'start' : 'end'
       const text = `${x.p.label ?? x.p.kind} ${minText(x.min)}${out ? ' (도판 밖)' : ''}`
       const ly = place(lx, py + 5, text.length * 13, anchor)
-      labels += `<text x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" font-size="14" font-weight="600" text-anchor="${anchor}" fill="${g.color}" stroke="${c.pal.paper}" stroke-width="4" paint-order="stroke">${esc(text)}</text>`
+      labels += `<text x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" font-size="${c.ty.v('label', 14)}" font-weight="600" text-anchor="${anchor}" fill="${g.color}" stroke="${c.pal.paper}" stroke-width="${c.ty.v('label', 4)}" paint-order="stroke">${esc(text)}</text>`
       if (out) labels += iconSvg(x.p.kind, px, py, 11, g.color)
     }
     let icons = ''
@@ -414,34 +414,34 @@ const poiReachPanel: PanelDef = {
     const NEAREST_X = 945
     let svg = ''
     BANDS.forEach((b, i) => {
-      svg += `<text x="${COLS[i]}" y="${top - 40}" font-size="17" font-weight="600" fill="${c.pal.ink}">${b}분 안</text><text x="${COLS[i]}" y="${top - 20}" font-size="13" fill="${c.pal.subtle}">${fmt(b * WALK_SPEED)}m</text>`
+      svg += `<text x="${COLS[i]}" y="${top - 40}" font-size="${c.ty.v('label', 17)}" font-weight="600" fill="${c.pal.ink}">${b}분 안</text><text x="${COLS[i]}" y="${top - 20}" font-size="${c.ty.v('note', 13)}" fill="${c.pal.subtle}">${fmt(b * WALK_SPEED)}m</text>`
     })
-    svg += `<text x="${NEAREST_X}" y="${top - 40}" font-size="17" font-weight="600" text-anchor="end" fill="${c.pal.ink}">가장 가까운 곳</text>`
+    svg += `<text x="${NEAREST_X}" y="${top - 40}" font-size="${c.ty.v('label', 17)}" font-weight="600" text-anchor="end" fill="${c.pal.ink}">가장 가까운 곳</text>`
     let prevGroup = ''
     rows.forEach((r, i) => {
       const y = top + i * rowH
       const cy = y + rowH / 2
       if (r.g.id !== prevGroup) {
         svg += `<line x1="50" y1="${y}" x2="950" y2="${y}" stroke="${mix(c.pal.paper, c.pal.ink, 0.15)}" stroke-width="1"/>`
-        svg += `<text x="56" y="${(y + 18).toFixed(1)}" font-size="12" font-weight="600" fill="${r.g.color}">${esc(r.g.label)}</text>`
+        svg += `<text x="56" y="${(y + 18).toFixed(1)}" font-size="${c.ty.v('note', 12)}" font-weight="600" fill="${r.g.color}">${esc(r.g.label)}</text>`
         prevGroup = r.g.id
       }
       svg += iconSvg(r.code, 120, cy, 12, r.g.color)
-      svg += `<text x="142" y="${(cy + 6).toFixed(1)}" font-size="17" fill="${c.pal.ink}">${esc(r.label)}</text>`
+      svg += `<text x="142" y="${(cy + 6).toFixed(1)}" font-size="${c.ty.v('label', 17)}" fill="${c.pal.ink}">${esc(r.label)}</text>`
       const mins = list.filter((x) => x.p.kind === r.code).map((x) => x.min)
       BANDS.forEach((b, bi) => {
         const n = mins.filter((m) => m <= b).length
         const x0 = COLS[bi]
         if (!n) {
-          svg += `<text x="${x0}" y="${(cy + 6).toFixed(1)}" font-size="16" fill="${c.pal.subtle}">–</text>`
+          svg += `<text x="${x0}" y="${(cy + 6).toFixed(1)}" font-size="${c.ty.v('label', 16)}" fill="${c.pal.subtle}">–</text>`
           return
         }
         const show = Math.min(n, 7)
         for (let k = 0; k < show; k++) svg += `<circle cx="${(x0 + 7 + k * 17).toFixed(1)}" cy="${cy.toFixed(1)}" r="6.5" fill="${r.g.color}"/>`
-        if (n > show || n >= 15) svg += `<text x="${(x0 + 7 + show * 17 + 2).toFixed(1)}" y="${(cy + 5).toFixed(1)}" font-size="14" font-weight="600" fill="${r.g.color}">${n >= 15 ? `${n}+` : `+${n - show}`}</text>`
+        if (n > show || n >= 15) svg += `<text x="${(x0 + 7 + show * 17 + 2).toFixed(1)}" y="${(cy + 5).toFixed(1)}" font-size="${c.ty.v('note', 14)}" font-weight="600" fill="${r.g.color}">${n >= 15 ? `${n}+` : `+${n - show}`}</text>`
       })
       const nn = near.get(r.code)
-      svg += `<text x="${NEAREST_X}" y="${(cy + 6).toFixed(1)}" font-size="17" font-weight="600" text-anchor="end" fill="${nn && nn.min <= 15 ? c.pal.ink : c.pal.subtle}">${nn ? minText(nn.min) : '–'}</text>`
+      svg += `<text x="${NEAREST_X}" y="${(cy + 6).toFixed(1)}" font-size="${c.ty.v('label', 17)}" font-weight="600" text-anchor="end" fill="${nn && nn.min <= 15 ? c.pal.ink : c.pal.subtle}">${nn ? minText(nn.min) : '–'}</text>`
     })
     svg += `<line x1="50" y1="${top + rows.length * rowH}" x2="950" y2="${top + rows.length * rowH}" stroke="${mix(c.pal.paper, c.pal.ink, 0.15)}" stroke-width="1"/>`
     const in10 = rows.filter((r) => (near.get(r.code)?.min ?? Infinity) <= 10).map((r) => r.label)
