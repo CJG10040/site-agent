@@ -1,7 +1,6 @@
-# 법령 API 시험 (2026-11-21 묶음 E1, 손으로만 실행): 국가법령정보센터 공식 API가 GitHub에서 불러지는지 확인.
-# 인증값은 저장소 비밀 값 LAW_OC(사용자가 직접 넣음)에서만 읽고, 로그에는 답 메시지·건수·법령 글만 남긴다.
+# 법령 API 시험 (2026-11-21 묶음 E1·E2, 손으로만 실행): 조례 표를 만들어 보고 결과 파일만 내려받게 둔다(배포 안 함).
+# 인증값은 저장소 비밀 값 LAW_OC(사용자가 직접 넣음)에서만 읽고, 로그에는 지자체별 건수·문제만 남긴다.
 # 시험 결과(2026-11-21): 그냥 부르면 거절, 사이트 주소(등록한 도메인 cjg10040.github.io)를 밝히면 통과 → 사용자 결정으로 밝혀서 부름.
-# 3차: 전남광주통합특별시 특별법의 종전 조례 경과조치, 별표(한글 hwpx 파일) 글 읽기.
 name: 법령 API 시험 (수동)
 
 on:
@@ -11,65 +10,16 @@ permissions:
   contents: read
 
 jobs:
-  probe:
+  table:
     runs-on: ubuntu-latest
     steps:
-      - name: 특별법 경과조치·별표 파일
+      - uses: actions/checkout@v5
+      - name: 조례 표 만들기 (37곳)
         env:
           LAW_OC: ${{ secrets.LAW_OC }}
-        shell: python
-        run: |
-          import io, os, re, sys, urllib.parse, urllib.request, zipfile
-          import xml.etree.ElementTree as ET
-
-          OC = os.environ.get('LAW_OC', '')
-          if not OC:
-              sys.exit('비밀 값 LAW_OC가 없습니다')
-          HEAD = {'Referer': 'https://cjg10040.github.io/site-agent/', 'User-Agent': 'site-agent-law-table'}
-
-          def raw(url):
-              req = urllib.request.Request(url, headers=HEAD)
-              with urllib.request.urlopen(req, timeout=60) as r:
-                  return r.read(), r.headers.get('Content-Type')
-
-          def get(path, **q):
-              q = {'OC': OC, 'type': 'XML', **q}
-              return ET.fromstring(raw(f'https://www.law.go.kr/DRF/{path}?' + urllib.parse.urlencode(q))[0])
-
-          def flat(e):
-              return ' '.join(''.join(e.itertext()).split())
-
-          # 1) 통합특별시 특별법: 종전 조례 경과조치
-          s = get('lawSearch.do', target='law', query='전남광주통합특별시', display=10)
-          print('== 법률 찾기:', s.findtext('totalCnt'))
-          laws = [(i.findtext('법령명한글'), i.findtext('법령일련번호'), i.findtext('시행일자')) for i in s.findall('.//law')]
-          for l in laws:
-              print('   ', l)
-          for name, mst, eff in laws[:2]:
-              b = get('lawService.do', target='law', MST=mst)
-              for jo in b.findall('.//조문단위'):
-                  t = flat(jo)
-                  if re.search(r'조례', t) and re.search(r'종전|경과|효력|적용', t):
-                      print(f'   [{name}]', t[:700])
-
-          # 2) 광주 건축 조례 별표 4 (대지안의 공지기준) 파일
-          b = get('lawService.do', target='ordin', MST='2084489')
-          for u in b.findall('.//별표단위'):
-              if '공지' not in (u.findtext('별표제목') or ''):
-                  continue
-              fn = (u.findtext('별표첨부파일명') or '').strip()
-              print('== 별표 파일 칸:', fn[:200].replace(OC, '***'))
-              url = fn if fn.startswith('http') else ('https://www.law.go.kr' + fn if fn.startswith('/') else '')
-              if not url:
-                  print('   주소 꼴이 아님'); continue
-              data, ctype = raw(url)
-              print('   받은 크기', len(data), ctype, data[:4])
-              if data[:2] == b'PK':
-                  z = zipfile.ZipFile(io.BytesIO(data))
-                  print('   파일들:', [n for n in z.namelist()][:20])
-                  for n in z.namelist():
-                      if re.match(r'Contents/section\d+\.xml', n):
-                          x = z.read(n).decode('utf-8', 'replace')
-                          txt = re.sub(r'<[^>]+>', ' ', x)
-                          txt = ' '.join(txt.split())
-                          print('   글:', txt[:1500])
+        run: python3 tools/law/update_ordinances.py --out ordinances.json --force
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ordinances
+          path: ordinances.json
+          retention-days: 3
