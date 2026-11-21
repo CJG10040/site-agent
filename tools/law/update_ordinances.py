@@ -94,13 +94,16 @@ def ordin_link(mst: str) -> str:
 def find_ordinance(name: str, org: str, queries: list[str], pattern: str) -> dict | None:
     """이름이 꼴(pattern, 띄어쓰기·가운뎃점 뺀 이름에 맞춤)에 맞고 지자체가 맞는 현행 조례"""
     pat = re.compile(pattern)
+    seen: list[str] = []
     for q in queries:
         root = api('lawSearch.do', target='ordin', query=q, display=100)
         for it in root.findall('.//law'):
             nm = flat(it.findtext('자치법규명'))
-            if not pat.fullmatch(norm(nm)):
-                continue
             if norm(it.findtext('지자체기관명')) != norm(org):
+                continue
+            if not pat.fullmatch(norm(nm)):
+                if nm not in seen:
+                    seen.append(nm)
                 continue
             return {
                 'name': nm,
@@ -109,7 +112,11 @@ def find_ordinance(name: str, org: str, queries: list[str], pattern: str) -> dic
                 'effective': flat(it.findtext('시행일자')),
                 'promulgated': flat(it.findtext('공포일자')),
             }
+    LAST_CANDIDATES[:] = seen[:12]
     return None
+
+
+LAST_CANDIDATES: list[str] = []
 
 
 def body(mst: str) -> ET.Element:
@@ -172,6 +179,11 @@ def zone_values(text: str) -> dict:
     return out
 
 
+ZONES = {'제1종전용주거지역', '제2종전용주거지역', '제1종일반주거지역', '제2종일반주거지역', '제3종일반주거지역', '준주거지역',
+         '중심상업지역', '일반상업지역', '근린상업지역', '유통상업지역', '전용공업지역', '일반공업지역', '준공업지역',
+         '보전녹지지역', '생산녹지지역', '자연녹지지역', '보전관리지역', '생산관리지역', '계획관리지역', '농림지역', '자연환경보전지역'}
+
+
 def urban_values(arts: list[dict], key: str) -> tuple[dict, list[str]]:
     """key = '건폐율' 또는 '용적률' — 용도지역·관리지역 등 조문에서 지역별 값"""
     vals: dict = {}
@@ -185,7 +197,7 @@ def urban_values(arts: list[dict], key: str) -> tuple[dict, list[str]]:
             continue
         used.append(f"{a['no']}({t})")
         for z, v in got.items():
-            if z not in vals:
+            if z in ZONES and z not in vals:
                 vals[z] = {**v, 'article': a['no']}
     return vals, used
 
@@ -204,6 +216,138 @@ def hwpx_text(data: bytes) -> str | None:
         x = x.replace('&lt;', '<').replace('&gt;', '>').replace('&amp;', '&').replace('&quot;', '"')
         parts.append('\n'.join(' '.join(l.split()) for l in x.split('\n') if l.strip()))
     return '\n'.join(parts).strip() or None
+
+
+def _cfb_streams(data: bytes) -> dict[str, bytes]:
+    """OLE(복합 문서) 파일에서 스트림 이름 → 바이트 (hwp 5.0 묶음)"""
+    import struct
+    if data[:8] != b'\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1':
+        return {}
+    ssz = 1 << struct.unpack_from('<H', data, 0x1E)[0]
+    msz = 1 << struct.unpack_from('<H', data, 0x20)[0]
+    dir_start = struct.unpack_from('<I', data, 0x30)[0]
+    cutoff = struct.unpack_from('<I', data, 0x38)[0]
+    minifat_start, n_minifat = struct.unpack_from('<II', data, 0x3C)
+    difat_start, n_difat = struct.unpack_from('<II', data, 0x44)
+    END = 0xFFFFFFFE
+
+    def sec(i: int) -> bytes:
+        o = (i + 1) * ssz
+        return data[o:o + ssz]
+
+    fat_secs = [x for x in struct.unpack_from('<109I', data, 0x4C) if x < 0xFFFFFFFA]
+    d = difat_start
+    for _ in range(n_difat):
+        if d >= 0xFFFFFFFA:
+            break
+        vals = struct.unpack('<%dI' % (ssz // 4), sec(d))
+        fat_secs += [x for x in vals[:-1] if x < 0xFFFFFFFA]
+        d = vals[-1]
+    fat: list[int] = []
+    for f in fat_secs:
+        fat += struct.unpack('<%dI' % (ssz // 4), sec(f))
+
+    def chain(start: int, table: list[int], limit: int = 1 << 20) -> list[int]:
+        out = []
+        while start != END and start < len(table) and len(out) < limit:
+            out.append(start)
+            start = table[start]
+        return out
+
+    def read(start: int) -> bytes:
+        return b''.join(sec(i) for i in chain(start, fat))
+
+    dirs = read(dir_start)
+    entries = []
+    for k in range(len(dirs) // 128):
+        e = dirs[k * 128:(k + 1) * 128]
+        nlen = struct.unpack_from('<H', e, 64)[0]
+        name = e[:max(0, nlen - 2)].decode('utf-16-le', 'replace')
+        typ = e[66]
+        start, size = struct.unpack_from('<II', e, 116)
+        entries.append((name, typ, start, size))
+    root = next((x for x in entries if x[1] == 5), None)
+    ministream = read(root[2]) if root else b''
+    minifat: list[int] = []
+    if n_minifat:
+        mf = read(minifat_start)
+        minifat = list(struct.unpack('<%dI' % (len(mf) // 4), mf))
+    out = {}
+    for name, typ, start, size in entries:
+        if typ != 2:
+            continue
+        if size < cutoff:
+            buf = b''.join(ministream[i * msz:(i + 1) * msz] for i in chain(start, minifat))
+        else:
+            buf = read(start)
+        out[name] = buf[:size]
+    return out
+
+
+def hwp_text(data: bytes) -> str | None:
+    """옛 한글(hwp 5.0) 본문 글 — 배포용(암호) 문서는 못 읽음"""
+    import struct
+    import zlib
+    try:
+        st = _cfb_streams(data)
+        head = st.get('FileHeader', b'')
+        if not head.startswith(b'HWP Document File'):
+            return None
+        props = struct.unpack_from('<I', head, 36)[0]
+        if props & 0b110:  # 암호·배포용
+            return None
+        secs = sorted((n for n in st if re.fullmatch(r'Section\d+', n)), key=lambda n: int(n[7:]))
+        paras: list[str] = []
+        for n in secs:
+            raw = st[n]
+            body = zlib.decompress(raw, -15) if props & 1 else raw
+            i = 0
+            while i + 4 <= len(body):
+                h = struct.unpack_from('<I', body, i)[0]
+                i += 4
+                tag, size = h & 0x3FF, (h >> 20) & 0xFFF
+                if size == 0xFFF:
+                    size = struct.unpack_from('<I', body, i)[0]
+                    i += 4
+                rec = body[i:i + size]
+                i += size
+                if tag != 67:  # HWPTAG_PARA_TEXT
+                    continue
+                chars = struct.unpack('<%dH' % (len(rec) // 2), rec[: len(rec) // 2 * 2])
+                k, buf = 0, []
+                while k < len(chars):
+                    c = chars[k]
+                    if c < 32:
+                        if c in (10, 13):
+                            buf.append('\n')
+                        elif c in (30, 31):
+                            buf.append(' ')
+                        elif c in (0,) or 24 <= c <= 29:
+                            pass
+                        else:
+                            k += 7  # 확장·인라인 조종 문자는 8글자 차지
+                        k += 1
+                        continue
+                    buf.append(chr(c))
+                    k += 1
+                t = ' '.join(''.join(buf).split())
+                if t:
+                    paras.append(t)
+        return '\n'.join(paras) or None
+    except Exception:
+        return None
+
+
+def section_of(text: str, no: int) -> str:
+    """한 파일에 별표가 여럿 들어 있으면 [별표 no] 부분만"""
+    heads = [(m.start(), int(m.group(1))) for m in re.finditer(r'[\[(〔]\s*별표\s*(\d+)\s*[\])〕]', text)]
+    if len({n for _, n in heads}) < 2:
+        return text
+    for k, (pos, n) in enumerate(heads):
+        if n == no:
+            end = next((p for p, m in heads[k + 1:] if m != no), len(text))
+            return text[pos:end].strip()
+    return text
 
 
 def table_text(root: ET.Element, no: int) -> tuple[str | None, str, str | None]:
@@ -233,7 +377,10 @@ def table_text(root: ET.Element, no: int) -> tuple[str | None, str, str | None]:
         data = fetch(url)
         if kind == 'hwpx' or data[:2] == b'PK':
             t = hwpx_text(data)
-            return (t, title, None) if t else (None, title, '별표 파일(hwpx)에서 글을 찾지 못함')
+            return (section_of(t, no), title, None) if t else (None, title, '별표 파일(hwpx)에서 글을 찾지 못함')
+        if data[:4] == b'\xd0\xcf\x11\xe0':
+            t = hwp_text(data)
+            return (section_of(t, no), title, None) if t else (None, title, '별표 파일(hwp)에서 글을 읽지 못함 (배포용·암호 문서일 수 있음)')
         return None, title, f'별표가 {kind or "알 수 없는"} 파일이라 글을 읽지 못함'
     return None, '', f'별표 {no}를 찾지 못함'
 
@@ -281,7 +428,9 @@ def transition_note() -> dict | None:
         for part in re.split(r'(?=제\d+조(?:의\d+)?\()', t):
             head = re.match(r'제\d+조(?:의\d+)?\(([^)]*)\)', part)
             title = head.group(1) if head else ''
-            if re.search(r'조례|규칙|계획', title) and re.search(r'경과|종전|효력|적용', title + part[:200]):
+            if re.search(r'조례|규칙', title) and re.search(r'경과|종전|효력|적용', title + part[:200]):
+                found.append(part.strip())
+            elif re.search(r'계획', title) and '경과' in title and len(part) > len(title) + 20:
                 found.append(part.strip())
             elif '조례' in part and re.search(r'종전의\s*(광주광역시|전라남도)', part) and re.search(r'효력|본다', part):
                 found.append(part.strip())
@@ -292,6 +441,50 @@ def transition_note() -> dict | None:
         'url': 'https://www.law.go.kr/법령/전남광주통합특별시설치를위한특별법',
         'excerpts': [t[:1200] for t in found],
     }
+
+
+# ───────────────────────── 체크리스트가 근거로 드는 법령 조문 ─────────────────────────
+# 앱의 체크리스트는 숫자 기준을 코드에 두되, 화면에는 지금 법령센터의 조문 글과 시행일을 함께 보여 준다(바뀌었는지 사람이 볼 수 있게).
+
+LAW_ARTICLES = {
+    '국토의 계획 및 이용에 관한 법률': ['제54조', '제76조', '제84조'],
+    '국토의 계획 및 이용에 관한 법률 시행령': ['제71조', '제84조', '제85조'],
+    '건축법': ['제2조', '제11조', '제42조', '제43조', '제44조', '제46조', '제47조', '제55조', '제56조', '제58조', '제60조', '제61조'],
+    '건축법 시행령': ['제27조', '제27조의2', '제28조', '제31조', '제80조의2', '제86조', '제119조'],
+}
+
+
+def law_articles() -> dict:
+    out = {}
+    for name, nos in LAW_ARTICLES.items():
+        root = api('lawSearch.do', target='law', query=name, display=20)
+        law = next((i for i in root.findall('.//law') if norm(i.findtext('법령명한글')) == norm(name)), None)
+        if law is None:
+            out[name] = {'error': '법령을 찾지 못함'}
+            continue
+        mst = flat(law.findtext('법령일련번호'))
+        b = api('lawService.do', target='law', MST=mst)
+        arts = {}
+        for jo in b.findall('.//조문단위'):
+            if (jo.findtext('조문여부') or '').strip() not in ('', '조문'):
+                continue
+            no = (jo.findtext('조문번호') or '').strip()
+            br = (jo.findtext('조문가지번호') or '').strip()
+            key = f'제{no}조' + (f'의{br}' if br and br != '0' else '')
+            if key not in nos:
+                continue
+            # 조문 글 = 조문내용 + 항·호·목 (번호·시행일 같은 칸은 빼고)
+            text = flat(' '.join(''.join(e.itertext()) for e in jo.iter() if e.tag in ('조문내용', '항내용', '호내용', '목내용')))
+            arts[key] = {'title': flat(jo.findtext('조문제목')), 'text': text[:6000]}
+        out[name] = {
+            'mst': mst,
+            'effective': flat(law.findtext('시행일자')),
+            'url': 'https://www.law.go.kr/법령/' + name.replace(' ', ''),
+            'articles': arts,
+            'missing': [n for n in nos if n not in arts],
+        }
+        print(f"{name}: 조문 {len(arts)}/{len(nos)} (시행 {out[name]['effective']})")
+    return out
 
 
 # ───────────────────────── 지자체 하나 ─────────────────────────
@@ -317,7 +510,7 @@ def region_entry(r: dict) -> dict:
             issues.append('용도지역별 용적률을 조문에서 읽지 못함')
         entry['urban'] = urban
     else:
-        issues.append('도시계획 조례를 찾지 못함')
+        issues.append('도시계획 조례를 찾지 못함' + (f" (같은 지자체의 다른 조례: {', '.join(LAST_CANDIDATES)})" if LAST_CANDIDATES else ''))
 
     building = find_ordinance(n, r['org'], [f'{n} 건축 조례', f'{n} 건축조례'], base + r'건축조례')
     if building:
@@ -327,7 +520,7 @@ def region_entry(r: dict) -> dict:
         issues += more
         entry['building'] = building
     else:
-        issues.append('건축 조례를 찾지 못함')
+        issues.append('건축 조례를 찾지 못함' + (f" (같은 지자체의 다른 조례: {', '.join(LAST_CANDIDATES)})" if LAST_CANDIDATES else ''))
 
     entry['issues'] = issues
     return entry
@@ -388,11 +581,18 @@ def main() -> int:
         print('특별법 경과조치 받기 실패:', redact(str(ex)))
         trans = (prev or {}).get('transition')
 
+    try:
+        laws = law_articles()
+    except Exception as ex:
+        print('법령 조문 받기 실패:', redact(str(ex)))
+        laws = (prev or {}).get('laws')
+
     out = {
         'version': VERSION,
         'checkedAt': now.isoformat(timespec='seconds'),
         'source': SOURCE,
         'transition': trans,
+        'laws': laws,
         'regions': regions,
     }
     json.dump(out, open(a.out, 'w', encoding='utf-8'), ensure_ascii=False, separators=(',', ':'))
