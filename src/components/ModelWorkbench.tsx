@@ -13,6 +13,7 @@ import { siteModelToDxf } from '../export/toDxf'
 import { downloadBlob } from '../model/project'
 import type { ContourSettings, RenderLevel, RenderModelSettings } from '../model/types'
 import ContourBench from './ContourBench'
+import { envelopeForModel, type LawCtx } from '../law/envelopeData'
 import ModelDimsPanel from './ModelDimsPanel'
 import RangeSlider, { fmtDist } from './RangeSlider'
 
@@ -42,6 +43,8 @@ interface Props {
   /** 어림 치수 (기본값과 다른 것만, 프로젝트에 저장) */
   modelDims?: Partial<Record<string, number>>
   onModelDims?: (d: Partial<Record<string, number>>) => void
+  /** ⑪ 법규 검토 입력 (2026-11-21 묶음 E6): 정했으면 '법규_가능영역' 레이어 */
+  law?: LawCtx | null
 }
 
 type Tab = 'render' | 'contour'
@@ -51,7 +54,7 @@ const radiusLabel = (h: number) => `반경${fmtDist(h)}`
 const H_TICKS = [150, 300, 500, 1000, 2000, 3000]
 const fmt = (n: number, d = 0) => n.toLocaleString('ko-KR', { maximumFractionDigits: d })
 
-export default function ModelWorkbench({ data, baseName, meta, halfRange, initialHalf, asPage = false, onClose, onExported, contour, onContour, render, onRender, vworldKey = '', modelDims, onModelDims }: Props) {
+export default function ModelWorkbench({ data, baseName, meta, halfRange, initialHalf, asPage = false, onClose, onExported, contour, onContour, render, onRender, vworldKey = '', modelDims, onModelDims, law = null }: Props) {
   const [tab, setTab] = useState<Tab>('render')
   const [half, setHalf] = useState(initialHalf)
   // 조사 반경이 바뀌어 범위 밖이 되면 범위 안으로
@@ -99,6 +102,7 @@ export default function ModelWorkbench({ data, baseName, meta, halfRange, initia
 
   // 범위·어림 치수(하천 깊이 포함)가 바뀌면 모형을 다시 만듦
   const dimsKey = JSON.stringify(modelDims ?? {})
+  const lawKey = JSON.stringify(law)
   useEffect(() => {
     let alive = true
     setBuilding(true)
@@ -107,7 +111,9 @@ export default function ModelWorkbench({ data, baseName, meta, halfRange, initia
     void (async () => {
       await new Promise((r) => setTimeout(r, 30))
       try {
-        const m = await buildModelFor(data, half, { dims: modelDims })
+        // ⑪ 건축 가능 영역 (못 그려도 모형은 그대로)
+        const envelope = law ? await envelopeForModel(data, law).catch(() => null) : null
+        const m = await buildModelFor(data, half, { dims: modelDims, envelope })
         if (alive) setModel(m)
       } catch (e) {
         if (alive) setMsg({ kind: 'error', text: `모형을 만들지 못했습니다: ${e instanceof Error ? e.message : String(e)}` })
@@ -119,7 +125,7 @@ export default function ModelWorkbench({ data, baseName, meta, halfRange, initia
       alive = false
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, half, dimsKey])
+  }, [data, half, dimsKey, lawKey])
 
   // 15-C 단계·항목: 끈 항목을 비운 모형으로 물체 수·미리보기·내려받기
   const [rs, setRs] = useState<RenderModelSettings>(() => render ?? { level: 'detail', items: itemsOfLevel('detail') })

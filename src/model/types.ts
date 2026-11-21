@@ -656,4 +656,23 @@ export interface LawState {
   gfa?: number
   /** 항목 id → 내 확인 상태 */
   checks?: Record<string, LawCheckState>
+  /** 건축 가능 영역 (2026-11-21 묶음 E5) */
+  envelope?: EnvelopeState
+}
+
+/** 건축 가능 영역 입력 — 사용자 결정: 띄울 거리·최고 높이는 직접, 도로변은 앱이 찾고 눌러 고침, 계단은 층고/1m */
+export interface EnvelopeState {
+  /** 건축선(도로에 접한 변)에서 띄울 거리 m */
+  setbackRoad?: number
+  /** 인접 대지경계선에서 띄울 거리 m */
+  setbackSide?: number
+  /** 아는 최고 높이 m (지구·가로구역·지구단위계획) */
+  maxHeight?: number
+  step?: 'floor' | 'meter'
+  /** 층고 m (계단이 층고 단위일 때) */
+  floorH?: number
+  /** 변 종류 고침 (`고리:변` → 도로/인접 대지) — 대지가 바뀌면 지움 */
+  edges?: Record<string, 'road' | 'side'>
+  /** edges를 고친 때의 대지 */
+  siteKey?: string
 }

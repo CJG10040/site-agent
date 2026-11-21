@@ -42,7 +42,7 @@ type Pt2 = [number, number]
  * 칸 묶음(같은 높이 단계)의 경계를 칸 모서리를 따라 고리로. 안쪽을 왼쪽에 두고 돌아 바깥 고리는 반시계, 구멍은 시계.
  * 꼭짓점 (i, j) = 칸 격자의 모서리. 대각선으로만 닿은 두 칸은 왼쪽으로 꺾어 따로 떼어 냄
  */
-function traceCells(inSet: (i: number, j: number) => boolean, nx: number, ny: number): Pt2[][] {
+export function traceCells(inSet: (i: number, j: number) => boolean, nx: number, ny: number): Pt2[][] {
   const key = (i: number, j: number) => j * (nx + 1) + i
   const out = new Map<number, Pt2[]>() // 시작 꼭짓점 → 끝 꼭짓점들
   const add = (a: Pt2, b: Pt2) => {
@@ -92,7 +92,7 @@ function traceCells(inSet: (i: number, j: number) => boolean, nx: number, ny: nu
 }
 
 /** 한 줄로 놓인 점 빼기 (칸 계단의 곧은 변을 꼭짓점 두 개로) */
-function dropCollinear(r: Pt2[]): Pt2[] {
+export function dropCollinear(r: Pt2[]): Pt2[] {
   const out: Pt2[] = []
   const n = r.length
   for (let i = 0; i < n; i++) {

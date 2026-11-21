@@ -2,7 +2,7 @@
 // 항목마다 확인할 것 · 이 대지 값(수집 자료·조례 표) · 근거 조문 링크 · 내 확인 상태(확인함·해당 없음·확인 필요).
 // 사용자 결정: 새 단계 ⑪ / 조례는 광주 + 전남·전북 모든 시·군 / 주용도 = 별표 1 큰 분류 + 자주 쓰는 세부 / 참고용(판정 아님).
 
-import { area, booleanIntersects, feature, point, pointToPolygonDistance } from '@turf/turf'
+import { booleanIntersects, feature, point, pointToPolygonDistance } from '@turf/turf'
 import { ExternalLink } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { buildDiagramData } from '../diagrams/data'
@@ -10,7 +10,10 @@ import { siteZones } from '../diagrams/panelsLaw'
 import { buildChecklist, checklistSummary, STATUS_LABEL, type Basis, type CheckStatus } from '../law/checklist'
 import { LAW_SOURCE, loadOrdinances, regionIdOf, regionOf, siteAddress, type OrdinanceTable } from '../law/ordinances'
 import { USE_CLASSES, USE_SOURCE, useLabel } from '../law/uses'
+import EnvelopePanel from '../components/EnvelopePanel'
+import { boundaryArea, parcelAreaOf } from '../law/envelopeData'
 import { nowIso } from '../model/project'
+import { panelNumber } from '../diagrams/panels'
 import type { LawState, Project } from '../model/types'
 
 interface Props {
@@ -67,14 +70,8 @@ export default function LawStep({ project, update, onGoData, onGoDiagrams }: Pro
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const data = useMemo(() => buildDiagramData(project), [project.collected, project.site, project.collectedAt])
   const zones = useMemo(() => (data ? siteZones(data) : []), [data])
-  const siteArea = useMemo(() => {
-    if (project.site.parcels.length && project.site.boundaryMode !== 'drawn') return project.site.parcels.reduce((s, p) => s + (p.areaM2 || 0), 0)
-    try {
-      return data ? area(feature(data.boundary)) : 0
-    } catch {
-      return 0
-    }
-  }, [data, project.site])
+  // 도판·모형과 같은 면적 (필지 대지면 토지대장 합, 그린 경계면 도형 넓이)
+  const siteArea = useMemo(() => parcelAreaOf(project) ?? boundaryArea(data), [data, project.site])
   const overlays = useMemo(() => {
     if (!data) return []
     const names = new Set<string>()
@@ -310,7 +307,7 @@ export default function LawStep({ project, update, onGoData, onGoDiagrams }: Pro
         </span>
         <span className="spacer" />
         <button type="button" className="link-btn small" onClick={onGoDiagrams}>
-          도판 7 법규 개요 보기
+          도판 {panelNumber('law')}·{panelNumber('envelope')} 법규 개요·가능 영역 보기
         </button>
       </div>
 
@@ -367,6 +364,19 @@ export default function LawStep({ project, update, onGoData, onGoDiagrams }: Pro
             })}
         </section>
       ))}
+
+      {data && (
+        <EnvelopePanel
+          project={project}
+          update={update}
+          data={data}
+          zones={zones}
+          siteArea={siteArea}
+          overlays={overlays}
+          region={region}
+          setbackHint={items.find((i) => i.id === 'setback')?.values ?? []}
+        />
+      )}
 
       <p className="muted small law-foot">
         참고용 체크리스트입니다 — 법적 판정이 아니며, 허가 전에는 해당 지자체 담당 부서·전문가에게 확인하세요. 지구단위계획·가로구역 높이·문화유산·교육환경 등은 이 표에 없거나 일부만 있습니다. {LAW_SOURCE}

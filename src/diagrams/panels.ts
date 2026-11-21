@@ -23,6 +23,8 @@ import { flowAccumulation } from '../lib/flow'
 import { arealRings, pointInRings, pointToRingsDist, toXY } from '../lib/xy'
 import { ENV_PANELS } from './panelsEnv'
 import { LAW_PANEL } from './panelsLaw'
+import { ENVELOPE_PANEL } from './panelsEnvelope'
+import type { LawCtx } from '../law/envelopeData'
 import { RESEARCH_PANEL } from './panelsResearch'
 import { OVERLAY_PANELS } from './overlay'
 import { EXPLODED_PANEL } from './exploded'
@@ -55,6 +57,8 @@ export interface PanelCtx {
   renderOther?: (id: string, d: DiagramData) => Promise<PanelOutput | null>
   /** 글자 단계 배율 (2026-11-21 묶음 D1): 보통 도판은 모두 1, 패널 모드는 규칙에서 */
   ty: TypeScale
+  /** ⑪ 법규 검토 입력 (2026-11-21 묶음 E6 건축 가능 영역 도판) — 정하지 않았으면 null */
+  law?: LawCtx | null
 }
 
 export type PanelGroup = '위치' | '땅의 조건' | '지형' | '주변 현황' | '연계와 접근' | '환경' | '사회·경제' | '현장' | '겹쳐 보기' | '종합' | '설계안 비교'
@@ -159,7 +163,7 @@ function existingOf(c: PanelCtx): Bld[] {
 }
 
 /**
- * 현황 도판(13~16) 위 덧그림 (2026-11-21 사용자 결정):
+ * 현황 도판(14~17) 위 덧그림 (2026-11-21 사용자 결정):
  * 대지 안 기존 건물 = '철거 예정'처럼 점선 윤곽(분석에서 뺌), 보는 설계안 = 대지 강조색 윤곽 (fill을 주면 그 색으로 채움)
  */
 function siteMarks(c: PanelCtx, designFill?: string): { layers: PanelLayer[]; legend: LegendItem[] } {
@@ -1394,7 +1398,7 @@ export const TERRAIN_PANELS: PanelDef[] = [
 export const PANEL_GROUP_ORDER: PanelGroup[] = ['위치', '땅의 조건', '지형', '주변 현황', '연계와 접근', '환경', '사회·경제', '현장', '겹쳐 보기', '종합', '설계안 비교']
 
 /** 보고서 배치 순서 (위치 → 땅의 조건 → 지형 → 주변 현황 → 연계와 접근 → 환경 → 사회·현장) */
-export const ORDERED_PANELS: PanelDef[] = PANEL_GROUP_ORDER.flatMap((g) => [...PANELS, LAW_PANEL, ...TERRAIN_PANELS, ...SECTION_PANELS, ...MOVE_PANELS, ...ENV_PANELS, ...LIFE_PANELS, RESEARCH_PANEL, ...OVERLAY_PANELS, EXPLODED_PANEL, SYNTH_PANEL, ...COMPARE_PANELS].filter((p) => p.group === g))
+export const ORDERED_PANELS: PanelDef[] = PANEL_GROUP_ORDER.flatMap((g) => [...PANELS, LAW_PANEL, ENVELOPE_PANEL, ...TERRAIN_PANELS, ...SECTION_PANELS, ...MOVE_PANELS, ...ENV_PANELS, ...LIFE_PANELS, RESEARCH_PANEL, ...OVERLAY_PANELS, EXPLODED_PANEL, SYNTH_PANEL, ...COMPARE_PANELS].filter((p) => p.group === g))
 
 export function panelNumber(id: string): number {
   return ORDERED_PANELS.findIndex((p) => p.id === id) + 1

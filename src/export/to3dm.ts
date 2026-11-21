@@ -37,6 +37,7 @@ export const LAYERS: LayerDef[] = [
   { key: 'info', name: '정보', color: [40, 40, 40] },
   { key: 'site', name: '대지 경계', color: [220, 38, 38] },
   { key: 'design', name: '설계안', color: [212, 42, 30] },
+  { key: 'lawEnvelope', name: '법규_가능영역 (참고용)', color: [230, 140, 40] },
   { key: 'bldg', name: '건물', color: [140, 140, 140] },
   { key: 'bldgAround', name: '주변 건물 (실측 높이·층수 × 용도별 층고)', color: [150, 150, 150], parent: 'bldg' },
   { key: 'bldgSite', name: '대지 안 기존 건물', color: [230, 150, 150], parent: 'bldg' },
@@ -283,6 +284,7 @@ export async function siteModelTo3dm(m: SiteModel, meta: ExportMeta, onStep?: Ex
       if (def.key === 'detail' && !Object.values(detailHas).some(Boolean)) continue
       if (def.key === 'roofPitched' && !m.buildings.some((b) => b.roof && b.roof.kind !== 'flat')) continue
       if (def.key === 'design' && !m.design) continue
+      if (def.key === 'lawEnvelope' && !m.envelope?.slabs.length) continue
       if (def.key === 'parapet' && !m.buildings.some((b) => b.roof)) continue
       if (def.key in detailHas && !detailHas[def.key]) continue
       const L = new rhino.Layer()
@@ -540,6 +542,16 @@ export async function siteModelTo3dm(m: SiteModel, meta: ExportMeta, onStep?: Ex
       for (let i = 0; i < P.length; i += 3) dm.vs.add(P[i], P[i + 1], P[i + 2])
       for (let i = 0; i + 2 < I.length; i += 3) dm.fs.addTriFace(I[i], I[i + 1], I[i + 2])
       addMeshObj(dm, 'design', `설계안 ${m.design.name}`, { 안: m.design.name })
+    }
+    // ⑪ 건축 가능 영역 (2026-11-21 묶음 E6): 단마다 닫힌 메시 하나 (이름 = 높이 범위, 사용자 글 = 넣은 값)
+    for (const s of m.envelope?.slabs ?? []) {
+      const em = newMesh()
+      const P = s.positions
+      const I = s.indices
+      for (let i = 0; i < P.length; i += 3) em.vs.add(P[i], P[i + 1], P[i + 2])
+      for (let i = 0; i + 2 < I.length; i += 3) em.fs.addTriFace(I[i], I[i + 1], I[i + 2])
+      const r1 = (v: number) => String(Math.round(v * 10) / 10)
+      addMeshObj(em, 'lawEnvelope', `법규_가능영역 ${r1(s.bottom)}~${r1(s.top)}m`, { 아래: r1(s.bottom), 위: r1(s.top), 참고: m.envelope?.note ?? '' })
     }
     const roofMb = newMesh()
     // 파라펫: 건물 매스와 같은 색·재질 (주변 건물 / 대지 안 건물을 따로 모음)

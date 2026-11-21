@@ -13,6 +13,7 @@ import { NOT_MAP_PANELS, type SynthCtx } from './synth'
 import { is3d, to3d } from './view3d'
 import { UNIT_TYPE } from './typeScale'
 import { COMPARE_IDS } from './panelsCompare'
+import type { LawCtx } from '../law/envelopeData'
 
 /** 3D로 볼 수 있는 도판 (단면·그래프·하늘 그림·바람장미는 제외, 종합 다이어그램은 됨) */
 export function can3d(id: string): boolean {
@@ -68,7 +69,7 @@ export async function renderPanel(
   vworldKey: string,
   date: string,
   terrain: TerrainAnalysis | null = null,
-  extra: { synth?: SynthCtx | null; labels?: LabelEdit[]; scenarios?: { id: string; name: string; d: DiagramData; editedAt?: string }[]; panel?: PanelRules | null } = {},
+  extra: { synth?: SynthCtx | null; labels?: LabelEdit[]; scenarios?: { id: string; name: string; d: DiagramData; editedAt?: string }[]; panel?: PanelRules | null; law?: LawCtx | null } = {},
 ): Promise<RenderedPanel> {
   // 겹쳐 보기는 아래 도판의 틀을 빌림
   const borrow = def.frameFrom?.(settings)
@@ -80,7 +81,7 @@ export async function renderPanel(
   // 패널 모드(2026-11-21 묶음 D2): 규칙에서 글자·선 단계 배율. 보통 도판은 모두 1
   const rs = extra.panel ? ruleScale(extra.panel) : null
   const ty = rs ? rs.ty : UNIT_TYPE
-  const ctx: PanelCtx = { d: data, f: frame, pal, st: settings, vworldKey, date, t: terrain, synth: extra.synth ?? null, ty }
+  const ctx: PanelCtx = { d: data, f: frame, pal, st: settings, vworldKey, date, t: terrain, synth: extra.synth ?? null, ty, law: extra.law ?? null }
   try {
     // 종합 도판은 다른 도판의 그림을 같은 틀로 다시 그려 바탕에 깔 수 있다
     ctx.basePanel = async (id) => {

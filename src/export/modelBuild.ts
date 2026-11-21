@@ -36,7 +36,7 @@ export function defaultHalfIn(r: { min: number; max: number }): number {
 
 /** 범위(정사각 반쪽)에 맞춘 지형 격자로 대지 모형을 만든다. 수치지도를 올렸으면 대지 주변 2m + 그 밖 10m를 섞은 격자 (범위가 크면 칸을 키움) */
 /** @param opts.dims 어림 치수 (고친 것만, 하천 깊이 강조 포함) — 렌더링 모델·콘타 모형이 같은 값 */
-export async function buildModelFor(data: DiagramData, half: number, opts: { dims?: Partial<Record<string, number>> | null } = {}): Promise<SiteModel> {
+export async function buildModelFor(data: DiagramData, half: number, opts: { dims?: Partial<Record<string, number>> | null; envelope?: SiteModel['envelope'] } = {}): Promise<SiteModel> {
   let grid: TerrainGrid | null | undefined
   if (data.ngii) {
     const fine = fineTerrainCached(data.ngii, data.center, fineHalfFor(data.R))
@@ -44,7 +44,7 @@ export async function buildModelFor(data: DiagramData, half: number, opts: { dim
     // 칸: 반경 300m까지 2m · 600m까지 4m · 1km까지 5m · 그보다 넓으면 10m (반경 3km에서 지형 면이 수백 MB가 되지 않게)
     grid = compositeGrid(base, fine, data.center, half + 20, half <= 300 ? 2 : half <= 600 ? 4 : half <= 1000 ? 5 : 10)
   }
-  const o = { dims: opts.dims }
+  const o = { dims: opts.dims, envelope: opts.envelope }
   return buildSiteModel(data, half, grid !== undefined ? { grid, ...o } : o)
 }
 
@@ -81,7 +81,7 @@ export function modelStats(m: SiteModel): ModelStats {
     m.parks.reduce((s, a) => s + a.polys.length, 0) + m.rivers.reduce((s, a) => s + a.polys.length, 0) + m.site.length +
     m.decks.length * 2 + m.roadsOnDeck.length + m.walksOnDeck.length + m.banks.reduce((s, a) => s + a.polys.length, 0) +
     (m.curbs.length ? 1 : 0) + new Set(m.lanes.map((l) => l.color)).size + m.fences.length + m.trees.length + m.stops.length * 3 + (m.lamps.length ? 1 : 0) +
-    new Set(m.safety.map((s) => s.kind)).size + (m.poles.length ? 1 : 0) + (m.signals.length ? 1 : 0) + (m.signs.length ? 4 : 0) + (m.barriers.length ? 1 : 0) + (m.bumps.length ? 2 : 0) + (m.yellowMarks.length ? 1 : 0)
+    new Set(m.safety.map((s) => s.kind)).size + (m.poles.length ? 1 : 0) + (m.signals.length ? 1 : 0) + (m.signs.length ? 4 : 0) + (m.barriers.length ? 1 : 0) + (m.bumps.length ? 2 : 0) + (m.yellowMarks.length ? 1 : 0) + (m.envelope?.slabs.length ?? 0)
   // 크기: 지형 칸당 약 92B, 얹은 면 1㎡당 약 (2/드레이프 변²)개 삼각형 × 65B, 물체마다 약 420B (300·600·800m 실측에 맞춰 조금 넉넉히), 건물 꼭짓점·선 점은 물체 몫에 포함
   // 차선·연석 띠(2m마다 꼭짓점 2~4개), 쉘터·가로등 상자(꼭짓점 8·면 6), 나무는 블록 놓기 + 이름·사용자 문자 4개로 그루당 약 890B(400m 945그루 실측)
   const ribbonLen = m.lanes.reduce((s, l) => s + lenOf(l.pts) * (l.double ? 2 : 1), 0) + m.curbs.reduce((s, c) => s + lenOf(c) * 3, 0)
@@ -96,6 +96,7 @@ export function modelStats(m: SiteModel): ModelStats {
   const rows = [
     { label: '지형 면', n: terrainCells, unit: `칸 (${cell}m)` },
     { label: '건물', n: m.buildings.length, unit: '동' },
+    ...(m.envelope?.slabs.length ? [{ label: '법규 가능 영역 (⑪, 참고용)', n: m.envelope.slabs.length, unit: '단' }] : []),
     { label: '등고선', n: m.contours.length + m.mapContours.length, unit: '줄' },
     { label: '도로·인도·공원·하천 면', n: Math.round(drapedArea / 100) * 100, unit: '㎡' },
     { label: '다리·고가', n: m.decks.length, unit: `곳 (교각 ${m.decks.reduce((s, d) => s + d.piers.length, 0)}개)` },

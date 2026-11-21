@@ -21,6 +21,8 @@ import { ORDERED_PANELS } from './panels'
 import { collectedDate, renderPanel, settingsOf, type RenderedPanel } from './render'
 import { panelRulesKey, rulesFor } from './panelRules'
 import { fontStyleBlob, svgBlobWithFont } from '../lib/fonts'
+import { lawCtxOf } from '../law/envelopeData'
+import { ENVELOPE_ID } from './panelsEnvelope'
 
 export interface CachedPanel extends RenderedPanel {
   url: string
@@ -80,6 +82,7 @@ function flatKey(id: string, s: DiagramSettings): string {
   }
   if (id === 'synth') return `${common}|${s.fieldStyle}|${s.windStyle}|${s.terrainShade}`
   if (id === COMPARE_SUN) return `${common}|${(s.compare ?? []).join(',')}|${s.sunDay}|${s.fieldStyle}`
+  if (id === ENVELOPE_ID) return `${common}|${s.cam3d?.az ?? ''},${s.cam3d?.tilt ?? ''},${s.cam3d?.vex ?? ''}`
   if (id === COMPARE_3D) return `${common}|${(s.compare ?? []).join(',')}|${s.cam3d?.az ?? ''},${s.cam3d?.tilt ?? ''},${s.cam3d?.vex ?? ''}`
   if (id === 'sectionA' || id === 'sectionB') return `${common}|${s.sectionAngle}|${s.sectionVex}|${s.sectionRange}`
   return common
@@ -139,6 +142,10 @@ export function useDiagrams(project: Project, vworldKey: string, only?: string[]
     designs.length
       ? cmpIds.map((id) => ({ id, name: designs.find((x) => x.id === id)?.name ?? '현황', d: buildDiagramData({ ...project, scenario: id || null })!, editedAt: lastEditAt(project) })).filter((s) => !!s.d)
       : []
+  // 건축 가능 영역 도판 (2026-11-21 묶음 E6): ⑪ 입력·주용도·주소(조례 지역)·필지 면적이 바뀌면 그 도판만 다시
+  const lawSig = JSON.stringify(lawCtxOf(project))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const law = useMemo(() => lawCtxOf(project), [lawSig])
   const [panels, setPanels] = useState<Record<string, CachedPanel>>({})
   const [busy, setBusy] = useState(false)
   /** 그리는 중: 새로 그릴 도판 수 중 몇 장째, 지금 그리는 도판 이름 (저장해 둔 도판은 세지 않음) */
@@ -177,8 +184,9 @@ export function useDiagrams(project: Project, vworldKey: string, only?: string[]
         const lKey = labels.length ? `|labels:${hashOf(labels.map((l) => `${l.key}:${l.dx.toFixed(1)},${l.dy.toFixed(1)}:${l.hidden ? 1 : 0}`).join('|'))}` : ''
         // 설계안 비교: 고른 안들의 서명(안·위치·환경 계산 시각)
         const cKey = COMPARE_IDS.includes(def.id) ? `|cmp:${hashOf(compareSig)}` : ''
+        const wKey = def.id === ENVELOPE_ID ? `|law:${hashOf(lawSig)}` : ''
         const pKey = panel ? `|panel:${hashOf(panelRulesKey(settings, def.id))}${rulesFor(settings, def.id).font ? `|f:${hashOf(fSig)}` : ''}` : ''
-        const key = `${dataSig}|${def.id}|${settingsKey(def.id, settings)}|${vworldKey ? 'k' : '-'}${tKey}${sKey}${yKey}${lKey}${cKey}${pKey}`
+        const key = `${dataSig}|${def.id}|${settingsKey(def.id, settings)}|${vworldKey ? 'k' : '-'}${tKey}${sKey}${yKey}${lKey}${cKey}${wKey}${pKey}`
         return { def, key, labels }
       })
       const total = jobs.filter((j) => !cache.has(j.key)).length
@@ -191,7 +199,7 @@ export function useDiagrams(project: Project, vworldKey: string, only?: string[]
           await new Promise((r) => setTimeout(r, 0))
           if (!alive) return
           const pr = panel ? rulesFor(settings, def.id) : null
-          const r = await renderPanel(def, data, settings, vworldKey, date, t, def.id === 'synth' ? { synth, labels, panel: pr } : COMPARE_IDS.includes(def.id) ? { labels, scenarios: compareScenarios(), panel: pr } : { labels, panel: pr })
+          const r = await renderPanel(def, data, settings, vworldKey, date, t, def.id === 'synth' ? { synth, labels, panel: pr } : COMPARE_IDS.includes(def.id) ? { labels, scenarios: compareScenarios(), panel: pr } : { labels, panel: pr, law })
           // 패널 모드의 올린 글꼴은 그림 안에 넣어 화면에 보이게 (받는 SVG 글에는 이름만)
           const fontCss = pr?.font ? await fontStyleBlob(pr.font) : null
           hit = { ...r, url: URL.createObjectURL(fontCss ? svgBlobWithFont(r.svg, fontCss) : svgBlob(r.svg)), key }
@@ -212,7 +220,7 @@ export function useDiagrams(project: Project, vworldKey: string, only?: string[]
       alive = false
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, allKey, vworldKey, ids, date, synthSig, labelSig, panel, fSig])
+  }, [data, allKey, vworldKey, ids, date, synthSig, labelSig, panel, fSig, lawSig])
 
   return { data, settings, panels, busy, terrain, progress }
 }

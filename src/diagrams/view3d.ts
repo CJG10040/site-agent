@@ -232,6 +232,11 @@ export interface View3dOpts {
   extra?: (pr: Projector) => string
   /** 이 도판만 보는 방향을 바꿀 때 (바뀐 까닭을 캡션에) */
   cam?: (cam: Cam3d) => { cam: Cam3d; note: string } | null
+  /**
+   * 층층이 쌓인 덩어리 (2026-11-21 묶음 E6 건축 가능 영역): 단마다 바닥~위 높이(m)와 발자국 고리(대지 중심 원점 동·북 m,
+   * 바깥 반시계·구멍 시계). 아래 단부터 벽 → 윗면 순으로 칠해 겹침이 맞음. note는 캡션에
+   */
+  stack?: { slabs: { bottom: number; top: number; rings: [number, number][][] }[]; note: string }
 }
 
 export function to3d(
@@ -407,6 +412,60 @@ export function to3d(
       })
     }
   }
+  // ── 층층 덩어리 (건축 가능 영역): 아래 단이 위 단을 가릴 수 없으므로(위에서 내려다봄) 아래 단부터, 단 안에서는 먼 벽 → 가까운 벽 → 윗면
+  if (opts.stack && opts.stack.slabs.length) {
+    const accent = pal.accent
+    const roofC = mix(pal.paper, accent, 0.45)
+    const litC = mix(pal.paper, accent, 0.72)
+    const darkC = mix(accent, darker, 0.25)
+    const lineC = mix(accent, darker, 0.45)
+    const px = ([e, n]: [number, number]): [number, number] => [MAP_CX + e * f.s, MAP_CY - n * f.s]
+    let svg = ''
+    let sx = 0
+    let sy = 0
+    let sn = 0
+    for (const s of opts.stack.slabs) {
+      const walls: { away: number; d: string; lit: boolean }[] = []
+      let topD = ''
+      for (const ring of s.rings) {
+        const pts = ring.map(px)
+        for (let i = 0; i < pts.length; i++) {
+          const [x1, y1] = pts[i]
+          const [x2, y2] = pts[(i + 1) % pts.length]
+          // 안쪽이 왼쪽 → 바깥 법선은 오른쪽 (동·북 좌표)
+          const ex = x2 - x1
+          const ey = -(y2 - y1)
+          const nl = Math.hypot(ex, ey) || 1
+          const nx = ey / nl
+          const ny = -ex / nl
+          if (nx * vx + ny * vy <= 0) continue
+          const a0 = pr.P(x1, y1, s.bottom)
+          const a1 = pr.P(x2, y2, s.bottom)
+          const b1 = pr.P(x2, y2, s.top)
+          const b0 = pr.P(x1, y1, s.top)
+          walls.push({
+            away: pr.away((x1 + x2) / 2, (y1 + y2) / 2),
+            d: `M${a0[0].toFixed(1)} ${a0[1].toFixed(1)}L${a1[0].toFixed(1)} ${a1[1].toFixed(1)}L${b1[0].toFixed(1)} ${b1[1].toFixed(1)}L${b0[0].toFixed(1)} ${b0[1].toFixed(1)}Z`,
+            lit: nx * lx + ny * ly > 0,
+          })
+        }
+        topD += pts.map((p, i) => {
+          const [qx, qy] = pr.P(p[0], p[1], s.top)
+          return `${i ? 'L' : 'M'}${qx.toFixed(1)} ${qy.toFixed(1)}`
+        }).join('') + 'Z'
+        for (const p of pts) {
+          sx += p[0]
+          sy += p[1]
+          sn++
+        }
+      }
+      walls.sort((a, b) => b.away - a.away)
+      svg += walls.map((w) => `<path d="${w.d}" fill="${w.lit ? litC : darkC}" stroke="${lineC}" stroke-width="0.35" stroke-opacity="0.5" stroke-linejoin="round"/>`).join('')
+      svg += `<path d="${topD}" fill="${roofC}" fill-rule="evenodd" stroke="${lineC}" stroke-width="0.5" stroke-opacity="0.8" stroke-linejoin="round"/>`
+    }
+    // 주변 건물과는 덩어리 가운데 한 점으로 앞뒤를 가림
+    masses.push({ away: sn ? pr.away(sx / sn, sy / sn) : 0, svg: `<g id="층층_덩어리">${svg}</g>` })
+  }
   masses.sort((a, b) => b.away - a.away)
 
   // ── 방위표: 화면에서 북쪽이 향하는 쪽
@@ -434,6 +493,6 @@ export function to3d(
     layers,
     noFrame: true,
     hideBase: true,
-    caption: `${out.caption ? `${out.caption} · ` : ''}${over ? `${over.note} · ` : ''}3D: ${camDirLabel(cam.az)}쪽에서 ${Math.round(cam.tilt)}° 내려다봄${cam.vex !== 1 ? `, 높이 ×${cam.vex}` : ''}${cutCount ? ' · 틀에 걸친 건물은 틀에서 잘라 냄(가장 진한 면이 잘린 면)' : ''}${designMesh ? ` · 대지 강조색 = 설계안 ${ctx.d.scenario?.name ?? ''}(올린 매스 그대로)` : ''} · 건물 높이는 실측 높이 또는 층수 × 용도별 층고(모르면 3m) · 바닥은 평평하게 그림(지형 높낮이는 반영 안 함) · 축척 막대 없음(깊이에 따라 다름)`,
+    caption: `${out.caption ? `${out.caption} · ` : ''}${over ? `${over.note} · ` : ''}3D: ${camDirLabel(cam.az)}쪽에서 ${Math.round(cam.tilt)}° 내려다봄${cam.vex !== 1 ? `, 높이 ×${cam.vex}` : ''}${cutCount ? ' · 틀에 걸친 건물은 틀에서 잘라 냄(가장 진한 면이 잘린 면)' : ''}${designMesh ? ` · 대지 강조색 = 설계안 ${ctx.d.scenario?.name ?? ''}(올린 매스 그대로)` : ''}${opts.stack ? ` · ${opts.stack.note}` : ''} · 건물 높이는 실측 높이 또는 층수 × 용도별 층고(모르면 3m) · 바닥은 평평하게 그림(지형 높낮이는 반영 안 함) · 축척 막대 없음(깊이에 따라 다름)`,
   }
 }

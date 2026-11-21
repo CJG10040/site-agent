@@ -311,6 +311,16 @@ export function buildPreview(m: SiteModel): PreviewParts {
     for (let i = 0; i + 2 < I.length; i += 3) for (const k of [I[i], I[i + 1], I[i + 2]]) tris.push(P[3 * k], P[3 * k + 1], P[3 * k + 2])
     addMesh(tris, '#d42a1e', { side: THREE.DoubleSide }, `설계안 ${m.design.name}`)
   }
+  // ── ⑪ 건축 가능 영역 (참고용, 주황). 단이 층층이 겹쳐 반투명은 거의 불투명해지고 겹침 순서가 어긋나므로 불투명으로
+  if (m.envelope?.slabs.length) {
+    const tris: number[] = []
+    for (const s of m.envelope.slabs) {
+      const P = s.positions
+      const I = s.indices
+      for (let i = 0; i + 2 < I.length; i += 3) for (const k of [I[i], I[i + 1], I[i + 2]]) tris.push(P[3 * k], P[3 * k + 1], P[3 * k + 2])
+    }
+    addMesh(tris, '#e68c28', { side: THREE.DoubleSide }, '법규_가능영역')
+  }
 
   // ── 담장·가드레일 (세운 면)
   {

@@ -230,3 +230,167 @@
     padding: 16px;
   }
 }
+
+/* 건축 가능 영역 (2026-11-21 묶음 E5) */
+.law-envelope {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 20px;
+  border: 1px solid var(--rule);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+
+.law-envelope-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+}
+
+.law-envelope-head h3 {
+  margin: 0;
+}
+
+.law-envelope-inputs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px 16px;
+}
+
+.law-envelope-inputs input[type='number'] {
+  width: 84px;
+}
+
+.law-envelope-hint summary {
+  cursor: pointer;
+  color: var(--text-2);
+}
+
+.law-envelope-hint ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+
+.law-envelope-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: 16px 24px;
+  align-items: start;
+}
+
+.law-envelope-plan {
+  margin: 0;
+}
+
+.law-envelope-plan svg {
+  display: block;
+  width: 100%;
+  max-height: 520px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--sunken);
+}
+
+.env-site {
+  fill: var(--surface);
+  stroke: var(--line-2);
+}
+
+.env-slab {
+  fill: var(--text);
+  stroke: none;
+}
+
+.env-foot {
+  fill: none;
+  stroke: var(--text-2);
+  stroke-dasharray: 2 1.5;
+}
+
+.env-edge {
+  cursor: pointer;
+}
+
+.env-edge .hit {
+  stroke: transparent;
+}
+
+.env-edge .vis {
+  stroke: var(--text-2);
+  stroke-linecap: round;
+}
+
+.env-edge.road .vis {
+  stroke: var(--accent);
+}
+
+.env-edge.changed .vis {
+  stroke-dasharray: 3 2;
+}
+
+.env-edge:hover .vis {
+  stroke-opacity: 0.6;
+}
+
+.env-north {
+  fill: var(--text-2);
+  font-weight: 600;
+}
+
+.env-key {
+  display: inline-block;
+  width: 14px;
+  height: 0;
+  margin: 0 2px 3px 6px;
+  border-top: 2px solid var(--text-2);
+  vertical-align: middle;
+}
+
+.env-key.road {
+  border-top: 3px solid var(--accent);
+}
+
+.law-envelope-stats dl {
+  display: grid;
+  gap: 4px;
+  margin: 0 0 8px;
+}
+
+.law-envelope-stats dl > div {
+  display: grid;
+  grid-template-columns: 9em minmax(0, 1fr);
+  gap: 8px;
+  font-size: var(--fs-md);
+}
+
+.law-envelope-stats dt {
+  color: var(--muted);
+}
+
+.law-envelope-stats dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.law-envelope-stats h4 {
+  margin: 10px 0 4px;
+  font-size: var(--fs-sm);
+}
+
+.law-envelope-stats ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+@media (max-width: 760px) {
+  .law-envelope-body {
+    grid-template-columns: 1fr;
+  }
+
+  .law-envelope {
+    padding: 14px 16px;
+  }
+}

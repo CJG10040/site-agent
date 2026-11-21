@@ -459,7 +459,7 @@ export interface DiagramData {
   hidden: { applied: number; missing: HideEdit[] }
   /** 정성 조사 (2026-11-18): 학생이 출처를 확인한 챗봇 웹 조사 카드 — 스케일(거시 → 미시) 순서 */
   research: { scale: string; place: string; items: { id: string; theme: string; title: string; text: string; when: string; source: string }[] }[]
-  /** 대지 안 기존 건물 (2026-11-21 사용자 결정): 모든 분석에서 빼고, 현황 도판(13~16)에만 점선으로 */
+  /** 대지 안 기존 건물 (2026-11-21 사용자 결정): 모든 분석에서 빼고, 현황 도판(14~17)에만 점선으로 */
   siteExisting: Bld[]
   /** 보는 안 (2026-11-21 묶음 C): 설계안이면 이름·덩어리 요약, 현황(빈 대지)이면 null */
   scenario: {

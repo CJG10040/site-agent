@@ -22,6 +22,7 @@ import { buildDecks, deckAt, inPoly as polyHas, roadAtFn, type Deck, type DeckSr
 import { shapeGround } from './groundShape'
 import { DIM_DEFS, dimsOf, modelBldHeight, TREE_DIM, type ModelDims } from './modelDims'
 import { groundZ, waterAtFn, type GroundData, type WaterData } from './samplers'
+import { localProj, toLonLat } from '../lib/xy'
 
 export type XY = [number, number]
 
@@ -87,6 +88,8 @@ export interface SiteModel {
   buildings: ModelBuilding[]
   /** 보는 설계안 (2026-11-21 묶음 C8): 올린 삼각형(원점·높이 0 = 대지 중심 지면) + 발자국(DXF) — 현황이면 null */
   design: { name: string; positions: number[]; indices: number[]; foot: XY[][] } | null
+  /** ⑪ 건축 가능 영역 (2026-11-21 묶음 E6): 단마다 삼각형 (모형 좌표, z 0 = 대지 중심 지면) — ⑪에서 정하지 않았으면 없음 */
+  envelope?: { slabs: { bottom: number; top: number; positions: number[]; indices: number[] }[]; note: string } | null
   parcels: ModelParcel[]
   /** 도로 면: 수치지도 도로경계 면(올린 도엽 안)을 합친 것 + 그 밖은 도로중심선을 폭만큼 넓혀 합친 것 */
   roads: Poly[]
@@ -522,7 +525,11 @@ function roadSurfaces(lines: { pts: XY[]; width: number | null }[], half: number
 /**
  * @param opts.grid 지형 격자를 직접 줄 때 (나중에 더 정밀한 DEM·현황측량을 올려 쓰는 자리). 주지 않으면 10m 지형 타일을 읽는다.
  */
-export async function buildSiteModel(d: DiagramData, half: number, opts: { grid?: TerrainGrid | null; dims?: Partial<Record<string, number>> | null } = {}): Promise<SiteModel> {
+export async function buildSiteModel(
+  d: DiagramData,
+  half: number,
+  opts: { grid?: TerrainGrid | null; dims?: Partial<Record<string, number>> | null; envelope?: { slabs: { bottom: number; top: number; positions: number[]; indices: number[] }[]; note: string } | null } = {},
+): Promise<SiteModel> {
   // 어림 치수 (modelDims.ts) — 고친 값 + 기본값
   const dm = dimsOf(opts.dims)
   const [lon, lat] = d.center
@@ -1271,10 +1278,30 @@ export async function buildSiteModel(d: DiagramData, half: number, opts: { grid?
       }
     : null
 
+  // 건축 가능 영역: 계산은 대지 중심 원점 평면(경위도 비례) m → 경위도 → 모형 좌표(EPSG:5179 − 대지 중심)
+  const lp = localProj(lon, lat)
+  const envelope = opts.envelope
+    ? {
+        note: opts.envelope.note,
+        slabs: opts.envelope.slabs.map((s) => {
+          const P = s.positions
+          const out = new Array<number>(P.length)
+          for (let i = 0; i < P.length; i += 3) {
+            const [x, y] = f(toLonLat(lp, [P[i], P[i + 1]]))
+            out[i] = x
+            out[i + 1] = y
+            out[i + 2] = P[i + 2]
+          }
+          return { bottom: s.bottom, top: s.top, positions: out, indices: s.indices }
+        }),
+      }
+    : null
+
   return {
     origin: { lon, lat, x5179: X0, y5179: Y0, x5186, y5186, elev, trueNorthDeg },
     half,
     design,
+    envelope,
     terrain,
     terrainSource: grid?.source ?? null,
     terrainVersion: grid?.version ?? null,

@@ -13,6 +13,7 @@ import { collectedDate } from '../diagrams/render'
 import { defaultHalfIn, halfRangeFor } from '../export/modelBuild'
 import { DXF_LAYERS } from '../export/toDxf'
 import { nowIso } from '../model/project'
+import { lawCtxOf } from '../law/envelopeData'
 import type { Project } from '../model/types'
 import { HD_READER_V } from '../sources/hdMap'
 import { NGII_READER_V } from '../sources/ngiiMap'
@@ -144,6 +145,7 @@ export default function ModelStep({ project, update, config, keys, onGoData, onG
                 })
               }
               modelDims={projectDims(project)}
+              law={lawCtxOf(project)}
               onModelDims={(v) =>
                 update((d) => {
                   if (Object.keys(v).length) d.modelDims = v
@@ -164,7 +166,7 @@ export default function ModelStep({ project, update, config, keys, onGoData, onG
           <details className="block">
             <summary className="small">파일에 든 것</summary>
             <p className="small">
-              <strong>.3dm</strong> (레이어 이름 한글): 지형 면(메시)·등고선·계곡선, 건물(주변·층수 모름, 대지 안 기존 건물은 꺼진 레이어로), 보는 설계안(올린 매스 그대로), 도로 면·도로중심선, 필지, 공원·녹지, 하천, 대지 경계. 1:1,000
+              <strong>.3dm</strong> (레이어 이름 한글): 지형 면(메시)·등고선·계곡선, 건물(주변·층수 모름, 대지 안 기존 건물은 꺼진 레이어로), 보는 설계안(올린 매스 그대로), ⑪ 법규 검토에서 정한 건축 가능 영역('법규_가능영역' 레이어, 단마다 메시 — 참고용, 바닥 = 대지 중심 지면 높이), 도로 면·도로중심선, 필지, 공원·녹지, 하천, 대지 경계. 1:1,000
               수치지도·정밀도로지도를 올렸으면 가로수(수관·줄기)·정류장 쉘터·가로등·횡단보도·담장·가드레일·차선(색·겹선·점선)·노면표시·연석·보도 면까지. 땅에 놓이는 선·면은 지형 높이를
               따라 얹었고, 라이노의 지구 위치(Earth Anchor)에 원점 경위도·해발을 넣었습니다. 건물 높이는 실측 높이가 있으면 그 값, 없으면 층수 × 용도별 층고(주거 3m·비주거 4m·공장·창고 5m)
               어림입니다(층수 모르면 발자국만).
