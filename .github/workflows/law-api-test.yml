@@ -1,0 +1,29 @@
+# 법령 API 시험 (2026-11-21 묶음 E1, 손으로만 실행): 국가법령정보센터 공식 API가 GitHub에서 불러지는지 확인.
+# 인증값은 저장소 비밀 값 LAW_OC(사용자가 직접 넣음)에서만 읽고, 로그에는 답 메시지·건수만 남긴다.
+# 두 가지로 부름: 그냥 / 사이트 주소(cjg10040.github.io)를 밝히고 — '도메인 등록'이 서버에서 부를 때도 통하는지 보려고.
+name: 법령 API 시험 (수동)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 공식 API 부르기
+        env:
+          LAW_OC: ${{ secrets.LAW_OC }}
+        run: |
+          if [ -z "$LAW_OC" ]; then echo "비밀 값 LAW_OC가 없습니다 — 저장소 Settings > Secrets and variables > Actions 에서 넣어 주세요"; exit 1; fi
+          # 광주광역시 도시계획 조례 (주소용으로 바꾼 글)
+          Q='%EA%B4%91%EC%A3%BC%EA%B4%91%EC%97%AD%EC%8B%9C%20%EB%8F%84%EC%8B%9C%EA%B3%84%ED%9A%8D%20%EC%A1%B0%EB%A1%80'
+          for mode in plain site; do
+            if [ "$mode" = site ]; then REF=(-H "Referer: https://cjg10040.github.io/site-agent/"); else REF=(); fi
+            body=$(curl -s -m 30 "${REF[@]}" "https://www.law.go.kr/DRF/lawSearch.do?OC=${LAW_OC}&target=ordin&type=XML&display=3&query=${Q}" || echo "(연결 실패)")
+            echo "== ${mode}"
+            echo "$body" | grep -o '<result>[^<]*</result>\|<msg>[^<]*</msg>\|<totalCnt>[^<]*</totalCnt>' | head -5
+            echo "$body" | grep -c '<자치법규명>' | sed 's/^/찾은 자치법규 수: /'
+          done
