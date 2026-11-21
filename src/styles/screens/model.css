@@ -461,3 +461,165 @@
 .model-dims-table tr.changed input {
   border-color: var(--accent);
 }
+
+/* ── 설계안 (2026-11-21 묶음 C): 안 목록 · 올린 파일 확인 ── */
+.design-schemes .help {
+  margin-bottom: 12px;
+}
+
+.scheme-list {
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--line);
+}
+
+.scheme-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.scheme-row.on {
+  box-shadow: inset 2px 0 0 var(--accent);
+  padding-left: 8px;
+}
+
+.scheme-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.scheme-name {
+  width: 12em;
+  max-width: 100%;
+  height: var(--h-control-sm);
+  font-weight: 500;
+}
+
+.scheme-pending {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-md);
+  background: var(--sunken);
+}
+
+.scheme-pending .row {
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.scheme-layers {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.scheme-layers legend {
+  margin-bottom: 4px;
+}
+
+/* 설계안 위치 맞추기: 배치도 + 숫자 */
+.scheme-row {
+  flex-wrap: wrap;
+}
+
+.placement {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 16px;
+  margin-top: 8px;
+}
+
+.placement-map {
+  flex: none;
+  max-width: 100%;
+  height: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  touch-action: none;
+}
+
+.placement-grid {
+  fill: none;
+  stroke: var(--line);
+  stroke-width: 0.6;
+  vector-effect: non-scaling-stroke;
+}
+
+.placement-bld {
+  fill: var(--raised);
+  stroke: var(--line-2);
+  stroke-width: 0.5;
+  vector-effect: non-scaling-stroke;
+}
+
+.placement-existing {
+  fill: none;
+  stroke: var(--text-2);
+  stroke-width: 1;
+  stroke-dasharray: 3 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.placement-site {
+  fill: var(--accent-soft);
+  stroke: var(--accent);
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+
+.placement-mass path {
+  fill: var(--accent);
+  fill-opacity: 0.55;
+  stroke: var(--accent);
+  stroke-width: 1.2;
+  vector-effect: non-scaling-stroke;
+  cursor: grab;
+}
+
+.placement-mass:active path {
+  cursor: grabbing;
+}
+
+.placement-north {
+  fill: var(--text);
+}
+
+.placement-fields {
+  flex: 1 1 220px;
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+
+.placement-grid-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.placement-grid-fields input {
+  width: 100%;
+  font-family: var(--font-mono);
+}
+
+.placement-fields .row {
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.scheme-place {
+  flex: 1 0 100%;
+}

@@ -8,6 +8,9 @@ import { analyzeTerrain, type TerrainAnalysis } from '../lib/terrainSite'
 import { observationsOf } from '../model/observations'
 import { siteKey } from '../model/project'
 import type { DiagramSettings, Project } from '../model/types'
+import { designKey, envKeyOf, ENV_KEY, scenarioSig } from '../model/designs'
+import { COMPARE_3D, COMPARE_IDS, COMPARE_SUN, compareIds } from './panelsCompare'
+import { addsSig, lastEditAt } from '../model/edits'
 import { buildDiagramData, type DiagramData } from './data'
 import { synthCtxOf } from './synth'
 import { svgBlob } from './export'
@@ -74,6 +77,8 @@ function flatKey(id: string, s: DiagramSettings): string {
     return o ? `${common}|${o.base}>${o.top}|${o.opacity}|${o.mode}|${settingsKey(o.base, s)}|${settingsKey(o.top, s)}` : common
   }
   if (id === 'synth') return `${common}|${s.fieldStyle}|${s.windStyle}|${s.terrainShade}`
+  if (id === COMPARE_SUN) return `${common}|${(s.compare ?? []).join(',')}|${s.sunDay}|${s.fieldStyle}`
+  if (id === COMPARE_3D) return `${common}|${(s.compare ?? []).join(',')}|${s.cam3d?.az ?? ''},${s.cam3d?.tilt ?? ''},${s.cam3d?.vex ?? ''}`
   if (id === 'sectionA' || id === 'sectionB') return `${common}|${s.sectionAngle}|${s.sectionVex}|${s.sectionRange}`
   return common
 }
@@ -87,7 +92,7 @@ export function useDiagrams(project: Project, vworldKey: string, only?: string[]
     })
     .join('|')
   // 환경 계산은 수집 뒤에 따로 끝나므로 그 시각도 넣는다
-  const envSig = project.collected['env:result']?.retrieved_at ?? ''
+  const envSig = project.collected[envKeyOf(project)]?.retrieved_at ?? ''
   // 수치지도는 수집과 따로 올리므로 그 시각도
   const ngiiSig = `${project.collected['ngii:sheets']?.retrieved_at ?? ''}${project.collected['hd:files']?.retrieved_at ?? ''}`
   // 학생이 뺀 자료가 바뀌면 자료부터 다시
@@ -99,7 +104,9 @@ export function useDiagrams(project: Project, vworldKey: string, only?: string[]
     .filter((c) => c.auto_key?.startsWith('research:') && c.status === 'confirmed')
     .map((c) => `${c.id}:${c.updated_at}`)
     .join(',')
-  const dataSig = `${project.collectedAt ?? ''}|${envSig}|${ngiiSig}|${siteKey(project.site)}|${project.collectedRadiusM ?? project.site.radiusM}|${obsSig}|${hashOf(hideSig)}|${srcSig}|${hashOf(researchSig)}`
+  // 보는 안(설계안)을 바꾸거나 안을 다시 올리면 자료부터 다시
+  const designSig = `${scenarioSig(project)}|${hashOf(addsSig(project))}`
+  const dataSig = `${project.collectedAt ?? ''}|${envSig}|${ngiiSig}|${siteKey(project.site)}|${project.collectedRadiusM ?? project.site.radiusM}|${obsSig}|${hashOf(hideSig)}|${srcSig}|${hashOf(researchSig)}|${designSig}`
   const labelEdits = project.edits?.labels ?? []
   const labelSig = labelEdits.map((l) => `${l.panelId}:${l.key}:${l.dx.toFixed(1)},${l.dy.toFixed(1)}:${l.hidden ? 1 : 0}`).join('|')
   // 결론을 고칠 때마다 프로젝트 객체가 바뀌므로, 자료가 실제로 바뀐 때만 다시 만든다
@@ -112,6 +119,20 @@ export function useDiagrams(project: Project, vworldKey: string, only?: string[]
   const synthSig = JSON.stringify([project.synth ?? null, project.cards.filter((c) => ['TENSION', 'OPPORTUNITY', 'HYPOTHESIS'].includes(c.type)).map((c) => [c.id, c.status, c.text, c.fields?.['제목'], c.fields?.['방향'], c.fields?.['근거'], c.related_card_ids])])
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const synth = useMemo(() => synthCtxOf(project), [synthSig])
+  // 설계안 비교 도판: 고른 안마다 자료 (그릴 때만 만듦)
+  const designs = project.designs ?? []
+  const cmpIds = compareIds(designs.map((d) => d.id), settings.compare)
+  const compareSig = cmpIds
+    .map((id) => {
+      const d = designs.find((x) => x.id === id)
+      const envKey = d ? `${ENV_KEY}@${designKey(d)}` : ENV_KEY
+      return `${d ? designKey(d) : 'now'}@${project.collected[envKey]?.retrieved_at ?? ''}`
+    })
+    .join('|')
+  const compareScenarios = () =>
+    designs.length
+      ? cmpIds.map((id) => ({ id, name: designs.find((x) => x.id === id)?.name ?? '현황', d: buildDiagramData({ ...project, scenario: id || null })!, editedAt: lastEditAt(project) })).filter((s) => !!s.d)
+      : []
   const [panels, setPanels] = useState<Record<string, CachedPanel>>({})
   const [busy, setBusy] = useState(false)
   /** 그리는 중: 새로 그릴 도판 수 중 몇 장째, 지금 그리는 도판 이름 (저장해 둔 도판은 세지 않음) */
@@ -148,7 +169,9 @@ export function useDiagrams(project: Project, vworldKey: string, only?: string[]
         const yKey = def.id === 'synth' ? `|synth:${hashOf(synthSig)}` : ''
         const labels = labelEdits.filter((l) => l.panelId === def.id)
         const lKey = labels.length ? `|labels:${hashOf(labels.map((l) => `${l.key}:${l.dx.toFixed(1)},${l.dy.toFixed(1)}:${l.hidden ? 1 : 0}`).join('|'))}` : ''
-        const key = `${dataSig}|${def.id}|${settingsKey(def.id, settings)}|${vworldKey ? 'k' : '-'}${tKey}${sKey}${yKey}${lKey}`
+        // 설계안 비교: 고른 안들의 서명(안·위치·환경 계산 시각)
+        const cKey = COMPARE_IDS.includes(def.id) ? `|cmp:${hashOf(compareSig)}` : ''
+        const key = `${dataSig}|${def.id}|${settingsKey(def.id, settings)}|${vworldKey ? 'k' : '-'}${tKey}${sKey}${yKey}${lKey}${cKey}`
         return { def, key, labels }
       })
       const total = jobs.filter((j) => !cache.has(j.key)).length
@@ -160,7 +183,7 @@ export function useDiagrams(project: Project, vworldKey: string, only?: string[]
           // 진행도를 먼저 그리게 한 번 쉼
           await new Promise((r) => setTimeout(r, 0))
           if (!alive) return
-          const r = await renderPanel(def, data, settings, vworldKey, date, t, def.id === 'synth' ? { synth, labels } : { labels })
+          const r = await renderPanel(def, data, settings, vworldKey, date, t, def.id === 'synth' ? { synth, labels } : COMPARE_IDS.includes(def.id) ? { labels, scenarios: compareScenarios() } : { labels })
           hit = { ...r, url: URL.createObjectURL(svgBlob(r.svg)), key }
           cachePut(hit)
           drawn++

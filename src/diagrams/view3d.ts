@@ -235,7 +235,7 @@ export interface View3dOpts {
 
 export function to3d(
   out: PanelOutput,
-  ctx: { d: { buildings: Bld[] }; f: Frame; pal: Palette; st: DiagramSettings },
+  ctx: { d: { buildings: Bld[]; scenario?: { name: string; mesh: { positions: number[]; indices: number[] }; baseZ: number } | null }; f: Frame; pal: Palette; st: DiagramSettings },
   site: string,
   clipId: string,
   opts: View3dOpts = {},
@@ -278,8 +278,11 @@ export function to3d(
   let cutCount = 0
   type Mass = { away: number; svg: string }
   const masses: Mass[] = []
+  const designMesh = ctx.d.scenario?.mesh ?? null
   for (const b of ctx.d.buildings) {
     if (b.underground || b.onSite) continue
+    // 설계안은 2.5D 덩어리 대신 아래에서 실제 삼각형으로 (2026-11-21 묶음 C7)
+    if (b.src === 'design' && designMesh) continue
     const color = opts.massColor ? opts.massColor(b) : null
     if (color === null && opts.massColor) continue
     const roof = color ?? neutral
@@ -351,6 +354,57 @@ export function to3d(
       }
     }
   }
+  // ── 설계안: 올린 삼각형 그대로 (대지 강조색). 라이노 파일마다 면 방향이 제각각이라 보는 쪽으로 뒤집어 칠함
+  if (designMesh && ctx.d.scenario) {
+    const P = designMesh.positions
+    const I = designMesh.indices
+    const z0 = ctx.d.scenario.baseZ
+    const accent = pal.accent
+    const roofC = mix(pal.paper, accent, 0.5)
+    const litC = mix(pal.paper, accent, 0.7)
+    const darkC = mix(accent, darker, 0.25)
+    const pt = (k: number): [number, number, number] => [MAP_CX + P[3 * k] * f.s, MAP_CY - P[3 * k + 1] * f.s, P[3 * k + 2] - z0]
+    const T = (cam.tilt * Math.PI) / 180
+    // 보는 사람 쪽 (동, 북, 위)
+    const view: [number, number, number] = [vx * Math.cos(T), vy * Math.cos(T), Math.sin(T)]
+    for (let t = 0; t < I.length; t += 3) {
+      const a = pt(I[t])
+      const b = pt(I[t + 1])
+      const c = pt(I[t + 2])
+      // 평면 좌표(px, 아래로 +)를 동·북·위(m)로 바꿔 법선
+      const ax = (b[0] - a[0]) / f.s
+      const ay = -(b[1] - a[1]) / f.s
+      const az = b[2] - a[2]
+      const bx = (c[0] - a[0]) / f.s
+      const by = -(c[1] - a[1]) / f.s
+      const bz = c[2] - a[2]
+      let nx = ay * bz - az * by
+      let ny = az * bx - ax * bz
+      let nz = ax * by - ay * bx
+      const nl = Math.hypot(nx, ny, nz)
+      if (!(nl > 1e-9)) continue
+      nx /= nl
+      ny /= nl
+      nz /= nl
+      if (nx * view[0] + ny * view[1] + nz * view[2] < 0) {
+        nx = -nx
+        ny = -ny
+        nz = -nz
+      }
+      const fill = nz > 0.7 ? roofC : nx * lx + ny * ly > 0 ? litC : darkC
+      const s0 = pr.P(a[0], a[1], a[2])
+      const s1 = pr.P(b[0], b[1], b[2])
+      const s2 = pr.P(c[0], c[1], c[2])
+      const cx = (a[0] + b[0] + c[0]) / 3
+      const cy = (a[1] + b[1] + c[1]) / 3
+      const cz = (a[2] + b[2] + c[2]) / 3
+      masses.push({
+        // 같은 자리면 높은 면을 나중에 (지붕이 벽을 덮게)
+        away: pr.away(cx, cy) - cz * 0.001,
+        svg: `<path d="M${s0[0].toFixed(1)} ${s0[1].toFixed(1)}L${s1[0].toFixed(1)} ${s1[1].toFixed(1)}L${s2[0].toFixed(1)} ${s2[1].toFixed(1)}Z" fill="${fill}" stroke="${fill}" stroke-width="0.4" stroke-linejoin="round"/>`,
+      })
+    }
+  }
   masses.sort((a, b) => b.away - a.away)
 
   // ── 방위표: 화면에서 북쪽이 향하는 쪽
@@ -378,6 +432,6 @@ export function to3d(
     layers,
     noFrame: true,
     hideBase: true,
-    caption: `${out.caption ? `${out.caption} · ` : ''}${over ? `${over.note} · ` : ''}3D: ${camDirLabel(cam.az)}쪽에서 ${Math.round(cam.tilt)}° 내려다봄${cam.vex !== 1 ? `, 높이 ×${cam.vex}` : ''}${cutCount ? ' · 틀에 걸친 건물은 틀에서 잘라 냄(가장 진한 면이 잘린 면)' : ''} · 건물 높이는 실측 높이 또는 층수 × 용도별 층고(모르면 3m) · 바닥은 평평하게 그림(지형 높낮이는 반영 안 함) · 축척 막대 없음(깊이에 따라 다름)`,
+    caption: `${out.caption ? `${out.caption} · ` : ''}${over ? `${over.note} · ` : ''}3D: ${camDirLabel(cam.az)}쪽에서 ${Math.round(cam.tilt)}° 내려다봄${cam.vex !== 1 ? `, 높이 ×${cam.vex}` : ''}${cutCount ? ' · 틀에 걸친 건물은 틀에서 잘라 냄(가장 진한 면이 잘린 면)' : ''}${designMesh ? ` · 대지 강조색 = 설계안 ${ctx.d.scenario?.name ?? ''}(올린 매스 그대로)` : ''} · 건물 높이는 실측 높이 또는 층수 × 용도별 층고(모르면 3m) · 바닥은 평평하게 그림(지형 높낮이는 반영 안 함) · 축척 막대 없음(깊이에 따라 다름)`,
   }
 }

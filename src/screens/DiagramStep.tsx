@@ -2,6 +2,9 @@ import { useMemo, useState } from 'react'
 import type { BasisItem, PanelOutput } from '../diagrams/compose'
 import { hideLayerLabel } from '../diagrams/data'
 import BasisList from '../components/BasisList'
+import ScenarioPicker from '../components/ScenarioPicker'
+import CompareControls from '../components/CompareControls'
+import { COMPARE_IDS } from '../diagrams/panelsCompare'
 import { svgBlob, svgToPng, zipBlob } from '../diagrams/export'
 import { siteOverview } from '../diagrams/overview'
 import { ORDERED_PANELS, PANEL_GROUP_ORDER, panelNumber, type PanelDef } from '../diagrams/panels'
@@ -9,7 +12,7 @@ import { buildPanelPrompt, parsePanelAnswer } from '../diagrams/prompt'
 import { DEFAULT_SETTINGS, panelFileName } from '../diagrams/render'
 import { settingsKey, useDiagrams } from '../diagrams/useDiagrams'
 import PanelEditor from '../components/PanelEditor'
-import { editsOf, newEditId } from '../model/edits'
+import { addDesc, editsOf, newEditId } from '../model/edits'
 import StylePanel from '../components/StylePanel'
 
 import OverlayControls from '../components/OverlayControls'
@@ -266,6 +269,7 @@ export default function DiagramStep({ project, update, config, keys, onGoData, o
           도판 한 장에는 사실 하나만 담았습니다. 각 도판에서 <strong>무엇을 판단할 수 있는지 한 문장</strong>으로 적어 보세요. 챗봇에게 결론 후보를 받을 수도 있습니다. 적은
           결론은 해석 단계의 프롬프트와 리포트에 함께 들어갑니다. 모르는 값은 회색 '미상'으로 두었습니다.
         </p>
+        <ScenarioPicker project={project} update={update} onGoModel={onGoModel} />
       </header>
 
       {!project.collectedAt && (
@@ -325,7 +329,7 @@ export default function DiagramStep({ project, update, config, keys, onGoData, o
             설정을 바꿨습니다 — <strong>도판 {changedIds.size}장</strong>을 다시 그립니다{changedIds.size === 0 ? ' (그림이 바뀌지 않는 설정)' : ''}
           </span>
         ) : (
-          <span className="muted">도판 {Object.keys(panels).length}장 · 지금 설정으로 그렸습니다. 설정을 바꾼 뒤 '도판 생성'을 누르세요.</span>
+          <span className="muted">도판 {Object.keys(panels).filter((id) => (project.designs ?? []).length > 0 || !COMPARE_IDS.includes(id)).length}장 · 지금 설정으로 그렸습니다. 설정을 바꾼 뒤 '도판 생성'을 누르세요.</span>
         )}
         <span className="spacer" />
         {draftKeys.length > 0 && (
@@ -523,12 +527,30 @@ export default function DiagramStep({ project, update, config, keys, onGoData, o
         {msg && <p className={`notice ${msg.kind === 'error' ? 'error' : 'ok'}`}>{msg.text}</p>}
       </details>
 
-      {(edits.hides.length > 0 || edits.labels.length > 0) && (
+      {(edits.hides.length > 0 || edits.labels.length > 0 || edits.adds.length > 0) && (
         <details className="block edits-record">
           <summary>
-            <strong>학생이 고친 것 ({edits.hides.length + edits.labels.length})</strong>{' '}
-            <span className="muted small">— 도판을 크게 열어 '자료 빼기'·'표기 옮기기'로 고친 것. 다시 수집해도 유지됩니다.</span>
+            <strong>학생이 고친 것 ({edits.hides.length + edits.labels.length + edits.adds.length})</strong>{' '}
+            <span className="muted small">— 도판을 크게 열어 '자료 빼기'·'건물 더하기'·'표기 옮기기'로 고친 것. 다시 수집해도 유지됩니다.</span>
           </summary>
+          {edits.adds.length > 0 && (
+            <>
+              <h4>더한 건물 ({edits.adds.length}) — 모든 도판·분석·3D 모형에 들어감</h4>
+              <ul className="edit-list">
+                {edits.adds.map((a) => (
+                  <li key={a.id}>
+                    <span>
+                      {addDesc(a)}
+                      {a.reason && <span className="muted"> — {a.reason}</span>} <span className="muted small">{a.createdAt.slice(0, 10)}</span>
+                    </span>
+                    <button type="button" className="link-btn small" onClick={() => update((d) => void (d.edits = { ...editsOf(d), adds: editsOf(d).adds.filter((x) => x.id !== a.id) }))}>
+                      되돌리기
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
           {edits.hides.length > 0 && (
             <>
               <h4>뺀 자료 ({edits.hides.length}) — 모든 도판·분석에서 빠짐</h4>
@@ -575,6 +597,8 @@ export default function DiagramStep({ project, update, config, keys, onGoData, o
           const i = OVERLAY_IDS.indexOf(p.id)
           return i <= 0 || !!settings.overlays?.[i - 1] || !!settings.overlays?.[i]
         })
+        // 설계안 비교는 설계안을 올렸을 때만
+        if (g === '설계안 비교' && !(project.designs ?? []).length) return null
         return (
           <section key={g} className="diagram-group">
             <h3>{g}</h3>
@@ -595,6 +619,7 @@ export default function DiagramStep({ project, update, config, keys, onGoData, o
                       </h4>
                       {isOverlayId(def.id) && <OverlayControls id={def.id} settings={settings} setSettings={setSettings} />}
                       {def.id === EXPLODED_ID && <ExplodedControls settings={settings} setSettings={setSettings} />}
+                      {COMPARE_IDS.includes(def.id) && <CompareControls project={project} settings={settings} setSettings={setSettings} />}
                       {empty ? (
                         <p className="muted small">
                           {empty}. {def.needs}

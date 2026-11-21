@@ -2,7 +2,9 @@
 // 분석 단계(①~⑨)와 따로 '모형 만들기' 목차로 나눈다. 1:1,000 수치지도·정밀도로지도 올리기도 여기서 열 수 있다.
 
 import { lazy, Suspense, useMemo } from 'react'
+import DesignSchemes from '../components/DesignSchemes'
 import NgiiUpload from '../components/NgiiUpload'
+import ScenarioPicker from '../components/ScenarioPicker'
 import RoofLookup from '../components/RoofLookup'
 import TreePanel from '../components/TreePanel'
 import { buildDiagramData } from '../diagrams/data'
@@ -33,7 +35,7 @@ interface Props {
 export default function ModelStep({ project, update, config, keys, onGoData, onGoSite }: Props) {
   // 자료가 바뀔 때만 다시 (결론 고치기 같은 다른 변경에는 그대로)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const data = useMemo(() => buildDiagramData(project), [project.collected, project.site, project.edits?.hides, project.sourcePick, project.sourceAuto, project.trees, project.treeEdits])
+  const data = useMemo(() => buildDiagramData(project), [project.collected, project.site, project.edits?.hides, project.sourcePick, project.sourceAuto, project.trees, project.treeEdits, project.designs, project.scenario, project.edits?.adds])
   // 지붕 구조를 받으면 collected가 바뀌어 모형을 다시 만듦
   const halfRange = useMemo(() => (data ? halfRangeFor(data) : { min: 150, max: 150 }), [data])
   const meta = {
@@ -63,6 +65,7 @@ export default function ModelStep({ project, update, config, keys, onGoData, onG
           수집한 자료로 대지 주변을 3D로 만들어 라이노(.3dm)·DXF로 내려받습니다. 돌려 보며 무엇이 들어가는지·파일이 얼마나 클지 확인한 뒤 받으세요. 대지 중심 = 원점(m, 위쪽 = 북), 높이 0 = 대지 중심
           지면입니다.
         </p>
+        <ScenarioPicker project={project} update={update} />
       </header>
 
       {!data ? (
@@ -118,6 +121,8 @@ export default function ModelStep({ project, update, config, keys, onGoData, onG
             <TreePanel project={project} update={update} data={data} config={config} />
           </section>
 
+          <DesignSchemes project={project} update={update} data={data} />
+
           <Suspense fallback={<p className="loading">작업대 불러오는 중…</p>}>
             <ModelWorkbench
               asPage
@@ -159,7 +164,7 @@ export default function ModelStep({ project, update, config, keys, onGoData, onG
           <details className="block">
             <summary className="small">파일에 든 것</summary>
             <p className="small">
-              <strong>.3dm</strong> (레이어 이름 한글): 지형 면(메시)·등고선·계곡선, 건물(대지 안·주변·층수 모름), 도로 면·도로중심선, 필지, 공원·녹지, 하천, 대지 경계. 1:1,000
+              <strong>.3dm</strong> (레이어 이름 한글): 지형 면(메시)·등고선·계곡선, 건물(주변·층수 모름, 대지 안 기존 건물은 꺼진 레이어로), 보는 설계안(올린 매스 그대로), 도로 면·도로중심선, 필지, 공원·녹지, 하천, 대지 경계. 1:1,000
               수치지도·정밀도로지도를 올렸으면 가로수(수관·줄기)·정류장 쉘터·가로등·횡단보도·담장·가드레일·차선(색·겹선·점선)·노면표시·연석·보도 면까지. 땅에 놓이는 선·면은 지형 높이를
               따라 얹었고, 라이노의 지구 위치(Earth Anchor)에 원점 경위도·해발을 넣었습니다. 건물 높이는 실측 높이가 있으면 그 값, 없으면 층수 × 용도별 층고(주거 3m·비주거 4m·공장·창고 5m)
               어림입니다(층수 모르면 발자국만).

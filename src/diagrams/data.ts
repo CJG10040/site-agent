@@ -17,6 +17,8 @@ import { pickSig, pickState, pickText, selectNgii, type Picks } from '../model/s
 import { isPlaceholderStop } from '../sources/transit'
 import type { WindResult } from '../sources/wind'
 import { centroidOf } from './frame'
+import { wgs84ToUtmk, utmkToWgs84 } from '../lib/proj'
+import { activeDesign, designMassing, envKeyOf, placedMesh } from '../model/designs'
 
 export interface Bld {
   geom: Areal
@@ -26,8 +28,8 @@ export interface Bld {
   /** 바닥 면적(㎡, 도형 계산) */
   area: number
   name: string
-  /** 'bldg' GIS건물통합정보, 'addr' 도로명주소 건물로 보강, 'ngii' 국토지리정보원 수치지도(올린 도엽 안) */
-  src: 'bldg' | 'addr' | 'ngii'
+  /** 'bldg' GIS건물통합정보, 'addr' 도로명주소 건물로 보강, 'ngii' 국토지리정보원 수치지도(올린 도엽 안), 'design' 내 설계안(2.5D 덩어리), 'user' 학생이 더한 건물 */
+  src: 'bldg' | 'addr' | 'ngii' | 'design' | 'user'
   /** 층수를 도로명주소 건물에서 채웠는지 */
   floorsFromAddr: boolean
   /** 지하만 있는 시설 (지하상가·지하철역 등: 지상층 없음 + 지하층 있음 + 건축면적 0) */
@@ -457,6 +459,20 @@ export interface DiagramData {
   hidden: { applied: number; missing: HideEdit[] }
   /** 정성 조사 (2026-11-18): 학생이 출처를 확인한 챗봇 웹 조사 카드 — 스케일(거시 → 미시) 순서 */
   research: { scale: string; place: string; items: { id: string; theme: string; title: string; text: string; when: string; source: string }[] }[]
+  /** 대지 안 기존 건물 (2026-11-21 사용자 결정): 모든 분석에서 빼고, 현황 도판(13~16)에만 점선으로 */
+  siteExisting: Bld[]
+  /** 보는 안 (2026-11-21 묶음 C): 설계안이면 이름·덩어리 요약, 현황(빈 대지)이면 null */
+  scenario: {
+    id: string
+    name: string
+    maxHeight: number
+    footprint: number
+    blocks: number
+    /** 실제 매스 삼각형 (대지 좌표 m, 위치 맞춤 적용) — 3D 도판·3D 모형용 */
+    mesh: { positions: number[]; indices: number[] }
+    /** 매스 바닥 높이 (파일 z) */
+    baseZ: number
+  } | null
 }
 
 /**
@@ -953,7 +969,8 @@ export function buildDiagramData(project: Project): DiagramData | null {
   const speedSnaps = feats('its:speed').map((f) => f.properties as unknown as SpeedSnapshot)
   const network = (feats('network:graph')[0]?.properties as unknown as NetworkResult | undefined) ?? null
   const wind = (feats('kma:wind')[0]?.properties as unknown as WindResult | undefined) ?? null
-  const env = (feats('env:result')[0]?.properties as unknown as EnvResult | undefined) ?? null
+  // 보는 안의 결과 (설계안이면 그 안을 넣어 계산한 것, 없으면 null)
+  const env = (feats(envKeyOf(project))[0]?.properties as unknown as EnvResult | undefined) ?? null
   // 토지이용계획·토지대장 (대지 필지)
   const luSeen = new Map<string, string>()
   for (const f of feats('ned:landUse')) {
@@ -1023,9 +1040,58 @@ export function buildDiagramData(project: Project): DiagramData | null {
     officialArea,
     has,
     hidden: { applied: 0, missing: [] },
+    siteExisting: [],
+    scenario: null,
   }
   // 학생이 뺀 자료 (다시 수집해도 위치·이름으로 다시 찾아 뺌)
   out.hidden = applyHides(out, project.edits?.hides ?? [])
+  // 학생이 더한 건물 (자료에 아직 없는 새 건물 — 지도에서 그리거나 라이노 '주변 변경' 레이어에서)
+  for (const a of project.edits?.adds ?? []) {
+    if (a.ring.length < 4) continue
+    const geom: Areal = { type: 'Polygon', coordinates: [a.ring] }
+    const c = centroidOf(geom)
+    out.buildings.push({
+      geom,
+      floors: a.floors && a.floors > 0 ? a.floors : a.heightM && a.heightM > 0 ? Math.max(1, Math.round(a.heightM / 3.5)) : null,
+      heightM: a.heightM && a.heightM > 0 ? a.heightM : null,
+      use: a.use,
+      year: null,
+      area: safeArea(geom),
+      name: a.name,
+      src: 'user',
+      floorsFromAddr: false,
+      onSite: c ? inside(c[0], c[1], boundary) : false,
+    })
+  }
+  // 대지 안 기존 건물은 모든 분석에서 처음부터 비움 (현황 도판에는 점선으로)
+  out.siteExisting = out.buildings.filter((b) => b.onSite)
+  out.buildings = out.buildings.filter((b) => !b.onSite)
+  // 보는 안이 설계안이면 그 매스를 2.5D 덩어리 건물로 넣음
+  const design = activeDesign(project)
+  if (design) {
+    const m = designMassing(design)
+    if (m) {
+      const [X0, Y0] = wgs84ToUtmk(center[0], center[1])
+      const toLL = ([x, y]: number[]): [number, number] => utmkToWgs84(x + X0, y + Y0)
+      for (const b of m.blocks) {
+        const geom: Areal = { type: 'Polygon', coordinates: b.rings.map((r) => r.map(toLL)) }
+        out.buildings.push({
+          geom,
+          heightM: b.height,
+          // 층수는 높이 ÷ 3.5m로 어림 (층수로 색을 나누는 도판용 — 높이 계산은 heightM을 씀)
+          floors: Math.max(1, Math.round(b.height / 3.5)),
+          use: '',
+          year: null,
+          area: b.area,
+          name: design.name,
+          src: 'design',
+          floorsFromAddr: false,
+          onSite: false,
+        })
+      }
+      out.scenario = { id: design.id, name: design.name, maxHeight: m.maxHeight, footprint: m.footprint, blocks: m.blocks.length, mesh: placedMesh(design), baseZ: m.baseZ }
+    }
+  }
   return out
 }
 
@@ -1076,6 +1142,8 @@ export function featuresAt(d: DiagramData, lon: number, lat: number, tolM: numbe
       out.push({ layer, lon: p.lon, lat: p.lat, name: p.name, desc: `${LAYER_LABEL[layer]} · ${p.name || '이름 없음'}${extra}`, dist })
     }
   for (const b of d.buildings) {
+    // 설계안·학생이 더한 건물은 빼기가 아니라 그 목록에서 지움
+    if (b.src === 'design' || b.src === 'user') continue
     if (!inside(lon, lat, b.geom)) continue
     const c = centroidOf(b.geom)
     if (c) out.push({ layer: 'building', lon: c[0], lat: c[1], name: b.name, desc: bldDesc(b), dist: tolM + 1 })

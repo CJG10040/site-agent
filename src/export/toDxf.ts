@@ -9,7 +9,8 @@ export const DXF_LAYERS: { name: string; color: number; label: string }[] = [
   { name: 'INFO', color: 7, label: '원점·좌표 설명' },
   { name: 'SITE', color: 1, label: '대지 경계' },
   { name: 'BLDG', color: 8, label: '주변 건물 발자국' },
-  { name: 'BLDG-SITE', color: 6, label: '대지 안 기존 건물' },
+  { name: 'BLDG-SITE', color: 6, label: '대지 안 기존 건물 (분석에서 뺌 — 참고용)' },
+  { name: 'DESIGN', color: 1, label: '설계안 발자국 (보는 안, 높이 단계별 윤곽)' },
   { name: 'BLDG-NOFLOOR', color: 9, label: '층수 모르는 건물' },
   { name: 'BLDG-TEXT', color: 8, label: '건물 층수 (예: 5F)' },
   { name: 'ROAD-EDGE', color: 252, label: '도로 면 경계 (도로중심선 폭)' },
@@ -225,6 +226,8 @@ export function siteModelToDxf(m: SiteModel, meta: { title: string; address: str
     polys(layer, b.parts)
     if (b.floors && b.parts[0]) text('BLDG-TEXT', centroid(b.parts[0].outer), 1.6, `${b.floors}F`)
   }
+  // 보는 설계안 발자국 (높이 단계마다 닫힌 선)
+  for (const ring of m.design?.foot ?? []) polyline('DESIGN', ring, true)
   // 15-F 디테일
   // 15-E 나무: 수관 반지름 원, 출처마다 레이어
   const treeLayer = { map: 'TREE', street: 'TREE-STREET', park: 'TREE-PARK', user: 'TREE-USER' } as const

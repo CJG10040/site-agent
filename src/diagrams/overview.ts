@@ -74,7 +74,9 @@ export function siteOverview(project: Project, d: DiagramData, terrain: TerrainA
     site.push({ label: '개별공시지가', value: `㎡당 ${fmt(Math.min(...prices))}${Math.max(...prices) !== Math.min(...prices) ? `~${fmt(Math.max(...prices))}` : ''}원` })
   }
 
+  // 현황 수치: 보는 설계안의 덩어리는 넣지 않음
   const inside = d.buildings.filter((b) => {
+    if (b.src === 'design') return false
     const c = centroidOf(b.geom)
     if (!c) return false
     const dx = (c[0] - d.center[0]) * 111320 * Math.cos((d.center[1] * Math.PI) / 180)

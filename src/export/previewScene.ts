@@ -272,6 +272,8 @@ export function buildPreview(m: SiteModel): PreviewParts {
   const walls: Record<'bldg' | 'bldgSite' | 'bldgUnknown', number[]> = { bldg: [], bldgSite: [], bldgUnknown: [] }
   const roofTris: number[] = []
   for (const b of m.buildings) {
+    // 대지 안 기존 건물은 .3dm에서 꺼진 레이어 — 미리보기에서도 뺌 (2026-11-21)
+    if (b.onSite) continue
     const key = b.top === null ? 'bldgUnknown' : b.onSite ? 'bldgSite' : 'bldg'
     const top = b.top ?? b.base + 0.4
     const out = walls[key]
@@ -301,6 +303,14 @@ export function buildPreview(m: SiteModel): PreviewParts {
   addMesh(walls.bldgSite, COLORS.bldgSite, { side: THREE.DoubleSide }, '대지 안 건물')
   addMesh(walls.bldgUnknown, COLORS.bldgUnknown, { side: THREE.DoubleSide }, '층수 모름')
   addMesh(roofTris, '#a8705c', { side: THREE.DoubleSide }, '경사 지붕')
+  // ── 보는 설계안 (올린 매스 그대로)
+  if (m.design) {
+    const P = m.design.positions
+    const I = m.design.indices
+    const tris: number[] = []
+    for (let i = 0; i + 2 < I.length; i += 3) for (const k of [I[i], I[i + 1], I[i + 2]]) tris.push(P[3 * k], P[3 * k + 1], P[3 * k + 2])
+    addMesh(tris, '#d42a1e', { side: THREE.DoubleSide }, `설계안 ${m.design.name}`)
+  }
 
   // ── 담장·가드레일 (세운 면)
   {

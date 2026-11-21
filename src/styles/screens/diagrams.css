@@ -400,7 +400,8 @@
   pointer-events: none;
 }
 
-.panel-edit-stage.mode-hide {
+.panel-edit-stage.mode-hide,
+.panel-edit-stage.mode-add {
   cursor: crosshair;
 }
 
@@ -885,4 +886,33 @@
 .basis-gone {
   flex: none;
   padding-top: 2px;
+}
+
+/* 건물 더하기 입력 (2026-11-21) */
+.add-building .row {
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.add-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.add-fields .field input,
+.add-fields .field select {
+  width: 100%;
+}
+
+/* 설계안 비교: 비교할 안 고르기 (2026-11-21) */
+.compare-controls {
+  display: grid;
+  gap: 4px;
+}
+
+.compare-controls .row {
+  flex-wrap: wrap;
+  gap: 6px;
 }

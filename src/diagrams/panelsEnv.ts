@@ -35,7 +35,7 @@ function rgb(hex: string): [number, number, number] {
 }
 
 /** 칸 값을 도판 크기 그림으로. toGrid로 좌표를 바꿀 수 있다 (바람 실험의 돌린 격자) */
-function gridImage(c: PanelCtx, g: UnpackedGrid, color: (v: number) => string | null, toGrid?: (x: number, y: number) => XY): string {
+export function gridImage(c: PanelCtx, g: UnpackedGrid, color: (v: number) => string | null, toGrid?: (x: number, y: number) => XY): string {
   const S = MAP_R * 2
   const canvas = document.createElement('canvas')
   canvas.width = S
@@ -100,7 +100,7 @@ function envOf(c: PanelCtx): EnvResult | null {
 }
 
 /** 대지 주변 세밀 칸의 반 폭 (예전 결과는 200m) */
-function fineHalfOf(d: DiagramData): number {
+export function fineHalfOf(d: DiagramData): number {
   const x0 = d.env?.fine?.winter?.x0
   return typeof x0 === 'number' && x0 < 0 ? -x0 : 200
 }
@@ -110,7 +110,7 @@ function emptyOut(text: string): PanelOutput {
 }
 
 /** 칸 중 대지 안 / 반경 안 */
-function maskOf(c: PanelCtx, g: GridSpec, kind: 'site' | 'radius'): Uint8Array {
+export function maskOf(c: PanelCtx, g: GridSpec, kind: 'site' | 'radius'): Uint8Array {
   const m = new Uint8Array(g.nx * g.ny)
   if (kind === 'site') rasterize(g, siteRingsXY(c.d), (k) => (m[k] = 1))
   else
@@ -383,7 +383,7 @@ const WIND_BINS = [0, 0.3, 0.7, 1.1, 1.5]
 const WIND_LABELS = ['0.3배 미만 (거의 멈춤)', '0.3~0.7배', '0.7~1.1배 (비슷)', '1.1~1.5배', '1.5배 이상 (빨라짐)']
 
 /** 대지 중심에서 가장 먼 대지 꼭짓점까지(m) */
-function siteFarOf(d: DiagramData): number {
+export function siteFarOf(d: DiagramData): number {
   return Math.max(0, ...siteRingsXY(d).flat().map(([x, y]) => Math.hypot(x, y)))
 }
 

@@ -657,3 +657,21 @@ details > summary {
   align-items: center;
   flex-wrap: wrap;
 }
+
+/* ── 보는 안 고르기 (⑥·⑩ 머리, 2026-11-21) ── */
+.scenario-picker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  margin-top: 12px;
+}
+
+.scenario-picker > .label {
+  font-weight: 500;
+}
+
+.scenario-picker .scenario-env {
+  flex-basis: 100%;
+  margin: 2px 0 0;
+}

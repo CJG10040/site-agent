@@ -2,13 +2,44 @@
 // 사용자 결정: ⑥ 도판 그림에서 눌러 고침 / 모든 도판·분석에 반영 + 기록 / 다시 수집해도 유지.
 // 빼기는 위치·이름으로 기억해 그릴 때마다 다시 찾고(diagrams/edits.ts), 표기는 도판 SVG의 글자를 글 내용으로 찾아 옮긴다.
 
-import type { HideEdit, LabelEdit, Project, ProjectEdits } from './types'
+import type { AddEdit, HideEdit, LabelEdit, Project, ProjectEdits } from './types'
 
-export const NO_EDITS: ProjectEdits = { hides: [], labels: [] }
+export const NO_EDITS: ProjectEdits = { hides: [], labels: [], adds: [] }
 
-export function editsOf(project: Project): ProjectEdits {
-  return { hides: project.edits?.hides ?? [], labels: project.edits?.labels ?? [] }
+export function editsOf(project: Project): ProjectEdits & { adds: AddEdit[] } {
+  return { hides: project.edits?.hides ?? [], labels: project.edits?.labels ?? [], adds: project.edits?.adds ?? [] }
 }
+
+/** 학생이 마지막으로 더하거나 뺀 때 (환경 계산이 그보다 먼저면 다시 해야 함) — 없으면 '' */
+export function lastEditAt(project: Pick<Project, 'edits'>): string {
+  let t = ''
+  for (const x of [...(project.edits?.hides ?? []), ...(project.edits?.adds ?? [])]) if (x.createdAt > t) t = x.createdAt
+  return t
+}
+
+/** 더한 건물이 바뀌었는지 가늠하는 서명 (도판·계산을 다시 할 때) */
+export function addsSig(project: Pick<Project, 'edits'>): string {
+  return (project.edits?.adds ?? []).map((a) => `${a.id}:${a.ring.length}:${a.floors ?? ''}:${a.heightM ?? ''}:${a.use}`).join(',')
+}
+
+/** 더한 건물 한 줄 설명 */
+export function addDesc(a: AddEdit): string {
+  const use = ADD_USES.find(([k]) => k === a.use)?.[1] ?? '용도 모름'
+  const size = a.floors ? `${a.floors}층` : a.heightM ? `약 ${Math.round(a.heightM * 10) / 10}m` : '층수 모름'
+  return `${a.name || '이름 없음'} · ${size} · ${a.use ? use : '용도 모름'} · ${a.source === 'rhino' ? '라이노 주변 변경' : '지도에서 그림'}`
+}
+
+/** 더한 건물 용도 고르기 (건축물대장 주용도 코드 — 용도 도판의 묶음과 층고 어림에 씀) */
+export const ADD_USES: [string, string][] = [
+  ['', '모름'],
+  ['01000', '단독주택'],
+  ['02000', '공동주택'],
+  ['03000', '근린생활시설'],
+  ['14000', '업무'],
+  ['07000', '판매'],
+  ['05000', '문화·교육·의료·복지'],
+  ['17000', '공장·창고'],
+]
 
 export function labelEditsFor(project: Project, panelId: string): LabelEdit[] {
   return editsOf(project).labels.filter((l) => l.panelId === panelId)

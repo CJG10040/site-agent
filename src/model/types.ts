@@ -267,6 +267,28 @@ export interface Project {
   riverDepth?: number
   /** ⑩ 3D 모형 어림 치수 (2026-11-17): 기본값과 다르게 고친 것만 (키는 export/modelDims.ts DIM_DEFS) — 3D 모형에만 씀 */
   modelDims?: Partial<Record<string, number>>
+  /** 설계안 (2026-11-21 묶음 C): 라이노 .3dm에서 올린 내 매스 — 여러 안을 저장해 골라 봄 */
+  designs?: DesignScheme[]
+  /** 보는 안: 설계안 id. 없으면 현황(대지 안 건물을 비운 빈 대지) */
+  scenario?: string | null
+}
+
+// ───────────────────────── 설계안 (2026-11-21 묶음 C) ─────────────────────────
+
+export interface DesignScheme {
+  id: string
+  /** 'A안' 등 */
+  name: string
+  fileName: string
+  /** 매스로 읽은 레이어 */
+  layers: string[]
+  createdAt: string
+  /** 삼각형: 파일 좌표를 미터로 바꾼 것 (위치 맞춤 전). 꼭짓점 xyz + 세 개씩 번호 */
+  mesh: { positions: number[]; indices: number[] }
+  /** 위치 맞춤: 파일 좌표 → 대지 좌표(대지 중심 원점, x 동·y 북, m). 원점을 돌린 뒤(rot°, 반시계) 옮김. 앱이 내보낸 .3dm 위에 그렸으면 모두 0 */
+  place: { dx: number; dy: number; dz: number; rot: number }
+  /** 파일의 지구 기준점 (있으면 '기준점대로' 위치 맞춤에 씀) */
+  anchor?: { lat: number; lon: number } | null
 }
 
 // ───────────────────────── 학생이 고친 것 (2026-11-12) ─────────────────────────
@@ -304,6 +326,24 @@ export interface LabelEdit {
 export interface ProjectEdits {
   hides: HideEdit[]
   labels: LabelEdit[]
+  /** 학생이 더한 건물 (2026-11-21 묶음 C5): 자료에 아직 없는 새 건물 — 지도에서 그리거나 라이노 '주변 변경' 레이어에서 */
+  adds?: AddEdit[]
+}
+
+/** 더한 건물 하나 (다시 수집해도 유지) */
+export interface AddEdit {
+  id: string
+  /** 외곽선 (경위도, 닫힌 고리) */
+  ring: [number, number][]
+  floors: number | null
+  /** 높이(m) — 라이노에서 온 것 (없으면 층수 × 용도별 층고) */
+  heightM?: number | null
+  /** 건축물대장 주용도 코드 ('01000' 단독주택 등), 모르면 '' */
+  use: string
+  name: string
+  reason: string
+  source: 'map' | 'rhino'
+  createdAt: string
 }
 
 // ───────────────────────── Phase 7 도판 ─────────────────────────
@@ -409,6 +449,8 @@ export interface DiagramSettings {
   view3d?: string[]
   /** 3D 보는 방향(°, 보는 사람이 선 방위)·내려다보는 각(°)·높이 과장 */
   cam3d?: { az?: number; tilt?: number; vex?: number }
+  /** 설계안 비교 도판에 넣을 안 (2026-11-21): 설계안 id, '' = 현황. 2~3개 */
+  compare?: string[]
 }
 
 /** 도판 하나의 결론 */

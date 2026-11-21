@@ -85,6 +85,8 @@ export interface SiteModel {
   contours: ModelContour[]
   site: Poly[]
   buildings: ModelBuilding[]
+  /** 보는 설계안 (2026-11-21 묶음 C8): 올린 삼각형(원점·높이 0 = 대지 중심 지면) + 발자국(DXF) — 현황이면 null */
+  design: { name: string; positions: number[]; indices: number[]; foot: XY[][] } | null
   parcels: ModelParcel[]
   /** 도로 면: 수치지도 도로경계 면(올린 도엽 안)을 합친 것 + 그 밖은 도로중심선을 폭만큼 넓혀 합친 것 */
   roads: Poly[]
@@ -982,8 +984,11 @@ export async function buildSiteModel(d: DiagramData, half: number, opts: { grid?
   const fitRoof = (r: ModelRoof, parts: Poly[]): ModelRoof => (r.kind !== 'flat' && !parts.every((p) => pitchedFits(p, r.kind as 'gable' | 'metal')) ? { ...r, kind: 'flat' } : r)
 
   const buildings: ModelBuilding[] = []
-  for (const b of d.buildings) {
+  // 대지 안 기존 건물도 넣되 .3dm에서는 꺼진 레이어로 (분석에서는 뺌 — 2026-11-21 사용자 결정)
+  for (const b of [...d.buildings, ...d.siteExisting]) {
     if (b.underground) continue
+    // 설계안 덩어리(2.5D)는 주변 건물로 넣지 않음 — 설계안은 원래 삼각형으로 따로 (2026-11-21 묶음 C)
+    if (b.src === 'design') continue
     const parts = polysOf(b.geom, f)
     if (!parts.length) continue
     const o = parts[0].outer
@@ -1257,9 +1262,19 @@ export async function buildSiteModel(d: DiagramData, half: number, opts: { grid?
         .filter((s) => inSquare([s.x, s.y]))
     : []
 
+  const design = d.scenario
+    ? {
+        name: d.scenario.name,
+        positions: d.scenario.mesh.positions,
+        indices: d.scenario.mesh.indices,
+        foot: d.buildings.filter((b) => b.src === 'design').flatMap((b) => polysOf(b.geom, f).map((p) => p.outer)),
+      }
+    : null
+
   return {
     origin: { lon, lat, x5179: X0, y5179: Y0, x5186, y5186, elev, trueNorthDeg },
     half,
+    design,
     terrain,
     terrainSource: grid?.source ?? null,
     terrainVersion: grid?.version ?? null,

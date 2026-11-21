@@ -10,9 +10,11 @@ import type { TerrainAnalysis } from '../lib/terrainSite'
 import { ORDERED_PANELS, panelNumber, type PanelCtx, type PanelDef } from './panels'
 import { NOT_MAP_PANELS, type SynthCtx } from './synth'
 import { is3d, to3d } from './view3d'
+import { COMPARE_IDS } from './panelsCompare'
 
 /** 3D로 볼 수 있는 도판 (단면·그래프·하늘 그림·바람장미는 제외, 종합 다이어그램은 됨) */
 export function can3d(id: string): boolean {
+  if (COMPARE_IDS.includes(id)) return false
   return id === 'synth' || !NOT_MAP_PANELS.has(id)
 }
 
@@ -64,7 +66,7 @@ export async function renderPanel(
   vworldKey: string,
   date: string,
   terrain: TerrainAnalysis | null = null,
-  extra: { synth?: SynthCtx | null; labels?: LabelEdit[] } = {},
+  extra: { synth?: SynthCtx | null; labels?: LabelEdit[]; scenarios?: { id: string; name: string; d: DiagramData; editedAt?: string }[] } = {},
 ): Promise<RenderedPanel> {
   // 겹쳐 보기는 아래 도판의 틀을 빌림
   const borrow = def.frameFrom?.(settings)
@@ -81,6 +83,12 @@ export async function renderPanel(
       return bd ? await bd.render({ ...ctx, synth: null }) : null
     }
     ctx.panelLabel = panelLabel
+    // 설계안 비교: 안마다 자료로 다른 도판을 같은 틀로 다시 그림
+    ctx.scenarios = extra.scenarios
+    ctx.renderOther = async (id, d) => {
+      const bd = ORDERED_PANELS.find((p) => p.id === id && p.id !== def.id)
+      return bd ? await bd.render({ ...ctx, d, synth: null, scenarios: undefined }) : null
+    }
     out = await def.render(ctx)
   } catch (e) {
     out = { layers: [], legend: [], summary: [], caption: '', empty: `그리는 중 오류: ${e instanceof Error ? e.message : String(e)}` }

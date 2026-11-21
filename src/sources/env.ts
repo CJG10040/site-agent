@@ -125,9 +125,13 @@ export function windRadius(R: number, siteFar: number): number {
   return Math.min(WIND_R_MAX, Math.max(WIND_R_MIN, Math.ceil(Math.min(want, cap) / 10) * 10))
 }
 
-export async function computeEnv(project: Project, config: VWorldConfig, onProgress: (t: string) => void): Promise<EnvResult> {
+/**
+ * 환경 계산. 기본은 현황(대지 안 건물을 비운 빈 대지) — 보는 안과 상관없이 (사실 카드·수집 다시 하기용).
+ * design: true면 지금 보는 설계안의 매스를 넣어 계산 (2026-11-21 묶음 C6)
+ */
+export async function computeEnv(project: Project, config: VWorldConfig | null, onProgress: (t: string) => void, opts: { design?: boolean } = {}): Promise<EnvResult> {
   void config
-  const d = buildDiagramData(project)
+  const d = buildDiagramData(opts.design ? project : { ...project, scenario: null })
   if (!d) throw new Error('대지가 정해지지 않았습니다')
   if (!d.buildings.length) throw new Error("'주변 건물' 자료가 없어 계산할 수 없습니다")
   const [lon, lat] = d.center

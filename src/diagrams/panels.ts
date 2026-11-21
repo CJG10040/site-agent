@@ -12,7 +12,7 @@ import type { DiagramSettings } from '../model/types'
 import { ALL_LAYERS } from '../sources/vworldLayers'
 import { aerialImage } from './aerial'
 import { basisItem, routesNote, storeBasis } from './basis'
-import { esc, type PanelLayer, type PanelOutput } from './compose'
+import { esc, type LegendItem, type PanelLayer, type PanelOutput } from './compose'
 import { bldHeight, bldSourceText, type Bld, type DiagramData, type Pt } from './data'
 import { centroidOf, dir8, MAP_CX, MAP_CY, MAP_R, type Frame } from './frame'
 import { isStock, mix, monoShades, steps, sunPathColors, themeColor, zoningColor, type Palette } from './palette'
@@ -27,6 +27,7 @@ import { OVERLAY_PANELS } from './overlay'
 import { EXPLODED_PANEL } from './exploded'
 import type { Cam3d, Projector, View3dOpts } from './view3d'
 import { LIFE_PANELS } from './panelsLife'
+import { COMPARE_PANELS } from './panelsCompare'
 import { MOVE_PANELS } from './panelsMove'
 import { SECTION_PANELS } from './panelsSection'
 import { SYNTH_PANEL, type SynthCtx } from './synth'
@@ -47,9 +48,13 @@ export interface PanelCtx {
   basePanel?: (id: string) => Promise<PanelOutput | null>
   /** 도판 id → '도판 12 바람장미' (종합 도판의 근거 표기) */
   panelLabel?: (id: string) => string
+  /** 설계안 비교 도판 (2026-11-21 묶음 C9): 비교할 안마다 자료 */
+  scenarios?: { id: string; name: string; d: DiagramData; editedAt?: string }[]
+  /** 다른 도판을 다른 자료(안)로 그림 (설계안 비교) */
+  renderOther?: (id: string, d: DiagramData) => Promise<PanelOutput | null>
 }
 
-export type PanelGroup = '위치' | '땅의 조건' | '지형' | '주변 현황' | '연계와 접근' | '환경' | '사회·경제' | '현장' | '겹쳐 보기' | '종합'
+export type PanelGroup = '위치' | '땅의 조건' | '지형' | '주변 현황' | '연계와 접근' | '환경' | '사회·경제' | '현장' | '겹쳐 보기' | '종합' | '설계안 비교'
 
 export interface PanelDef {
   id: string
@@ -138,10 +143,43 @@ function where(c: PanelCtx, lon: number, lat: number): string {
 }
 
 function bldCaption(c: PanelCtx): string {
-  const add = c.d.addedFromAddr ? `, 도로명주소 건물로 ${fmt(c.d.addedFromAddr)}동 보강` : ''
+  const user = c.d.buildings.filter((b) => b.src === 'user').length
+  const add = `${c.d.addedFromAddr ? `, 도로명주소 건물로 ${fmt(c.d.addedFromAddr)}동 보강` : ''}${user ? `, 학생이 더한 건물 ${fmt(user)}동` : ''}`
   return c.d.ngii
     ? `건물: ${bldSourceText(c.d)}${add} · ${c.date} 수집 · 무벽건물(지붕만)·가건물은 뺌`
     : `건물: 국토교통부 GIS건물통합정보(브이월드)${add} · ${c.date} 수집 · 최근 지은 건물이 빠지거나 값이 비어 있을 수 있음`
+}
+
+/** 현황 통계에 쓰는 건물 — 보는 설계안의 덩어리는 뺌 (2026-11-21 묶음 C) */
+function existingOf(c: PanelCtx): Bld[] {
+  return c.d.buildings.filter((b) => b.src !== 'design')
+}
+
+/**
+ * 현황 도판(13~16) 위 덧그림 (2026-11-21 사용자 결정):
+ * 대지 안 기존 건물 = '철거 예정'처럼 점선 윤곽(분석에서 뺌), 보는 설계안 = 대지 강조색 윤곽 (fill을 주면 그 색으로 채움)
+ */
+function siteMarks(c: PanelCtx, designFill?: string): { layers: PanelLayer[]; legend: LegendItem[] } {
+  const layers: PanelLayer[] = []
+  const legend: LegendItem[] = []
+  const ex = c.d.siteExisting
+  if (ex.length) {
+    layers.push({ id: '대지_안_기존_건물', svg: `<path d="${ex.map((b) => c.f.path(b.geom, false)).join('')}" fill="none" stroke="${c.pal.ink}" stroke-width="1.1" stroke-dasharray="4 3" stroke-opacity="0.8"/>` })
+    legend.push({ color: c.pal.ink, label: '대지 안 기존 건물 (분석에서 뺌)', glyph: `<rect x="3" y="3" width="20" height="12" fill="none" stroke="${c.pal.ink}" stroke-width="1.2" stroke-dasharray="3 2"/>` })
+  }
+  const ds = c.d.buildings.filter((b) => b.src === 'design')
+  if (ds.length) {
+    const d = ds.map((b) => c.f.path(b.geom, false)).join('')
+    layers.push({ id: '설계안', svg: `<path d="${d}" fill="${designFill ?? 'none'}" stroke="${c.pal.accent}" stroke-width="1.6" stroke-linejoin="round"/>` })
+    legend.push({ color: c.pal.accent, label: `설계안 ${c.d.scenario?.name ?? ''}`.trim(), glyph: `<rect x="3" y="3" width="20" height="12" fill="${designFill ?? 'none'}" stroke="${c.pal.accent}" stroke-width="1.6"/>` })
+  }
+  return { layers, legend }
+}
+
+/** 설계안 한 줄 요약 (현황 도판 요약 끝에) */
+function designLine(c: PanelCtx): string {
+  const s = c.d.scenario
+  return s ? `설계안 ${s.name}: 가장 높은 곳 약 ${fmt(s.maxHeight, 1)}m, 위에서 본 넓이 약 ${fmt(s.footprint)}㎡ (현황 수치에는 넣지 않음)` : ''
 }
 
 function catColor(pal: Palette, i: number): string {
@@ -412,18 +450,21 @@ export const PANELS: PanelDef[] = [
     needs: "공간정보에서 '주변 건물'을 수집하세요.",
     three: (c) => ({ massColor: () => c.pal.ink }),
     render: (c) => {
-      const bs = c.d.buildings
-      if (!bs.length) return { layers: [], legend: [], summary: [], caption: '', empty: '건물 자료가 없습니다' }
+      const all = c.d.buildings
+      const bs = existingOf(c)
+      if (!all.length && !c.d.siteExisting.length) return { layers: [], legend: [], summary: [], caption: '', empty: '건물 자료가 없습니다' }
       const inside = bs.filter((b) => inFrame(c, b.geom))
       const cover = inside.reduce((a, b) => a + b.area, 0)
+      const marks = siteMarks(c)
       return {
-        layers: [{ id: '건물', svg: `<path d="${bs.map((b) => c.f.path(b.geom, false)).join('')}" fill="${c.pal.ink}"/>` }],
-        legend: [{ color: c.pal.ink, label: '건물' }],
+        layers: [{ id: '건물', svg: `<path d="${all.map((b) => c.f.path(b.geom, false)).join('')}" fill="${c.pal.ink}"/>` }, ...marks.layers],
+        legend: [{ color: c.pal.ink, label: '건물' }, ...marks.legend],
         summary: [
           `반경 안 건물 ${fmt(inside.length)}동`,
           `건물이 땅을 덮은 비율 약 ${pct(cover, frameArea(c.f))}% (건물 바닥 면적 합 ÷ 도판 면적)`,
           `건물 바닥 면적 중앙값 ${fmt(median(inside.map((b) => b.area)))}㎡`,
-        ],
+          designLine(c),
+        ].filter(Boolean),
         caption: bldCaption(c),
       }
     },
@@ -433,10 +474,11 @@ export const PANELS: PanelDef[] = [
     title: '건축물 용도',
     group: '주변 현황',
     needs: "공간정보에서 '주변 건물'을 수집하세요.",
-    three: (c) => ({ massColor: (b) => useColor(c.pal, useClass(b.use)) }),
+    three: (c) => ({ massColor: (b) => (b.src === 'design' ? mix(c.pal.paper, c.pal.accent, 0.35) : useColor(c.pal, useClass(b.use))) }),
     render: (c) => {
-      const bs = c.d.buildings
+      const bs = existingOf(c)
       if (!bs.length) return { layers: [], legend: [], summary: [], caption: '', empty: '건물 자료가 없습니다' }
+      const marks = siteMarks(c, mix(c.pal.paper, c.pal.accent, 0.35))
       const ids = [...USE_CLASSES.map((u) => u.id), 'other', 'unknown']
       const label = (id: string) => (id === 'other' ? '기타' : id === 'unknown' ? '미상' : USE_CLASSES.find((u) => u.id === id)!.label)
       const styles: Record<string, { fill: string; label: string }> = {}
@@ -452,12 +494,13 @@ export const PANELS: PanelDef[] = [
       for (const b of near) if (useClass(b.use) !== 'unknown') nearCounts.set(useClass(b.use), (nearCounts.get(useClass(b.use)) ?? 0) + 1)
       const nearRank = [...nearCounts.entries()].sort((a, b) => b[1] - a[1])
       return {
-        layers: [{ id: '건축물_용도', svg: grouped(bs.map((b) => ({ d: c.f.path(b.geom, false), key: useClass(b.use) })), styles) }],
-        legend: ids.filter((id) => counts.get(id)).map((id) => ({ color: styles[id].fill, label: `${styles[id].label}` })),
+        layers: [{ id: '건축물_용도', svg: grouped(bs.map((b) => ({ d: c.f.path(b.geom, false), key: useClass(b.use) })), styles) }, ...marks.layers],
+        legend: [...ids.filter((id) => counts.get(id)).map((id) => ({ color: styles[id].fill, label: `${styles[id].label}` })), ...marks.legend],
         summary: [
           `용도가 확인되는 ${fmt(known)}동 중 ${ranked.slice(0, 3).map((id) => `${label(id)} ${pct(counts.get(id) ?? 0, known)}%`).join(', ')}`,
           `용도 미상 ${pct(counts.get('unknown') ?? 0, inside.length)}% (최근 건물·미등재 건물일 수 있어 현장 확인 대상)`,
           nearRank.length ? `대지 경계 20m 안 건물: ${nearRank.slice(0, 3).map(([id, n]) => `${label(id)} ${n}동`).join(', ')}` : '',
+          designLine(c),
         ].filter(Boolean),
         caption: `${bldCaption(c)} · 용도는 건축물대장의 주용도`,
       }
@@ -469,8 +512,9 @@ export const PANELS: PanelDef[] = [
     group: '주변 현황',
     needs: "공간정보에서 '주변 건물'을 수집하세요.",
     render: (c) => {
-      const bs = c.d.buildings
+      const bs = existingOf(c)
       if (!bs.length) return { layers: [], legend: [], summary: [], caption: '', empty: '건물 자료가 없습니다' }
+      const marks = siteMarks(c, mix(c.pal.paper, c.pal.accent, 0.35))
       const bins = [
         { label: '1970년 이전', test: (y: number) => y < 1970 },
         { label: '1970년대', test: (y: number) => y >= 1970 && y < 1980 },
@@ -489,15 +533,16 @@ export const PANELS: PanelDef[] = [
       const cut = new Date().getFullYear() - 30
       const decade = bins.map((b) => [b.label, years.filter(b.test).length] as const).sort((a, b) => b[1] - a[1])[0]
       return {
-        layers: [{ id: '준공_연대', svg: grouped(bs.map((b) => ({ d: c.f.path(b.geom, false), key: keyOf(b) })), styles) }],
-        legend: [...bins.map((b, i) => ({ color: colors[i], label: b.label })), { color: c.pal.unknown, label: '미상' }],
-        summary: years.length
+        layers: [{ id: '준공_연대', svg: grouped(bs.map((b) => ({ d: c.f.path(b.geom, false), key: keyOf(b) })), styles) }, ...marks.layers],
+        legend: [...bins.map((b, i) => ({ color: colors[i], label: b.label })), { color: c.pal.unknown, label: '미상' }, ...marks.legend],
+        summary: (years.length
           ? [
               `사용승인 연도가 확인되는 ${fmt(years.length)}동 중 30년 넘은(${cut}년 이전) 건물 ${pct(years.filter((y) => y < cut).length, years.length)}%`,
               `사용승인 연도 중앙값 ${Math.round(median(years))}년, 가장 많은 연대 ${decade[0]}`,
               `연도 미상 ${pct(inside.length - years.length, inside.length)}%`,
             ]
-          : ['사용승인 연도가 있는 건물이 없음'],
+          : ['사용승인 연도가 있는 건물이 없음']
+        ).concat(designLine(c) ? [designLine(c)] : []),
         caption: `${bldCaption(c)} · 사용승인일 기준, 미상은 추정하지 않음`,
       }
     },
@@ -512,8 +557,10 @@ export const PANELS: PanelDef[] = [
       return { massColor: (b) => (b.floors === null ? c.pal.unknown : colors[Math.max(0, FLOOR_BINS.findIndex((x) => x.test(b.floors!)))]) }
     },
     render: (c) => {
-      const bs = c.d.buildings
+      const all = c.d.buildings
+      const bs = existingOf(c)
       if (!bs.length) return { layers: [], legend: [], summary: [], caption: '', empty: '건물 자료가 없습니다' }
+      const marks = siteMarks(c)
       const colors = steps(c.pal, FLOOR_BINS.length)
       const styles: Record<string, { fill: string; label: string }> = { unknown: { fill: c.pal.unknown, label: '미상' } }
       FLOOR_BINS.forEach((b, i) => (styles[`b${i}`] = { fill: colors[i], label: b.label }))
@@ -524,15 +571,16 @@ export const PANELS: PanelDef[] = [
       const tc = top ? centroidOf(top.geom) : null
       const fromAddr = inside.filter((b) => b.floorsFromAddr).length
       return {
-        layers: [{ id: '층수', svg: grouped(bs.map((b) => ({ d: c.f.path(b.geom, false), key: keyOf(b) })), styles) }],
-        legend: [...FLOOR_BINS.map((b, i) => ({ color: colors[i], label: b.label })), { color: c.pal.unknown, label: '미상' }],
-        summary: fl.length
+        layers: [{ id: '층수', svg: grouped(all.map((b) => ({ d: c.f.path(b.geom, false), key: keyOf(b) })), styles) }, ...marks.layers],
+        legend: [...FLOOR_BINS.map((b, i) => ({ color: colors[i], label: b.label })), { color: c.pal.unknown, label: '미상' }, ...marks.legend],
+        summary: (fl.length
           ? [
               `층수가 확인되는 ${fmt(fl.length)}동: 1~2층 ${pct(fl.filter((n) => n <= 2).length, fl.length)}%, 3~5층 ${pct(fl.filter((n) => n >= 3 && n <= 5).length, fl.length)}%, 6층 이상 ${pct(fl.filter((n) => n >= 6).length, fl.length)}%`,
               `층수 중앙값 ${fmt(median(fl), 1)}층, 가장 높은 건물 지상 ${top?.floors}층${tc ? ` (${where(c, tc[0], tc[1])})` : ''}`,
               `층수 미상 ${pct(inside.length - fl.length, inside.length)}%`,
             ]
-          : ['층수가 있는 건물이 없음'],
+          : ['층수가 있는 건물이 없음']
+        ).concat(designLine(c) ? [`${designLine(c)} — 층수는 높이 ÷ 3.5m로 어림해 같은 색 단계로`] : []),
         caption: `${bldCaption(c)} · 지상층수 기준${fromAddr ? ` (${fmt(fromAddr)}동은 도로명주소 건물의 층수로 보강)` : ''}`,
       }
     },
@@ -1340,10 +1388,10 @@ export const TERRAIN_PANELS: PanelDef[] = [
   },
 ]
 
-export const PANEL_GROUP_ORDER: PanelGroup[] = ['위치', '땅의 조건', '지형', '주변 현황', '연계와 접근', '환경', '사회·경제', '현장', '겹쳐 보기', '종합']
+export const PANEL_GROUP_ORDER: PanelGroup[] = ['위치', '땅의 조건', '지형', '주변 현황', '연계와 접근', '환경', '사회·경제', '현장', '겹쳐 보기', '종합', '설계안 비교']
 
 /** 보고서 배치 순서 (위치 → 땅의 조건 → 지형 → 주변 현황 → 연계와 접근 → 환경 → 사회·현장) */
-export const ORDERED_PANELS: PanelDef[] = PANEL_GROUP_ORDER.flatMap((g) => [...PANELS, LAW_PANEL, ...TERRAIN_PANELS, ...SECTION_PANELS, ...MOVE_PANELS, ...ENV_PANELS, ...LIFE_PANELS, RESEARCH_PANEL, ...OVERLAY_PANELS, EXPLODED_PANEL, SYNTH_PANEL].filter((p) => p.group === g))
+export const ORDERED_PANELS: PanelDef[] = PANEL_GROUP_ORDER.flatMap((g) => [...PANELS, LAW_PANEL, ...TERRAIN_PANELS, ...SECTION_PANELS, ...MOVE_PANELS, ...ENV_PANELS, ...LIFE_PANELS, RESEARCH_PANEL, ...OVERLAY_PANELS, EXPLODED_PANEL, SYNTH_PANEL, ...COMPARE_PANELS].filter((p) => p.group === g))
 
 export function panelNumber(id: string): number {
   return ORDERED_PANELS.findIndex((p) => p.id === id) + 1
