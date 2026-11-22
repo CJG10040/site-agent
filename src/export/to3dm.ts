@@ -37,7 +37,7 @@ export const LAYERS: LayerDef[] = [
   { key: 'info', name: '정보', color: [40, 40, 40] },
   { key: 'site', name: '대지 경계', color: [220, 38, 38] },
   { key: 'design', name: '설계안', color: [212, 42, 30] },
-  { key: 'lawEnvelope', name: '법규_가능영역 (참고용)', color: [230, 140, 40] },
+  { key: 'lawEnvelope', name: '법규_가능영역 (참고용 — 켜서 보기)', color: [230, 140, 40] },
   { key: 'bldg', name: '건물', color: [140, 140, 140] },
   { key: 'bldgAround', name: '주변 건물 (실측 높이·층수 × 용도별 층고)', color: [150, 150, 150], parent: 'bldg' },
   { key: 'bldgSite', name: '대지 안 기존 건물', color: [230, 150, 150], parent: 'bldg' },
@@ -302,7 +302,8 @@ export async function siteModelTo3dm(m: SiteModel, meta: ExportMeta, onStep?: Ex
                 : (DIM_LAYER_NAME[def.key]?.(m.dims) ?? def.name)
       L.color = { r: def.color[0], g: def.color[1], b: def.color[2], a: 255 }
       // 대지 안 기존 건물은 꺼 둠 (설계는 빈 대지에서 시작)
-      if (def.key === 'bldgSite') L.visible = false
+      // 법규 가능 영역도 꺼 둠 (2026-11-22 사용자 요청: 늘 보기엔 거슬림 — 켜서 참고)
+      if (def.key === 'bldgSite' || def.key === 'lawEnvelope') L.visible = false
       if (def.parent) L.parentLayerId = layerId.get(def.parent) ?? ''
       const lm = mats ? layerMat(def.key) : undefined
       if (lm) L.renderMaterialIndex = matIndex(lm)
@@ -554,6 +555,9 @@ export async function siteModelTo3dm(m: SiteModel, meta: ExportMeta, onStep?: Ex
       addMeshObj(em, 'lawEnvelope', `법규_가능영역 ${r1(s.bottom)}~${r1(s.top)}m`, { 아래: r1(s.bottom), 위: r1(s.top), 참고: m.envelope?.note ?? '' })
     }
     const roofMb = newMesh()
+    // 대지 안 기존 건물의 경사 지붕·파라펫은 그 건물과 같은 레이어(꺼짐)로 — 2026-11-22 사용자 지적:
+    // 건물은 꺼진 레이어인데 파라펫만 켜진 '파라펫' 레이어에 남아 대지 위에 떠 보였음
+    const roofSiteMb = newMesh()
     // 파라펫: 건물 매스와 같은 색·재질 (주변 건물 / 대지 안 건물을 따로 모음)
     const parapetMb = newMesh()
     const parapetSiteMb = newMesh()
@@ -579,8 +583,11 @@ export async function siteModelTo3dm(m: SiteModel, meta: ExportMeta, onStep?: Ex
             const wm = newMesh()
             addTris(wm, g.walls)
             addMeshObj(wm, key, label, { ...user, '용마루 높이(m, 어림)': (g.ridge - b.base).toFixed(1) })
-            addTris(roofMb, g.roof)
-            pitched++
+            if (b.onSite) addTris(roofSiteMb, g.roof)
+            else {
+              addTris(roofMb, g.roof)
+              pitched++
+            }
             continue
           }
         }
@@ -605,7 +612,8 @@ export async function siteModelTo3dm(m: SiteModel, meta: ExportMeta, onStep?: Ex
     }
     addMeshObj(roofMb, 'roofPitched', `경사 지붕 ${pitched}동`)
     addMeshObj(parapetMb, 'parapet', '파라펫')
-    addMeshObj(parapetSiteMb, 'parapet', '파라펫 (대지 안 건물)', {}, [230, 150, 150], 'facadeSite')
+    addMeshObj(roofSiteMb, 'bldgSite', '경사 지붕 (대지 안 건물)', {}, [230, 150, 150], 'facadeSite')
+    addMeshObj(parapetSiteMb, 'bldgSite', '파라펫 (대지 안 건물)', {}, [230, 150, 150], 'facadeSite')
 
     // ── 수치지도: 원본 등고선·표고점·옹벽·절성토·지붕 구조물
     for (const c of m.mapContours) addPolyline(c.pts.map(([x, y]) => [x, y, c.z]), 'mapContour', `해발 ${c.level}m`, { 해발: String(c.level), 구분: c.major ? '계곡선' : '주곡선' })

@@ -22,6 +22,12 @@ export default function ModelPreview({ model, plan, paper = '#f5f5f4', onReady }
   const setViewRef = useRef<((v: View) => void) | null>(null)
   const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading')
   const [err, setErr] = useState('')
+  // ⑪ 건축 가능 영역은 처음엔 숨김 (2026-11-22 사용자 요청: 미리보기에서 늘 보이면 거슬림) — 단추로 켜기
+  const [showEnv, setShowEnv] = useState(false)
+  const showEnvRef = useRef(false)
+  showEnvRef.current = showEnv
+  const envRef = useRef<{ set: (on: boolean) => void } | null>(null)
+  const [hasEnv, setHasEnv] = useState(false)
 
   useEffect(() => {
     let alive = true
@@ -57,6 +63,9 @@ export default function ModelPreview({ model, plan, paper = '#f5f5f4', onReady }
         controls.maxPolarAngle = Math.PI / 2 - 0.03
         controls.screenSpacePanning = true
         scene.add(parts.group)
+        const envMeshes = parts.group.children.filter((o) => o.name === '법규_가능영역')
+        for (const o of envMeshes) o.visible = showEnvRef.current
+        setHasEnv(envMeshes.length > 0)
         scene.add(new THREE.HemisphereLight(0xffffff, 0xb8b0a0, 1.6))
         const sun = new THREE.DirectionalLight(0xffffff, 1.8)
         sun.position.set(-half, half * 0.8, half * 1.6)
@@ -74,6 +83,12 @@ export default function ModelPreview({ model, plan, paper = '#f5f5f4', onReady }
           dirty = true
         }
         setViewRef.current = setView
+        envRef.current = {
+          set: (on) => {
+            for (const o of envMeshes) o.visible = on
+            dirty = true
+          },
+        }
         let dirty = true
         setView('sw')
         controls.addEventListener('change', () => (dirty = true))
@@ -115,6 +130,7 @@ export default function ModelPreview({ model, plan, paper = '#f5f5f4', onReady }
     return () => {
       alive = false
       setViewRef.current = null
+      envRef.current = null
       cleanup()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -139,6 +155,20 @@ export default function ModelPreview({ model, plan, paper = '#f5f5f4', onReady }
               {l}
             </button>
           ))}
+          {hasEnv && (
+            <button
+              type="button"
+              className={`btn small${showEnv ? ' primary' : ''}`}
+              aria-pressed={showEnv}
+              onClick={() => {
+                const next = !showEnv
+                setShowEnv(next)
+                envRef.current?.set(next)
+              }}
+            >
+              법규 가능 영역 {showEnv ? '숨기기' : '보기'}
+            </button>
+          )}
         </div>
       )}
     </div>
