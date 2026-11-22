@@ -35,6 +35,7 @@ import { COMPARE_PANELS } from './panelsCompare'
 import { MOVE_PANELS } from './panelsMove'
 import { SECTION_PANELS } from './panelsSection'
 import { SYNTH_PANEL, type SynthCtx } from './synth'
+import { terrainSourceNote } from '../lib/terrain'
 
 export interface PanelCtx {
   d: DiagramData
@@ -1193,7 +1194,7 @@ function terrainCaption(t: TerrainAnalysis, extra = ''): string {
     return `국토지리정보원 수치지도${t.grid.version ? `(${t.grid.version}년)` : ''} 등고선·표고점으로 만든 대지 주변 2m 지형에 옹벽·석축 높이를 단차로 넣음(낮은 쪽은 선 방향 규칙), 그 밖은 10m 격자 · 도판은 5m 칸 · 높이는 대지 중심 = 0m 상대값${extra} · 등고선 사이 1m 안팎은 정확하지 않음 · 참고용`
   return t.grid.source === 'ngii'
     ? `국토지리정보원 연속수치지형도 등고선·표고점으로 만든 10m 격자(${t.grid.version ?? ''}) · 높이는 대지 중심 = 0m 상대값${extra} · 옹벽·계단처럼 10m보다 작은 지형은 나타나지 않음 · 참고용`
-    : `대체 자료(AWS Terrain Tiles) — 광주·전남·전북 밖이라 국토지리정보원 격자가 없음, 도심에서는 건물 높이가 섞여 오차가 큼 · 높이는 대지 중심 = 0m 상대값${extra}`
+    : `${terrainSourceNote(t.grid.source)} · 높이는 대지 중심 = 0m 상대값${extra}`
 }
 
 const signed = (v: number) => `${v > 0 ? '+' : ''}${fmt(v, 0)}`

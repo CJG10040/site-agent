@@ -111,7 +111,7 @@ export function siteOverview(project: Project, d: DiagramData, terrain: TerrainA
     site.push({
       label: '대지 안 높낮이 차',
       value: rangeText(terrain.site.range, !!terrain.fine).replace(/ \((10m 격자|수치지도 2m 지형) 기준\)/, '').replace('약 ', ''),
-      note: `평균 경사 ${fmt(terrain.site.meanSlope, 1)}°${terrain.grid.source === 'terrarium' ? ' · 대체 자료' : terrain.grid.source === 'map' ? ' · 수치지도 2m' : ''}`,
+      note: `평균 경사 ${fmt(terrain.site.meanSlope, 1)}°${terrain.grid.source === 'terrarium' || terrain.grid.source === 'mapterhorn' ? ' · 공개 지형(30m)' : terrain.grid.source === 'map' ? ' · 수치지도 2m' : ''}`,
     })
     if (terrain.high && terrain.low)
       around.push({ label: '높이 (대지 중심 = 0m)', value: `${sign(terrain.low.rel)} ~ ${sign(terrain.high.rel)}m`, note: `기복 약 ${fmt(terrain.high.rel - terrain.low.rel, 0)}m` })

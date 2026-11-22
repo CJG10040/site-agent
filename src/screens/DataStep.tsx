@@ -20,6 +20,7 @@ import { collectSiteData, type CollectProgress } from '../sources/collect'
 import { computeEnv } from '../sources/env'
 import type { ApiKeys } from '../sources/keys'
 import { effectiveDomain, type BaseMap, type GeoFeature, type VWorldConfig } from '../sources/vworld'
+import { terrainSourceLabel } from '../lib/terrain'
 
 interface Props {
   project: Project
@@ -113,7 +114,7 @@ export default function DataStep(props: Props) {
         setContours({
           key: contourKey,
           features: lines.map((l) => ({ type: 'Feature', geometry: { type: 'LineString', coordinates: l.coords }, properties: { major: l.major, level: l.level } })),
-          note: lines.length ? `${t.grid.source === 'ngii' ? '국토지리정보원 10m 격자' : '대체 자료'}` : '기복 3m 미만 평지',
+          note: lines.length ? terrainSourceLabel(t.grid.source) : '기복 3m 미만 평지',
         })
       })
       .finally(() => alive && setContourBusy(false))

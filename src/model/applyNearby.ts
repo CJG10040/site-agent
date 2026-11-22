@@ -755,8 +755,8 @@ export function addTerrainFacts(ctx: FactContext, o: ApiOutcome<TerrainSummary>)
   const ngii = r?.source === 'ngii'
   const src = ctx.newSource(
     apiSource({
-      source_name: ngii ? '국토지리정보원 연속수치지형도 (대지해석 에이전트가 10m 격자로 가공)' : 'AWS Terrain Tiles (대체 자료)',
-      dataset_name: ngii ? `등고선·표고점 → 10m 격자 ${r?.version ?? ''}` : '전 세계 지형 타일 (Terrarium)',
+      source_name: ngii ? '국토지리정보원 연속수치지형도 (내 PC 자료 폴더의 10m 격자)' : r?.source === 'mapterhorn' ? 'Mapterhorn 공개 지형 (Copernicus DEM GLO-30)' : 'AWS Terrain Tiles (공개 지형)',
+      dataset_name: ngii ? `등고선·표고점 → 10m 격자 ${r?.version ?? ''}` : r?.source === 'mapterhorn' ? 'Copernicus DEM GLO-30 30m (© DLR e.V., © Airbus, Copernicus·ESA)' : '전 세계 지형 타일 (Terrarium)',
       dataset_id: 'terrain:grid',
       retrieved_at: o.retrievedAt,
       geometry: `대지 중심 반경 ${radiusM}m`,
@@ -767,7 +767,7 @@ export function addTerrainFacts(ctx: FactContext, o: ApiOutcome<TerrainSummary>)
       limitations: ngii
         ? '5m 등고선과 표고점으로 보간한 10m 격자라 옹벽·계단·작은 둔덕은 나타나지 않음. 경사도·비탈 방향은 50m로 평활한 값. 참고용이며 측량·인허가 근거가 아님.'
         : '광주·전남·전북 밖이라 전 세계 지형 타일로 대신함. 도심에서는 건물 높이가 섞여 10m 넘게 틀릴 수 있음.',
-      original_url: ngii ? 'https://cjg10040.github.io/site-agent-terrain/' : 'https://registry.opendata.aws/terrain-tiles/',
+      original_url: ngii ? 'https://www.vworld.kr/dtmk/dtmk_ntads_s002.do?svcCde=MK&dsId=30185' : r?.source === 'mapterhorn' ? 'https://mapterhorn.com/' : 'https://registry.opendata.aws/terrain-tiles/',
       reliability: ngii ? 'computed' : 'secondary',
       feature_count: null,
       status: o.error ? 'error' : 'ok',

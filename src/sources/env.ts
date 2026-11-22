@@ -7,7 +7,7 @@ import type { EnvJob, EnvMessage, EnvOutput } from '../lib/env/env.worker'
 import type { LocalTerrain } from '../lib/env/grid'
 import { wgs84ToUtmk } from '../lib/proj'
 import { sunAt, sunAtDate, SUN_DAYS } from '../lib/sun'
-import { sampleAt, terrainAround, type TerrainGrid } from '../lib/terrain'
+import { sampleAt, terrainAround, terrainSourceLabel, type TerrainGrid } from '../lib/terrain'
 import { fineHalfFor, fineTerrainCached } from '../lib/terrainFine'
 import { arealRings, localProj } from '../lib/xy'
 import type { Project } from '../model/types'
@@ -84,7 +84,7 @@ async function localTerrain(lon: number, lat: number, halfM: number, fine: Terra
     t.fine = f
     return { t, source: `국토지리정보원 수치지도${fine.version ? `(${fine.version}년)` : ''} 2m(대지 주변, 옹벽 단차 반영) + 10m 격자` }
   }
-  return { t, source: grid.source === 'ngii' ? `국토지리정보원 10m ${grid.version ?? ''}`.trim() : '대체 자료(AWS Terrain Tiles)' }
+  return { t, source: terrainSourceLabel(grid.source, grid.version) }
 }
 
 function run(job: EnvJob, onProgress: (t: string) => void): Promise<EnvOutput> {

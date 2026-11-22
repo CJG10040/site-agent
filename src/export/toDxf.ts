@@ -291,7 +291,7 @@ export function siteModelToDxf(m: SiteModel, meta: { title: string; address: str
     `ORIGIN WGS84  lon ${o.lon.toFixed(7)}  lat ${o.lat.toFixed(7)}`,
     `TRUE NORTH: ${Math.abs(o.trueNorthDeg).toFixed(2)} deg ${o.trueNorthDeg >= 0 ? 'clockwise' : 'counterclockwise'} from +Y`,
     `CONTOUR elevation 0 = ground at site center${o.elev !== null ? ` (approx. ${o.elev.toFixed(1)} m above sea level)` : ''}, interval ${m.contourStep} m, major ${m.contourStep * 5} m`,
-    `TERRAIN: ${m.terrainSource === 'map' ? `NGII 1:5000 digital map${m.mapYear ? ` (${m.mapYear})` : ''} contours/spot heights + retaining walls -> 2 m near site, 10 m beyond` : m.terrainSource === 'ngii' ? 'NGII contours -> 10 m grid' : m.terrainSource === 'terrarium' ? 'AWS Terrarium (~30 m, low accuracy)' : 'none'}`,
+    `TERRAIN: ${m.terrainSource === 'map' ? `NGII 1:5000 digital map${m.mapYear ? ` (${m.mapYear})` : ''} contours/spot heights + retaining walls -> 2 m near site, 10 m beyond` : m.terrainSource === 'ngii' ? 'NGII contours -> 10 m grid' : m.terrainSource === 'mapterhorn' ? 'Copernicus DEM GLO-30 via Mapterhorn (~30 m surface model, (c) DLR e.V., (c) Airbus, Copernicus/ESA)' : m.terrainSource === 'terrarium' ? 'AWS Terrarium (~30 m, low accuracy)' : 'none'}`,
     ...(m.spots.length ? ['SPOT text = elevation above sea level (m); MAP-CONTOUR/CONTOUR elevation = relative to site center ground'] : []),
     'BUILDINGS: VWorld GIS building data, height not drawn (floors as text)',
     `ROADS: ${m.roadSource === 'map' ? 'NGII digital map road boundary areas' : m.roadSource === 'mixed' ? 'NGII digital map road areas (inside map sheets) + centerlines widened by width' : 'NGII road centerlines widened by road width'}. Collected ${ascii(meta.collected)}`,

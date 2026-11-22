@@ -1,22 +1,21 @@
-// 지형: 국토지리정보원 연속수치지형도 등고선·표고점으로 미리 만든 10m 격자 타일(site-agent-terrain 저장소)을 읽는다.
-// 타일: EPSG:5179 2,560m(256칸), PNG RGB — v = R×256 + G, 높이 = v/10 − 1000 (m), B=0이면 자료 없음.
-// 세 지역(전남광주·전북) 밖이거나 타일이 없으면 AWS Terrarium 타일로 대신한다 (도심에서 건물 높이가 섞여 오차가 큼).
+// 지형 (2026-11-22 묶음 H1 사용자 결정 D안): 국토지리정보원 1:5,000 등고선으로 만든 10m 타일을 GitHub(국외)에 두고 웹에 보이는 것은
+// 보안관리규정 별표 1('인터넷 등으로 좌표와 1:5,000 이상 등고선·표고값 표시 불가')·공간정보관리법 제16조(국외 반출)에 걸릴 수 있어 그만둠.
+// 기본은 공개 지형 Mapterhorn(Copernicus GLO-30, 한국 30m) — 광주 60지점 비교에서 도심 중앙 오차 2.8m(AWS 3.5m), 평야 1.6m(2.7m),
+// 산지는 숲 높이가 섞여 7.4m(5.5m). 못 받으면 AWS Terrain Tiles. 국토지리정보원 10m 타일은 학생 PC 폴더를 연결했을 때만(묶음 H2 — setLocalTerrain).
+// 10m 타일 형식: EPSG:5179 2,560m(256칸), PNG RGB — v = R×256 + G, 높이 = v/10 − 1000 (m), B=0이면 자료 없음.
 // 사용자 결정(2026-11-10): 높이는 '대지 중심 = 0m' 상대 높이로만 보여 준다.
 
 import { utmkToWgs84, wgs84ToUtmk } from './proj'
 
-/** 개발 중에만: localStorage 'site-agent:terrain-base'로 다른 주소(예: 내 PC에서 띄운 타일)를 시험할 수 있다 */
-const DEV_BASE = import.meta.env.DEV
-  ? (() => {
-      try {
-        return localStorage.getItem('site-agent:terrain-base')
-      } catch {
-        return null
-      }
-    })()
-  : null
-
-export const TERRAIN_BASE = DEV_BASE || 'https://cjg10040.github.io/site-agent-terrain/'
+/** 학생 PC 폴더의 10m 타일 읽기 (묶음 H2에서 폴더를 연결하면 넣음) — 'manifest.json'·'303_611.png' 같은 이름 → 파일 */
+type LocalTiles = (name: string) => Promise<Blob | null>
+let localTiles: LocalTiles | null = null
+export function setLocalTerrain(fn: LocalTiles | null): void {
+  localTiles = fn
+  manifestP = null
+  tileCache.clear()
+  gridCache.clear()
+}
 const TILE = 2560
 const N = 256
 
@@ -37,33 +36,49 @@ export interface TerrainGrid {
   ny: number
   /** 해발 높이(m), 0행 = 북쪽, 자료 없음 = NaN */
   z: Float32Array
-  /** ngii 10m 지형 타일, terrarium 대체 자료, map 사용자가 올린 수치지도로 만든 세밀 지형(+10m) */
-  source: 'ngii' | 'terrarium' | 'map'
+  /** ngii 10m 지형 타일(내 PC 폴더), mapterhorn 공개 지형(기본), terrarium AWS 대체 자료, map 사용자가 올린 수치지도로 만든 세밀 지형(+그 밖 격자) */
+  source: 'ngii' | 'mapterhorn' | 'terrarium' | 'map'
   version: string | null
 }
 
 /** 도판·파일 출처 글 */
 export function terrainSourceLabel(source: TerrainGrid['source'] | null | undefined, version?: string | null): string {
   if (source === 'map') return `국토지리정보원 수치지도${version ? `(${version}년)` : ''} 등고선·표고점·옹벽 → 대지 주변 2m + 그 밖 10m 격자`
-  if (source === 'ngii') return '국토지리정보원 10m 격자'
-  if (source === 'terrarium') return '대체 자료(AWS Terrain Tiles)'
+  if (source === 'ngii') return '국토지리정보원 10m 격자(내 PC 자료)'
+  if (source === 'mapterhorn') return '공개 지형 Mapterhorn(Copernicus GLO-30, 30m)'
+  if (source === 'terrarium') return '공개 지형 AWS Terrain Tiles(약 30m)'
   return '자료 없음'
+}
+
+/** 공개 지형의 한계와 출처 표기 (도판 캡션·모형 메모) */
+export function terrainSourceNote(source: TerrainGrid['source'] | null | undefined): string {
+  if (source === 'mapterhorn')
+    return 'Copernicus DEM GLO-30(© DLR e.V. 2010-2014, © Airbus 2014-2018, Copernicus·ESA 제공) via Mapterhorn — 30m, 건물·숲 높이가 섞인 표면 모델이라 도심 몇 m·산지 7m 안팎 높게 나옴, 수치지도를 올리거나 자료 폴더를 연결하면 정밀해짐'
+  if (source === 'terrarium') return 'AWS Terrain Tiles(Mapzen, SRTM 등) — 약 30m, 건물 높이가 섞여 도심 오차가 큼, 수치지도를 올리거나 자료 폴더를 연결하면 정밀해짐'
+  return ''
 }
 
 let manifestP: Promise<TerrainManifest | null> | null = null
 
 export function loadManifest(): Promise<TerrainManifest | null> {
-  manifestP ??= fetch(`${TERRAIN_BASE}dem/manifest.json`, { cache: 'no-cache' })
-    .then((r) => (r.ok ? (r.json() as Promise<TerrainManifest>) : null))
+  if (!localTiles) return Promise.resolve(null)
+  const get = localTiles
+  manifestP ??= get('manifest.json')
+    .then((b) => (b ? (b.text().then((t) => JSON.parse(t)) as Promise<TerrainManifest>) : null))
     .catch(() => null)
   return manifestP
 }
 
-async function decode(url: string): Promise<ImageData | null> {
+async function decode(src: string | (() => Promise<Blob | null>)): Promise<ImageData | null> {
   try {
-    const res = await fetch(url)
-    if (!res.ok) return null
-    const bmp = await createImageBitmap(await res.blob(), { colorSpaceConversion: 'none', premultiplyAlpha: 'none' })
+    let blob: Blob | null
+    if (typeof src === 'string') {
+      const res = await fetch(src)
+      if (!res.ok) return null
+      blob = await res.blob()
+    } else blob = await src()
+    if (!blob) return null
+    const bmp = await createImageBitmap(blob, { colorSpaceConversion: 'none', premultiplyAlpha: 'none' })
     const canvas = document.createElement('canvas')
     canvas.width = bmp.width
     canvas.height = bmp.height
@@ -82,7 +97,8 @@ function ngiiTile(c: number, r: number): Promise<ImageData | null> {
   const k = `${c}_${r}`
   let p = tileCache.get(k)
   if (!p) {
-    p = decode(`${TERRAIN_BASE}dem/${k}.png`)
+    const get = localTiles
+    p = get ? decode(() => get(`${k}.png`)) : Promise.resolve(null)
     tileCache.set(k, p)
   }
   return p
@@ -132,13 +148,14 @@ async function fromNgii(cx: number, cy: number, radiusM: number, manifest: Terra
   return g
 }
 
-// ───────── Terrarium 대체 (전 세계 30m 안팎, 도심에서 건물 높이가 섞임) ─────────
+// ───────── 공개 지형 타일 (Terrarium 인코딩: 높이 = R·256 + G + B/256 − 32768) ─────────
+// Mapterhorn: 512px 무손실 WebP, 한국은 z12까지(그 위는 404) · AWS: 256px PNG, z15
 
-const TERRARIUM = 'https://s3.amazonaws.com/elevation-tiles-prod/terrarium'
+const MAPTERHORN = (z: number, x: number, y: number) => `https://tiles.mapterhorn.com/${z}/${x}/${y}.webp`
+const TERRARIUM = (z: number, x: number, y: number) => `https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${z}/${x}/${y}.png`
 
-async function fromTerrarium(cx: number, cy: number, radiusM: number) {
+async function fromTerrarium(cx: number, cy: number, radiusM: number, url = TERRARIUM, z = 15) {
   const g = emptyGrid(cx, cy, radiusM, 150)
-  const z = 15
   const n = 2 ** z
   const tiles = new Map<string, Promise<ImageData | null>>()
   const lonLatAt = (col: number, row: number) => utmkToWgs84(g.x0 + (col + 0.5) * 10, g.y0 - (row + 0.5) * 10)
@@ -150,12 +167,13 @@ async function fromTerrarium(cx: number, cy: number, radiusM: number) {
       const tx = Math.floor(fx)
       const ty = Math.floor(fy)
       const k = `${tx}/${ty}`
-      if (!tiles.has(k)) tiles.set(k, decode(`${TERRARIUM}/${z}/${tx}/${ty}.png`))
+      if (!tiles.has(k)) tiles.set(k, decode(url(z, tx, ty)))
       const img = await tiles.get(k)!
       if (!img) continue
-      const px = Math.min(255, Math.floor((fx - tx) * 256))
-      const py = Math.min(255, Math.floor((fy - ty) * 256))
-      const q = (py * 256 + px) * 4
+      const w = img.width
+      const px = Math.min(w - 1, Math.floor((fx - tx) * w))
+      const py = Math.min(w - 1, Math.floor((fy - ty) * w))
+      const q = (py * w + px) * 4
       g.z[row * g.nx + col] = img.data[q] * 256 + img.data[q + 1] + img.data[q + 2] / 256 - 32768
     }
   return g
@@ -176,6 +194,18 @@ export function terrainAround(lon: number, lat: number, radiusM: number): Promis
         let valid = 0
         for (const v of g.z) if (!Number.isNaN(v)) valid++
         if (valid / g.z.length >= 0.3) return { ...g, source: 'ngii' as const, version: manifest.version }
+      }
+      // 공개 지형: Mapterhorn(자료 칸이 30% 넘으면) → AWS
+      const enough = (g: { z: Float32Array }) => {
+        let valid = 0
+        for (const v of g.z) if (!Number.isNaN(v)) valid++
+        return valid / g.z.length >= 0.3
+      }
+      try {
+        const g = await fromTerrarium(cx, cy, radiusM, MAPTERHORN, 12)
+        if (enough(g)) return { ...g, source: 'mapterhorn' as const, version: null }
+      } catch {
+        // AWS로
       }
       try {
         const g = await fromTerrarium(cx, cy, radiusM)

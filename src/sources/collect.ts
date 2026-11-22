@@ -31,6 +31,7 @@ import { busStopsAround, type TransitResult } from './transit'
 import { ALL_LAYERS, layerCategory, type CollectLayer } from './vworldLayers'
 import { LAND_DATASETS, nedByDong, nedForParcel } from './vworldLand'
 import { PARCEL_LAYER, queryFeatures, queryFeaturesInArea, reverseGeocode, VWorldError, type GeoFeature, type VWorldConfig } from './vworld'
+import { terrainSourceLabel } from '../lib/terrain'
 
 export type CollectState = 'pending' | 'running' | 'ok' | 'empty' | 'error'
 
@@ -554,7 +555,7 @@ export async function collectSiteData(input: CollectInput, onProgress: (p: Colle
     },
     (r) => ({
       state: r.coverage > 0 ? 'ok' : 'empty',
-      message: `${r.source === 'ngii' ? `국토지리정보원 10m 격자 ${r.version ?? ''}` : '대체 자료(AWS Terrain Tiles)'} · 자료 있는 칸 ${Math.round(r.coverage * 100)}%`,
+      message: `${terrainSourceLabel(r.source, r.version)} · 자료 있는 칸 ${Math.round(r.coverage * 100)}%`,
     }),
   )
 

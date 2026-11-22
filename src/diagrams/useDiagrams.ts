@@ -40,7 +40,7 @@ export interface CachedPanel extends RenderedPanel {
  * 도판을 그리는 코드를 바꿔 브라우저에 저장해 둔 그림이 달라져야 하면 하나 올림
  * (올리면 저장해 둔 도판이 모두 '바뀜'으로 보이고, 생성을 눌러야 새로 그림)
  */
-const DRAW_REV = 2 // 2026-11-22: 브이월드 하천망(옛 물길)을 뺌
+const DRAW_REV = 3 // 2026-11-22: 3 기본 지형을 Mapterhorn으로 · 2 브이월드 하천망(옛 물길)을 뺌
 
 /** 열쇠 → 그린 도판 (이 세션 메모리, 설정을 오갈 때 다시 그리지 않게) */
 const cache = new Map<string, CachedPanel>()

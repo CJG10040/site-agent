@@ -12,7 +12,7 @@ import { inNgii, type DiagramData } from '../diagrams/data'
 import type { Areal } from '../lib/geo'
 import { utmkToWgs84, wgs84To5186, wgs84ToUtmk } from '../lib/proj'
 import { buildTrees, MIX_SOURCE, type ModelTree, type TreeSrc } from './trees'
-import { terrainAround, type TerrainGrid } from '../lib/terrain'
+import { terrainAround, terrainSourceLabel, terrainSourceNote, type TerrainGrid } from '../lib/terrain'
 import { densifyLine, hatchStripes, markGlyph, ribbon, roadDirs, zebraStripes } from './streetDetail'
 import { centroidOf } from '../diagrams/frame'
 import { parcelFinder } from '../lib/parcelFind'
@@ -1375,8 +1375,8 @@ export function modelNotes(m: SiteModel, meta: { title: string; address: string;
         ? `국토지리정보원 ${m.map1000 ? '1:1,000·1:5,000' : '1:5,000'} 수치지도${m.mapYear ? `(${m.mapYear}년)` : ''} 등고선·표고점 삼각망 2m + 옹벽·석축 높이 단차(대지 주변), 그 밖은 10m 격자. 이 파일의 지형 면은 ${m.terrain?.cell ?? '-'}m 칸. 등고선 사이 1m 안팎은 정확하지 않음`
         : m.terrainSource === 'ngii'
           ? `국토지리정보원 연속수치지형도 등고선·표고점 → 10m 격자${m.terrainVersion ? ` (${m.terrainVersion})` : ''}. 1m 안팎 높낮이는 정확하지 않음`
-          : m.terrainSource === 'terrarium'
-            ? 'AWS Terrarium 지형 타일(약 30m, 도심은 건물 높이가 섞임) — 정확도 낮음'
+          : m.terrainSource === 'terrarium' || m.terrainSource === 'mapterhorn'
+            ? `${terrainSourceLabel(m.terrainSource)} — ${terrainSourceNote(m.terrainSource)}`
             : '없음 (평면)',
     ],
     ['등고선', `${m.contourStep}m 간격, 굵은 선(계곡선) ${m.contourStep * 5}m 간격 — 10m 격자에서 다시 그린 선`],
