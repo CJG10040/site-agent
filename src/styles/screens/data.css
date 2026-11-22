@@ -413,3 +413,30 @@
 .local-folder p {
   margin: 2px 0;
 }
+
+/* 자료 받기 도우미 (2026-11-22 묶음 H3) */
+.dl-helper {
+  margin: 8px 0;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+}
+.dl-steps {
+  margin: 6px 0 2px;
+  padding-left: 1.4em;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.dl-prompt {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  font-family: var(--mono, monospace);
+  font-size: 12px;
+}
+.dl-result {
+  display: block;
+  margin-top: 2px;
+}

@@ -21,8 +21,8 @@ interface FsFile extends FsHandle {
 export interface FsDir extends FsHandle {
   kind: 'directory'
   values(): AsyncIterable<FsFile | FsDir>
-  getFileHandle(name: string): Promise<FsFile>
   getDirectoryHandle(name: string, o?: { create?: boolean }): Promise<FsDir>
+  getFileHandle(name: string, o?: { create?: boolean }): Promise<FsFile>
   queryPermission(o: { mode: 'read' | 'readwrite' }): Promise<PermissionState>
   requestPermission(o: { mode: 'read' | 'readwrite' }): Promise<PermissionState>
 }
@@ -200,7 +200,7 @@ export async function initLocalData(): Promise<void> {
   if (!h) return
   handle = h
   try {
-    const p = await h.queryPermission({ mode: 'readwrite' })
+    const p = await h.queryPermission({ mode: 'read' })
     if (p === 'granted') await rescan()
     else set({ state: 'prompt' })
   } catch {
@@ -213,7 +213,7 @@ export async function connectFolder(): Promise<void> {
   const picker = (window as unknown as { showDirectoryPicker?: Picker }).showDirectoryPicker
   if (!picker) return
   try {
-    const h = await picker({ id: 'site-agent-data', mode: 'readwrite' })
+    const h = await picker({ id: 'site-agent-data', mode: 'read' })
     handle = h
     await putKv(KEY, h)
     await rescan()
@@ -227,7 +227,7 @@ export async function connectFolder(): Promise<void> {
 export async function regrantFolder(): Promise<void> {
   if (!handle) return
   try {
-    const p = await handle.requestPermission({ mode: 'readwrite' })
+    const p = await handle.requestPermission({ mode: 'read' })
     if (p === 'granted') await rescan()
   } catch (e) {
     set({ state: 'error', message: `허락을 받지 못했습니다: ${e instanceof Error ? e.message : String(e)}` })

@@ -4,6 +4,7 @@
 import { Check } from 'lucide-react'
 import { unzipSync } from 'fflate'
 import { useEffect, useRef, useState } from 'react'
+import DownloadHelper from './DownloadHelper'
 import { connectFolder, disconnectFolder, folderSupported, itemsForSite, regrantFolder, rescanFolder, useLocalData, type LocalItem } from '../lib/localData'
 import { centerOf, siteBoundary } from '../lib/geo'
 import { sheetsAround } from '../lib/mapSheet'
@@ -271,6 +272,7 @@ export default function NgiiUpload({ project, update, config }: Props) {
         ) : null}
         {!folderSupported && null}
       </div>
+      <DownloadHelper address={project.site.address?.road || project.site.address?.parcel || project.site.parcels[0]?.addr || ''} center={center} radiusM={R} have={haveCodes} />
       <div className="ngii-sheets">
         <span className="label">반경 {R}m에 걸치는 도엽</span>
         {needed.map((code) => (
