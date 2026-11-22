@@ -193,7 +193,7 @@ export default function BoardView({ project, update, defs, panels, busy, data, t
       </div>
 
       {busy && <p className="muted no-print">도판을 그리는 중…</p>}
-      {!busy && !defs.length && <p className="muted">넣을 도판이 없습니다 (⑥ 도판 단계에서 '리포트에 넣기'를 고르세요).</p>}
+      {!busy && !defs.length && <p className="muted">넣을 도판이 없습니다 — 위의 '도판 생성'으로 그리거나, ⑥ 도판 단계에서 '리포트에 넣기'를 고르세요.</p>}
       <div className="board-pages" style={{ ['--board-w' as string]: `${w}mm`, ['--board-h' as string]: `${h}mm`, ['--board-ratio' as string]: String(w / h) }}>
         {urls.map((u, i) => (
           <img key={u} className="board-page" src={u} alt={`보드 ${i + 1}쪽`} />

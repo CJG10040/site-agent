@@ -3,6 +3,7 @@
 
 import Dexie, { type EntityTable } from 'dexie'
 import type { Project } from './types'
+import type { PanelOutput } from '../diagrams/compose'
 import { sameSnap, snapshotOf, type VersionRecord, type VersionTrigger } from './versions'
 
 /** 현장 사진 — 프로젝트 문서와 따로 저장 (크기가 커서) */
@@ -41,11 +42,27 @@ export interface FontRecord {
   addedAt: string
 }
 
+/** 그려 둔 도판 (2026-11-22 사용자 결정: 새로고침 뒤에도 다시 그리지 않고 바로 보이게) — 프로젝트·보기(보통/패널)·도판마다 마지막 한 장 */
+export interface PanelImageRecord {
+  /** `${projectId}|${mode}|${panelId}` */
+  id: string
+  projectId: string
+  /** n = 보통 도판, p = 패널 모드 */
+  mode: 'n' | 'p'
+  panelId: string
+  /** 그릴 때의 자료·설정 열쇠 — 지금 열쇠와 다르면 '바뀜' */
+  key: string
+  svg: string
+  out: PanelOutput
+  savedAt: string
+}
+
 const db = new Dexie('site-agent') as Dexie & {
   projects: EntityTable<Project, 'id'>
   photos: EntityTable<PhotoRecord, 'id'>
   versions: EntityTable<VersionRecord, 'id'>
   fonts: EntityTable<FontRecord, 'id'>
+  panelImages: EntityTable<PanelImageRecord, 'id'>
 }
 
 db.version(1).stores({
@@ -67,6 +84,14 @@ db.version(4).stores({
   photos: 'id, projectId',
   versions: 'id, projectId, createdAt',
   fonts: 'id, family',
+})
+// 그려 둔 도판 (2026-11-22)
+db.version(5).stores({
+  projects: 'id, updatedAt',
+  photos: 'id, projectId',
+  versions: 'id, projectId, createdAt',
+  fonts: 'id, family',
+  panelImages: 'id, projectId',
 })
 
 export interface ProjectSummary {
@@ -101,10 +126,11 @@ export async function putProject(project: Project): Promise<void> {
 }
 
 export async function deleteProject(id: string): Promise<void> {
-  await db.transaction('rw', db.projects, db.photos, db.versions, async () => {
+  await db.transaction('rw', [db.projects, db.photos, db.versions, db.panelImages], async () => {
     await db.projects.delete(id)
     await db.photos.where('projectId').equals(id).delete()
     await db.versions.where('projectId').equals(id).delete()
+    await db.panelImages.where('projectId').equals(id).delete()
   })
 }
 
@@ -196,4 +222,15 @@ export async function putFont(rec: FontRecord): Promise<void> {
 
 export async function deleteFont(id: string): Promise<void> {
   await db.fonts.delete(id)
+}
+
+// ───────────────────────── 그려 둔 도판 (2026-11-22) ─────────────────────────
+
+export async function listPanelImages(projectId: string, mode: 'n' | 'p'): Promise<PanelImageRecord[]> {
+  const all = await db.panelImages.where('projectId').equals(projectId).toArray()
+  return all.filter((r) => r.mode === mode)
+}
+
+export async function putPanelImage(rec: PanelImageRecord): Promise<void> {
+  await db.panelImages.put(rec)
 }

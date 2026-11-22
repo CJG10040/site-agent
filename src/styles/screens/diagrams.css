@@ -1105,3 +1105,11 @@
   flex-wrap: wrap;
   gap: 6px;
 }
+
+/* 카드마다 '이 도판만 생성' (2026-11-22: 알아서 그리지 않음) */
+.card-gen {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}

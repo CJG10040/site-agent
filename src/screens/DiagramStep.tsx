@@ -10,7 +10,7 @@ import { siteOverview } from '../diagrams/overview'
 import { ORDERED_PANELS, PANEL_GROUP_ORDER, panelNumber, type PanelDef } from '../diagrams/panels'
 import { buildPanelPrompt, parsePanelAnswer } from '../diagrams/prompt'
 import { DEFAULT_SETTINGS, panelFileName, settingsOf } from '../diagrams/render'
-import { settingsKey, useDiagrams } from '../diagrams/useDiagrams'
+import { settingsKey, useDiagrams, visiblePanelIds } from '../diagrams/useDiagrams'
 import PanelEditor from '../components/PanelEditor'
 import { addDesc, editsOf, newEditId } from '../model/edits'
 import StylePanel from '../components/StylePanel'
@@ -73,14 +73,21 @@ function Seg<T extends string | number>({ value, options, onChange, label }: { v
 export default function DiagramStep({ project, update, config, keys, onGoData, onGoModel, onNext }: Props) {
   // 그려진 도판은 저장된 설정(applied)으로. 설정 칸에서 고친 것은 초안(draft)에 모았다가 '도판 생성'을 누르면 저장·그리기
   // (2026-11-13 사용자 요청: 설정을 바꿀 때마다 다시 그려 버벅임)
+  // 2026-11-22 사용자 결정: 화면에 들어가도 알아서 그리지 않음 — '도판 생성'(전부)·'이 도판만 생성'을 눌러야 그림.
+  // 그려 둔 도판은 브라우저에 저장해 다시 열면 바로 보이고, 자료·설정이 바뀐 도판은 예전 그림에 '바뀜' 표시.
+  // 크게 보기에서 고치는 그 한 장만 바로 다시 그림
   // 패널 모드 (2026-11-21 묶음 D2): ⑥ 화면에서만 — 보드·리포트는 늘 보통 도판
   const panelView = !!settingsOf(project).panelView
   // 올린 글꼴 (묶음 D3, 이 브라우저에만)
   const fonts = useFonts()
-  const { data, settings: applied, panels, busy, terrain, progress } = useDiagrams(project, config.key, undefined, { panel: panelView, fontsSig: fontsSig(fonts) })
+  const [viewing, setViewing] = useState<string | null>(null)
+  const { data, settings: applied, panels, busy, terrain, progress, stale, queue, generate: draw } = useDiagrams(project, config.key, undefined, {
+    panel: panelView,
+    fontsSig: fontsSig(fonts),
+    auto: viewing ? [viewing] : [],
+  })
   const [draft, setDraft] = useState<Partial<DiagramSettings>>({})
   const settings: DiagramSettings = { ...applied, ...draft }
-  const [viewing, setViewing] = useState<string | null>(null)
   const edits = editsOf(project)
   const [answer, setAnswer] = useState('')
   const [chatbot, setChatbot] = useState('')
@@ -116,10 +123,20 @@ export default function DiagramStep({ project, update, config, keys, onGoData, o
   // 설정이 바뀌어 다시 그려야 하는 도판
   const keyOf = (id: string, s: DiagramSettings) => settingsKey(id, s) + (panelView ? `|${panelRulesKey(s, id)}` : '')
   const changedIds = new Set(draftKeys.length ? ORDERED_PANELS.filter((p) => keyOf(p.id, settings) !== keyOf(p.id, applied)).map((p) => p.id) : [])
-  const generate = () => {
-    if (!draftKeys.length) return
-    applySettings(draft)
-    setDraft({})
+  // 화면에 보이는 도판 (겹쳐 보기는 고른 칸만, 설계안 비교는 설계안을 올렸을 때만)
+  const visibleIds = visiblePanelIds(project, settings)
+  const staleSet = new Set(stale)
+  /** 그려야 하는 도판: 아직 안 그림 · 그린 뒤 자료·설정이 바뀜 · 설정 칸에서 바꿈(생성 전) */
+  const needsDraw = (id: string) => staleSet.has(id) || changedIds.has(id)
+  const toDraw = visibleIds.filter(needsDraw)
+  const missingN = toDraw.filter((id) => !panels[id]).length
+  /** 도판 생성: 바꾼 설정을 저장하고, ids를 주면 그 도판만 · 없으면 보이는 도판 전부를 그림 */
+  const generate = (ids?: string[]) => {
+    if (draftKeys.length) {
+      applySettings(draft)
+      setDraft({})
+    }
+    draw(ids ?? visibleIds)
   }
 
   const toggle3d = (id: string, on: boolean) => {
@@ -338,13 +355,29 @@ export default function DiagramStep({ project, update, config, keys, onGoData, o
             </span>
             <progress max={progress?.total || 1} value={progress && progress.total > 0 ? progress.done : 0} aria-label="도판 생성 진행도" />
           </div>
-        ) : draftKeys.length ? (
+        ) : toDraw.length ? (
           <span>
-            설정을 바꿨습니다 — <strong>도판 {changedIds.size}장</strong>을 다시 그립니다{changedIds.size === 0 ? ' (그림이 바뀌지 않는 설정)' : ''}
+            {panelView ? '패널 모드 · ' : ''}
+            {missingN === visibleIds.length ? (
+              <>
+                아직 도판을 그리지 않았습니다 — 설정을 고른 뒤 <strong>'도판 생성'</strong>을 누르면 <strong>{toDraw.length}장</strong>을 그립니다 (알아서 그리지 않음)
+              </>
+            ) : (
+              <>
+                <strong>도판 {toDraw.length}장</strong>을 그려야 합니다
+                <span className="muted">
+                  {' '}
+                  ({[missingN ? `아직 안 그림 ${missingN}장` : '', toDraw.length - missingN ? `${draftKeys.length ? '설정' : '자료·설정'} 바뀜 ${toDraw.length - missingN}장` : ''].filter(Boolean).join(' · ')})
+                </span>{' '}
+                — '도판 생성'을 누르세요
+              </>
+            )}
           </span>
+        ) : draftKeys.length ? (
+          <span>설정을 바꿨습니다 — 그림이 바뀌지 않는 설정입니다</span>
         ) : (
           <span className="muted">
-            {panelView ? '패널 모드 · ' : ''}도판 {Object.keys(panels).filter((id) => (project.designs ?? []).length > 0 || !COMPARE_IDS.includes(id)).length}장 · 지금 설정으로 그렸습니다. 설정을 바꾼 뒤 '도판 생성'을 누르세요.
+            {panelView ? '패널 모드 · ' : ''}도판 {visibleIds.filter((id) => panels[id]).length}장 · 지금 자료·설정으로 그렸습니다. 설정을 바꾼 뒤 '도판 생성'을 누르세요.
           </span>
         )}
         <span className="spacer" />
@@ -353,7 +386,7 @@ export default function DiagramStep({ project, update, config, keys, onGoData, o
             되돌리기
           </button>
         )}
-        <button type="button" className="btn small primary" disabled={!draftKeys.length} onClick={generate}>
+        <button type="button" className="btn small primary" disabled={!draftKeys.length && !toDraw.length} onClick={() => generate()}>
           도판 생성
         </button>
       </div>
@@ -625,16 +658,26 @@ export default function DiagramStep({ project, update, config, keys, onGoData, o
                 const p = panels[def.id]
                 const note = noteOf(project, def.id)
                 const empty = p?.out.empty
+                const need = needsDraw(def.id)
+                const waiting = queue.includes(def.id)
                 return (
-                  <article key={def.id} className={`diagram-card${empty ? ' empty' : ''}${changedIds.has(def.id) ? ' changed' : ''}`}>
+                  <article key={def.id} className={`diagram-card${empty ? ' empty' : ''}${need ? ' changed' : ''}`}>
                     <button type="button" className="diagram-thumb" onClick={() => p && setViewing(def.id)} aria-label={`${def.title} 크게 보기`} disabled={!p}>
-                      {p ? <img src={p.url} alt={def.title} loading="lazy" /> : <span className="muted small">그리는 중…</span>}
-                      {changedIds.has(def.id) && <span className="changed-badge small">설정 바뀜 · 도판 생성 전</span>}
+                      {p ? <img src={p.url} alt={def.title} loading="lazy" /> : <span className="muted small">{waiting ? '그리는 중…' : '아직 그리지 않음'}</span>}
+                      {p && need && <span className="changed-badge small">{changedIds.has(def.id) ? '설정' : '자료·설정'} 바뀜 · {waiting ? '그리는 중' : '도판 생성 전'}</span>}
                     </button>
                     <div className="diagram-body">
                       <h4>
                         <span className="muted">{String(panelNumber(def.id)).padStart(2, '0')}</span> {def.title}
                       </h4>
+                      {need && !waiting && (
+                        <div className="row card-gen">
+                          <button type="button" className="btn small" onClick={() => generate([def.id])}>
+                            이 도판만 생성
+                          </button>
+                          {draftKeys.length > 0 && <span className="muted small">바꾼 설정을 저장하고 이 도판만 그림</span>}
+                        </div>
+                      )}
                       {isOverlayId(def.id) && <OverlayControls id={def.id} settings={settings} setSettings={setSettings} />}
                       {def.id === EXPLODED_ID && <ExplodedControls settings={settings} setSettings={setSettings} />}
                       {COMPARE_IDS.includes(def.id) && <CompareControls project={project} settings={settings} setSettings={setSettings} />}

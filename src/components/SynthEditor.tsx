@@ -45,7 +45,8 @@ const TERRAIN_BASES = new Set(['terrain', 'slopeWater'])
 const newId = () => `s${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`
 
 export default function SynthEditor({ project, update, config }: Props) {
-  const { data, settings, panels } = useDiagrams(project, config.key, ['synth'])
+  // 편집기는 고친 기호를 바로 보여야 하므로 종합 다이어그램 한 장은 바로 그림 (2026-11-22: 다른 곳은 알아서 그리지 않음)
+  const { data, settings, panels } = useDiagrams(project, config.key, ['synth'], { auto: ['synth'] })
   const synth = useMemo(() => synthCtxOf(project), [project])
   const state = synth.state
   const [tool, setTool] = useState<Tool>('select')

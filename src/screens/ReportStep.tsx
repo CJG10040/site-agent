@@ -4,10 +4,10 @@ import { areaM2, siteBoundary } from '../lib/geo'
 import { boardSettingsOf, paperSize } from '../diagrams/board'
 import { svgToPng } from '../diagrams/export'
 import { ORDERED_PANELS, panelNumber } from '../diagrams/panels'
-import { panelFileName, panelLabel } from '../diagrams/render'
+import { panelFileName, panelLabel, settingsOf } from '../diagrams/render'
 import { evidenceOf, evidenceText, hasEvidence, needsEvidence, synthCtxOf } from '../diagrams/synth'
 import { symOf, SYMS, TONES } from '../diagrams/synthSymbols'
-import { useDiagrams } from '../diagrams/useDiagrams'
+import { useDiagrams, visiblePanelIds } from '../diagrams/useDiagrams'
 import { formatObservedAt, timeBand } from '../lib/photos'
 import { observationsOf } from '../model/observations'
 import { downloadBlob, nowIso } from '../model/project'
@@ -127,9 +127,22 @@ export default function ReportStep({ project, update, config }: Props) {
   const officialArea = facts.find((f) => f.auto_key === 'land-official-area')?.text
 
   // ── 도판 (⑥ 도판 단계에서 '리포트에 넣기'로 고른 것)
-  const includedIds = ORDERED_PANELS.filter((p) => project.diagrams?.panels[p.id]?.include !== false).map((p) => p.id)
-  const { panels: diagramPanels, busy: diagramsBusy, settings: diagramSettings, data: diagramData, terrain } = useDiagrams(project, config.key, includedIds)
+  // 숨은 도판(고르지 않은 겹쳐 보기 칸·설계안 없는 비교)은 빈 도판이라 빼고
+  const shownIds = visiblePanelIds(project, settingsOf(project))
+  const includedIds = ORDERED_PANELS.filter((p) => project.diagrams?.panels[p.id]?.include !== false && shownIds.includes(p.id)).map((p) => p.id)
+  // 2026-11-22 사용자 결정: 리포트·보드도 알아서 그리지 않음 — ⑥에서 같은 설정으로 그려 둔 그림을 쓰고, 없거나 바뀐 것은 '도판 생성'을 눌러야 그림
+  const {
+    panels: diagramPanels,
+    busy: diagramsBusy,
+    settings: diagramSettings,
+    data: diagramData,
+    terrain,
+    progress: diagramProgress,
+    stale: diagramStale,
+    generate: drawDiagrams,
+  } = useDiagrams(project, config.key, includedIds)
   const diagrams = ORDERED_PANELS.filter((p) => includedIds.includes(p.id) && diagramPanels[p.id] && !diagramPanels[p.id].out.empty)
+  const diagramMissing = diagramStale.filter((id) => !diagramPanels[id]).length
 
   useEffect(() => {
     const onAfter = () => {
@@ -187,6 +200,32 @@ export default function ReportStep({ project, update, config }: Props) {
               : '저장한 조사 버전으로 해석이 어떻게 바뀌었는지 비교'}
         </span>
       </div>
+
+      {view !== 'versions' && diagramData && (diagramsBusy || diagramStale.length > 0) && (
+        <div className={`gen-bar no-print${diagramStale.length ? ' dirty' : ''}${diagramsBusy ? ' busy' : ''}`} role="status" aria-live="polite">
+          {diagramsBusy ? (
+            <div className="gen-progress">
+              <span>
+                도판 생성 중{diagramProgress && diagramProgress.total > 0 ? ` ${diagramProgress.done + 1}/${diagramProgress.total}` : ''}
+                {diagramProgress?.label ? <span className="muted"> — {diagramProgress.label}</span> : null}
+              </span>
+              <progress max={diagramProgress?.total || 1} value={diagramProgress && diagramProgress.total > 0 ? diagramProgress.done : 0} aria-label="도판 생성 진행도" />
+            </div>
+          ) : (
+            <span>
+              {view === 'board' ? '보드' : '리포트'}에 넣을 <strong>도판 {diagramStale.length}장</strong>을 그려야 합니다
+              <span className="muted">
+                {' '}
+                ({[diagramMissing ? `아직 안 그림 ${diagramMissing}장 — 빠져 있음` : '', diagramStale.length - diagramMissing ? `자료·설정 바뀜 ${diagramStale.length - diagramMissing}장 — 예전 그림이 들어가 있음` : ''].filter(Boolean).join(' · ')})
+              </span>
+            </span>
+          )}
+          <span className="spacer" />
+          <button type="button" className="btn small primary" disabled={diagramsBusy} onClick={() => drawDiagrams()}>
+            도판 생성
+          </button>
+        </div>
+      )}
 
       {view === 'versions' ? (
         <Suspense fallback={<p className="muted">불러오는 중…</p>}>
@@ -323,7 +362,11 @@ export default function ReportStep({ project, update, config }: Props) {
         <section className="report-sec">
           {H(`도판 (${diagrams.length})`)}
           {diagramsBusy && <p className="muted no-print">도판을 그리는 중…</p>}
-          {!diagramsBusy && diagrams.length === 0 && <p className="muted">넣을 도판이 없습니다 (⑥ 도판 단계에서 '리포트에 넣기'를 고르세요).</p>}
+          {!diagramsBusy && diagrams.length === 0 && (
+            <p className="muted">
+              {diagramMissing ? "아직 그린 도판이 없습니다 — 위의 '도판 생성'을 누르세요." : "넣을 도판이 없습니다 (⑥ 도판 단계에서 '리포트에 넣기'를 고르세요)."}
+            </p>
+          )}
           <div className="report-diagrams">
             {diagrams.map((def) => {
               const dp = diagramPanels[def.id]
