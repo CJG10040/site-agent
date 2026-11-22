@@ -171,9 +171,6 @@ export function buildReview(c: ReviewCtx): ReviewRow[] {
       verdict: { label: '적용', tone: 'need' },
       basis: [law('건축법', '제51조')],
     })
-  const scenic = c.overlays.filter((n) => /경관지구|고도지구/.test(n))
-  const height: string[] = []
-  if (scenic.length) push(height, `${scenic.join(', ')} — 조례로 높이·층수를 정했을 수 있음`)
 
   // ───────── 건축법 (대지·도로·배치)
   const env = c.env
@@ -302,30 +299,59 @@ export function buildReview(c: ReviewCtx): ReviewRow[] {
     })
   }
   {
+    // 묶음 F5: 경관지구는 도시계획 조례의 높이·층수를 읽음 / 고도지구·지구단위계획은 지구마다 결정 고시라 직접 확인
+    const h = env?.height
     const assumed: string[] = []
+    const parts: string[] = []
+    for (const a of h?.answers ?? []) {
+      const max = [a.maxFloors && `${a.maxFloors}층`, a.maxM && `${a.maxM}m`].filter(Boolean).join('·')
+      parts.push(`${a.district} ${max ? `${max} 이하` : '최고 높이 없음'}${a.minFloors ? ` · ${a.minFloors}층 이상` : ''}`)
+      push(assumed, ...a.assumed)
+      if (a.relax) push(assumed, `도시계획위원회 심의로 ${a.relax}까지 완화될 수 있음 — 기본 기준으로 봄`)
+    }
+    for (const u of h?.unread ?? []) parts.push(`${u}: 조례에서 높이 기준을 찾지 못함`)
+    if ((h?.answers ?? []).some((a) => a.maxFloors)) push(assumed, `층수 기준은 층수 × 층고 ${c.floorH}m로 높이로 바꿈`)
+    const godo = c.overlays.filter((n) => /고도지구/.test(n))
+    const unknown = godo.length > 0 || unit.length > 0 || (h?.unread.length ?? 0) > 0
+    const minF = h?.minFloors ?? null
+    const lowPlan = minF !== null && floors > 0 && floors < minF
     let verdict: Verdict
     let result: string
     if (c.maxHeight) {
       verdict = { label: '적용', tone: 'need' }
-      result = `넣은 최고 높이 ${fmt(c.maxHeight)}m → 가능 영역에 반영`
-    } else if (height.length || unit.length) {
+      result = `넣은 최고 높이 ${fmt(c.maxHeight)}m → 가능 영역에 반영${parts.length ? ` (경관지구 조례: ${parts.join(', ')})` : ''}`
+    } else if (h?.m != null) {
+      verdict = unknown ? { label: '직접 확인', tone: 'check' } : { label: '적용', tone: 'need' }
+      result = `${parts.join(', ')} → 최고 ${fmt(h.m, 1)}m를 가능 영역에 반영`
+    } else if (parts.length) {
+      verdict = unknown ? { label: '직접 확인', tone: 'check' } : lowPlan ? { label: `${minF}층 이상`, tone: 'warn' } : { label: minF ? `${minF}층 이상` : '해당 없음', tone: minF ? 'need' : 'ok' }
+      result = `${parts.join(', ')}${minF && !lowPlan ? ' — 최고 높이는 조례에 없음' : ''}`
+    } else if (unknown) {
       verdict = { label: '직접 확인', tone: 'check' }
-      result = [...height, ...(unit.length ? ['지구단위계획의 최고높이'] : [])].join(' · ')
+      result = [godo.length ? `${godo.join(', ')} — 최고 높이는 지구마다 결정 고시` : '', unit.length ? '지구단위계획의 최고높이' : ''].filter(Boolean).join(' · ')
     } else {
       verdict = { label: '해당 없음', tone: 'ok' }
       result = '대지에 걸친 높이 지구(고도·경관지구)·지구단위계획 없음'
-      push(assumed, '가로구역별 최고높이(건축법 제60조)는 지정되지 않은 것으로 봄 — 지정 여부는 공개 자료로 확인 못 함')
     }
+    if (lowPlan) result += ` — 계획 ${floors}층은 최저 ${minF}층보다 낮음`
+    if (!c.maxHeight) push(assumed, '가로구역별 최고높이(건축법 제60조)는 지정되지 않은 것으로 봄 — 지정 여부는 공개 자료로 확인 못 함')
+    const art = (h?.answers ?? [])[0]
     rows.push({
       id: 'height',
       group: '배치·높이',
       item: '높이 제한',
-      rule: '고도·경관지구, 지구단위계획, 가로구역별 최고높이가 있으면 그 높이 이하',
+      rule: '경관지구는 조례가 정한 층수·높이, 고도지구·지구단위계획은 결정된 최고높이, 가로구역별 최고높이가 있으면 그 높이 이하',
       result,
       verdict,
       assumed,
-      check: verdict.tone === 'check' ? "토지이음 → 이 필지 → 지구·지구단위계획 결정도의 최고높이를 아래 '최고 높이' 칸에 넣으면 가능 영역에 반영" : undefined,
-      basis: [law('건축법', '제60조'), ...ordin(urban, '(경관·고도지구 높이)')],
+      uses: (h?.answers ?? []).some((a) => a.minFloors) ? ['floors'] : [],
+      cite: art ? `${urban?.name ?? '도시계획 조례'} ${art.article}: ${art.line}` : undefined,
+      check:
+        verdict.tone === 'check'
+          ? `토지이음 → 이 필지 → ${[godo.length ? '고도지구' : '', unit.length ? '지구단위계획 결정도' : '', h?.unread.length ? h.unread.join('·') : ''].filter(Boolean).join('·')}의 최고높이를 아래 '최고 높이' 칸에 넣으면 가능 영역에 반영`
+          : undefined,
+      basis: [law('건축법', '제60조'), law('국토의 계획 및 이용에 관한 법률 시행령', '제72조', '국토계획법 시행령 제72조 (경관지구)'), ...ordin(urban, '(경관·고도지구 높이)')],
+      source: art && urban?.scenic ? { label: `${urban.name} ${art.article}`, text: urban.scenic.articles.find((x) => art.article.startsWith(x.article))?.text ?? art.line, url: urban.url } : undefined,
     })
   }
 

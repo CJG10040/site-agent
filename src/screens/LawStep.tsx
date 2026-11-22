@@ -3,7 +3,7 @@
 // 사용자 결정(2026-11-21, ⑪을 써 본 뒤): 법규 검토서 한 표 / 가정하고 판정 + 가정 표시 / 법 기준은 앱 규칙 + 법 바뀌면 경고 / 설계안 점검은 안 함.
 // 그전 결정: 새 단계 ⑪ / 조례는 광주 + 전남·전북 모든 시·군 / 주용도 = 별표 1 큰 분류 + 자주 쓰는 세부 / 참고용(판정 아님).
 
-import { booleanIntersects, feature, point, pointToPolygonDistance } from '@turf/turf'
+import { point, pointToPolygonDistance } from '@turf/turf'
 import { ExternalLink } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { buildDiagramData } from '../diagrams/data'
@@ -12,7 +12,7 @@ import { buildReview, planAssumed, reviewSummary, type Basis, type PlanKey, type
 import { LAW_SOURCE, loadOrdinances, regionIdOf, regionOf, siteAddress, type OrdinanceTable } from '../law/ordinances'
 import { USE_CLASSES, USE_SOURCE, useLabel } from '../law/uses'
 import EnvelopePanel, { useEnvelope } from '../components/EnvelopePanel'
-import { boundaryArea, parcelAreaOf, planInputOf } from '../law/envelopeData'
+import { boundaryArea, parcelAreaOf, planInputOf, siteOverlays } from '../law/envelopeData'
 import { hasUnits, planOf, type Plan } from '../law/plan'
 import { nowIso } from '../model/project'
 import { panelNumber } from '../diagrams/panels'
@@ -179,18 +179,7 @@ export default function LawStep({ project, update, onGoData, onGoDiagrams }: Pro
   const zones = useMemo(() => (data ? siteZones(data) : []), [data])
   // 도판·모형과 같은 면적 (필지 대지면 토지대장 합, 그린 경계면 도형 넓이)
   const siteArea = useMemo(() => parcelAreaOf(project) ?? boundaryArea(data), [data, project.site])
-  const overlays = useMemo(() => {
-    if (!data) return []
-    const names = new Set<string>()
-    for (const x of data.districts) {
-      try {
-        if (booleanIntersects(feature(x.geom), feature(data.boundary))) names.add(x.name)
-      } catch {
-        /* 계산 실패한 도형은 건너뜀 */
-      }
-    }
-    return [...names]
-  }, [data])
+  const overlays = useMemo(() => siteOverlays(data), [data])
 
   // 학교(SC4)·어린이집·유치원(PS3)까지 대지 경계에서 거리 — 교육환경보호구역 (위치 점 기준 어림)
   const schools = useMemo(() => {

@@ -197,3 +197,90 @@ export function readParkingApt(b: Bundle | undefined): { small: number; large: n
   }
   return null
 }
+
+export interface ScenicHeight {
+  /** 경관지구 이름 (예: '자연경관지구') */
+  district: string
+  maxFloors: number | null
+  maxM: number | null
+  /** 최저 층수 ('2층 이상' — 시가지경관지구) */
+  minFloors: number | null
+  line: string
+  article: string
+  assumed: string[]
+  /** 심의를 거치면 완화 ('기준높이의 1.5배까지') */
+  relax?: string
+}
+
+const ZONE_WORDS = ['주거', '상업', '공업', '녹지', '관리']
+
+/**
+ * 경관지구 안 건축물 높이·층수 (묶음 F5, 2026-11-22): 도시계획 조례의 '경관지구 안에서의 높이' 조문에서
+ * 그 경관지구 종류의 호('자연경관지구 : 3층 또는 12미터 이하')를 찾고, 괄호의 용도지역 예외('주거·상업·공업지역 이외의 용도지역에서는 …')를 반영.
+ * 종류를 나누지 않은 조례('경관지구 안에서 … 3층 이하 … 12미터 이하')와 용도지역별 조례('주거지역은 12미터, 상업지역은 20미터')도 읽음
+ */
+export function readScenicHeight(b: Bundle | undefined, q: { district: string; zone: string }): ScenicHeight | null {
+  if (!b) return null
+  const kind = squash(q.district).replace(/^\d종/, '')
+  const zoneIn = (txt: string) => ZONE_WORDS.filter((w) => txt.includes(w)).some((w) => squash(q.zone).includes(w))
+  const nums = (s: string) => ({
+    maxFloors: Number(s.match(/(\d+)\s*층\s*(?:이하|까지)?(?:\s*(?:또는|,|로\s*하고|이하로\s*하고))/)?.[1] ?? s.match(/(\d+)\s*층\s*(?:이하|까지)/)?.[1] ?? NaN),
+    maxM: Number(s.match(/(\d+(?:\.\d+)?)\s*미터\s*(?:이하|까지)/)?.[1] ?? NaN),
+    minFloors: Number(s.match(/(\d+)\s*층\s*이상/)?.[1] ?? NaN),
+  })
+  const fin = (v: number) => (Number.isFinite(v) ? v : null)
+  for (const a of b.articles.filter((x) => /높이|층수/.test(x.title))) {
+    const t = normRuleText(a.text).replace(/<[^>]*>/g, '')
+    const relax = t.match(/기준\s*높이의\s*(\d+(?:\.\d+)?)배/)?.[0]
+    const assumed: string[] = []
+    // 1) 그 종류를 적은 호
+    for (const it of items(t)) {
+      const s = squash(it)
+      if (!kind || !s.includes(kind)) continue
+      const head = it.replace(/\([^()]*\)/g, '')
+      let n = nums(head)
+      // 괄호 예외: '(주거지역, 상업지역, 공업지역 이외의 용도지역에서는 3층 또는 12미터 이하)' / '(… 안에서는 5층 또는 20미터 이하)'
+      const par = it.match(/\(([^()]*?(?:이외의\s*용도지역|지역\s*안에서는|지역에서는)[^()]*?)\)/)
+      if (par) {
+        const inside = par[1]
+        const outsideRule = /이외의\s*용도지역/.test(inside)
+        const listed = inside.split(/이외의|안에서는|에서는/)[0]
+        const hit = outsideRule ? !zoneIn(listed) : zoneIn(listed)
+        if (hit) {
+          n = nums(inside)
+          assumed.push(`대지가 ${q.zone}라 괄호의 기준을 씀`)
+        }
+      }
+      if (n.maxFloors || n.maxM || n.minFloors) {
+        if (/또는/.test(it) && n.maxFloors && n.maxM) assumed.push('층수와 높이 중 낮은 쪽으로 봄')
+        return { district: q.district, maxFloors: fin(n.maxFloors), maxM: fin(n.maxM), minFloors: fin(n.minFloors), line: it.replace(/^제\d+조(?:의\d+)?\([^)]*\)\s*/, '').replace(/\s+/g, ' ').slice(0, 140), article: `${a.article}(${a.title})`, assumed, relax }
+      }
+    }
+    // 2) 종류를 나누지 않은 조문: '경관지구 안에서 건축하는 건축물의 (높이·)?층수는 3층 이하 … 12미터 이하'
+    //    — 호마다 종류를 적은 조례('자연경관지구 : …')나 제목이 종류를 정한 조문('자연경관지구 및 특화경관지구에서의 …')에서는 쓰지 않음
+    const typed = items(t).some((it) => /[가-힣]+경관지구\s*[:：]/.test(it))
+    const titleKinds = [...a.title.matchAll(/([가-힣]+경관지구)/g)].map((m) => squash(m[1]))
+    if (typed || (titleKinds.length && !titleKinds.some((k) => k === kind))) continue
+    const any = squash(t).match(/경관지구(?:안에서|에서|안)건축하는건축물의(?:높이[·ㆍ]?)?층수(?:[·ㆍ]높이)?는/)
+    const zoneRule = [...t.matchAll(/([가-힣]+지역)(?:\s*및\s*([가-힣]+지역))?(?:은|는)\s*(\d+(?:\.\d+)?)\s*미터\s*이하/g)]
+    if (zoneRule.length && /경관지구/.test(t)) {
+      const z = zoneRule.find((m) => [m[1], m[2]].filter(Boolean).some((w) => ZONE_WORDS.some((zw) => w.includes(zw) && squash(q.zone).includes(zw))))
+      if (z) return { district: q.district, maxFloors: null, maxM: Number(z[3]), minFloors: null, line: z[0], article: `${a.article}(${a.title})`, assumed: ['조례가 경관지구 종류를 나누지 않아 이 경관지구에도 적용으로 봄'], relax }
+    }
+    if (any) {
+      const n = nums(t)
+      if (n.maxFloors || n.maxM)
+        return {
+          district: q.district,
+          maxFloors: fin(n.maxFloors),
+          maxM: fin(n.maxM),
+          minFloors: null,
+          line: t.slice(0, 160).replace(/\s+/g, ' '),
+          article: `${a.article}(${a.title})`,
+          assumed: ['조례가 경관지구 종류를 나누지 않아 이 경관지구에도 적용으로 봄', ...(n.maxFloors && n.maxM ? ['층수와 높이 중 낮은 쪽으로 봄'] : [])],
+          relax,
+        }
+    }
+  }
+  return null
+}

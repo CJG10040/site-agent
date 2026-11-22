@@ -65,7 +65,7 @@ export function useEnvelope(d: DiagramData | null, zones: SiteZone[], siteArea: 
   const apartment = project.law?.use?.no === '2'
   const plan = planInputOf(project)
   return useMemo(() => {
-    if (!d) return { result: null, cap: null, auto: NO_AUTO, used: { road: 0, side: 0, roadFrom: 'auto', sideFrom: 'auto' }, edgesValid }
+    if (!d) return { result: null, cap: null, auto: NO_AUTO, used: { road: 0, side: 0, roadFrom: 'auto', sideFrom: 'auto', height: null, heightFrom: null }, height: { m: null, minFloors: null, answers: [], unread: [] }, edgesValid }
     return { ...computeEnvelopeFor(d, zones, siteArea, region, table, { env, apartment, edgesValid, plan }), edgesValid }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [d, zones, siteArea, region, table, JSON.stringify(env), JSON.stringify(plan), apartment, sk])
@@ -73,7 +73,7 @@ export function useEnvelope(d: DiagramData | null, zones: SiteZone[], siteArea: 
 
 export default function EnvelopePanel({ project, update, data, zones, siteArea, overlays, region, run }: Props) {
   const env: EnvelopeState = project.law?.envelope ?? {}
-  const { result: r, cap, edgesValid, auto, used } = run
+  const { result: r, cap, edgesValid, auto, used, height } = run
   const patch = (fn: (e: EnvelopeState) => EnvelopeState) =>
     update((dr) => {
       const law: LawState = dr.law ?? {}
@@ -129,6 +129,7 @@ export default function EnvelopePanel({ project, update, data, zones, siteArea, 
     else applied.push('정북 일조: 대지가 전용·일반주거지역이 아니라 적용 안 함')
     if (r.sunUnknownNeighbor) unknown.push('북쪽 대지의 용도지역을 자료로 알 수 없는 곳이 있음 — 주거지역으로 보고 깎음')
     if (env.maxHeight) applied.push(`최고 높이 ${env.maxHeight}m (넣은 값)`)
+    else if (used.height !== null) applied.push(`최고 높이 ${Math.round(used.height * 10) / 10}m (경관지구 조례 — ${height.answers.map((a) => a.article).join(', ')})`)
     else unknown.push(`높이 제한(고도·경관지구, 가로구역별 최고높이, 지구단위계획)을 넣지 않음${cap ? ` — 그림은 ${fmt(cap, 1)}m(검토서의 층수 × 층고 — 층수를 넣지 않았으면 가정한 층수)에서 자름` : ''}`)
     if (overlays.some((n) => /지구단위계획/.test(n))) unknown.push('지구단위계획구역 — 건축한계선·높이·배치가 따로 정해질 수 있음')
     unknown.push('도로 모퉁이 가각 건축선(건축법 시행령 제31조)은 넣지 않음', '공동주택 채광·동 사이 거리(시행령 제86조 ③)는 배치할 때 — 위 검토서', '건폐율·용적률은 덩어리와 따로 — 오른쪽 숫자')
@@ -143,7 +144,7 @@ export default function EnvelopePanel({ project, update, data, zones, siteArea, 
       <div className="law-envelope-inputs">
         <Num label="건축선에서" unit="m" value={env.setbackRoad} onChange={(v) => patch((e) => ({ ...e, setbackRoad: v }))} placeholder={`조례 ${auto.road}`} />
         <Num label="인접 대지에서" unit="m" value={env.setbackSide} onChange={(v) => patch((e) => ({ ...e, setbackSide: v }))} placeholder={`조례 ${auto.side}`} />
-        <Num label="최고 높이" unit="m" value={env.maxHeight} onChange={(v) => patch((e) => ({ ...e, maxHeight: v }))} step={1} max={1000} placeholder="모르면 비움" />
+        <Num label="최고 높이" unit="m" value={env.maxHeight} onChange={(v) => patch((e) => ({ ...e, maxHeight: v }))} step={1} max={1000} placeholder={height.m !== null ? `조례 ${Math.round(height.m * 10) / 10}` : '모르면 비움'} />
         <div className="seg-field">
           <span className="label">계단</span>
           <div className="segmented small" role="radiogroup" aria-label="계단">
@@ -168,6 +169,13 @@ export default function EnvelopePanel({ project, update, data, zones, siteArea, 
         띄울 거리 칸을 비우면 조례 값: 건축선에서 <strong>{auto.road}m</strong> · 인접 대지에서 <strong>{auto.side}m</strong>
         {auto.source === 'ordinance' ? (auto.roadPick || auto.sidePick ? ` (${[auto.roadPick && `건축선 ${auto.roadPick.item}`, auto.sidePick && `인접 ${auto.sidePick.item}`].filter(Boolean).join(' · ')})` : ' (조례가 이 용도·규모에 정하지 않음)') : ` — 가정: ${auto.assumed.join(', ')}`}
         {(used.roadFrom === 'input' || used.sideFrom === 'input') && ' · 지금은 넣은 값으로 계산'}
+        {height.answers.length > 0 && (
+          <>
+            {' · '}최고 높이 칸을 비우면 경관지구 조례:{' '}
+            {height.answers.map((a) => `${a.district} ${[a.maxFloors && `${a.maxFloors}층`, a.maxM && `${a.maxM}m`].filter(Boolean).join('·') || '최고 높이 없음'}${a.minFloors ? `(${a.minFloors}층 이상)` : ''}`).join(', ')}
+            {height.m !== null && <strong> → {Math.round(height.m * 10) / 10}m</strong>}
+          </>
+        )}
       </p>
       {overlays.length > 0 && <p className="muted small">걸친 지구·구역: {overlays.join(', ')} — 높이 제한이 있으면 '최고 높이'에</p>}
 

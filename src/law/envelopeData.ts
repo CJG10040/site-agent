@@ -3,7 +3,7 @@
 //  - computeEnvelopeFor: 높이 제한이 없으면 검토서의 층수(넣은 값 또는 가정) × 층고에서 그림용으로 자름, 띄울 거리 칸이 비면 조례 별표 값
 //  - envelopeSlabMeshes: 단(바닥~위 + 발자국)을 삼각형으로 (윗면·바닥면은 earcut, 벽은 변마다 두 삼각형) — ⑩ .3dm·미리보기
 
-import { area, feature } from '@turf/turf'
+import { area, booleanIntersects, feature } from '@turf/turf'
 import earcut from 'earcut'
 import type { DiagramData } from '../diagrams/data'
 import { projOf, siteRingsXY } from '../diagrams/move'
@@ -16,6 +16,7 @@ import { computeEnvelope, type EnvelopeInput, type EnvelopeResult, type EnvSlab 
 import { loadOrdinances, regionIdOf, zoneKey, type OrdinanceTable, type RegionTable } from './ordinances'
 import { planOf, type PlanInput } from './plan'
 import { setbackFor, type SetbackAnswer } from './setback'
+import { readScenicHeight, type ScenicHeight } from './ordinanceRules'
 
 export type SiteZone = { name: string; share: number; rule: ZoneRule | null }
 
@@ -81,7 +82,46 @@ function setbackForPlan(zones: SiteZone[], region: RegionTable | null, table: Or
   })
 }
 
-export function envelopeInputFrom(d: DiagramData, zones: SiteZone[], law: EnvLaw, auto: { road: number; side: number } = { road: 0, side: 0 }): Omit<EnvelopeInput, 'displayCap'> {
+/** 대지에 걸친 용도지구·구역 이름 (⑪·도판·모형이 같이 씀) */
+export function siteOverlays(d: DiagramData | null): string[] {
+  if (!d) return []
+  const names = new Set<string>()
+  for (const x of d.districts) {
+    try {
+      if (booleanIntersects(feature(x.geom), feature(d.boundary))) names.add(x.name)
+    } catch {
+      /* 계산 실패한 도형은 건너뜀 */
+    }
+  }
+  return [...names]
+}
+
+export interface AutoHeight {
+  /** 경관지구 조례로 정한 최고 높이 (m, 층수는 층고로 바꿈) — 없으면 null */
+  m: number | null
+  /** 최저 층수 ('2층 이상') */
+  minFloors: number | null
+  answers: ScenicHeight[]
+  /** 걸친 경관지구 중 조례에서 높이 기준을 못 찾은 것 */
+  unread: string[]
+}
+
+/** 걸친 경관지구마다 조례의 높이·층수 (묶음 F5) — 여럿이면 가장 낮은 쪽 */
+export function autoHeightOf(region: RegionTable | null, zones: SiteZone[], overlays: string[], floorH: number): AutoHeight {
+  const zone = zones[0] ? (zones[0].rule?.label ?? zones[0].name) : ''
+  const answers: ScenicHeight[] = []
+  const unread: string[] = []
+  for (const o of overlays.filter((n) => /경관지구/.test(n))) {
+    const a = readScenicHeight(region?.urban?.scenic, { district: o, zone })
+    if (a) answers.push(a)
+    else unread.push(o)
+  }
+  const caps = answers.map((a) => Math.min(a.maxM ?? Infinity, a.maxFloors ? a.maxFloors * floorH : Infinity)).filter((x) => Number.isFinite(x))
+  const mins = answers.map((a) => a.minFloors).filter((x): x is number => x !== null)
+  return { m: caps.length ? Math.min(...caps) : null, minFloors: mins.length ? Math.max(...mins) : null, answers, unread }
+}
+
+export function envelopeInputFrom(d: DiagramData, zones: SiteZone[], law: EnvLaw, auto: { road: number; side: number } = { road: 0, side: 0 }, autoMaxHeight: number | null = null): Omit<EnvelopeInput, 'displayCap'> {
   const { env } = law
   const p = projOf(d)
   const site = siteRingsXY(d)
@@ -108,7 +148,8 @@ export function envelopeInputFrom(d: DiagramData, zones: SiteZone[], law: EnvLaw
     setbackRoad: env.setbackRoad ?? auto.road,
     setbackSide: env.setbackSide ?? auto.side,
     edgeOverride: law.edgesValid ? env.edges : undefined,
-    maxHeight: env.maxHeight ?? null,
+    // 칸을 비우면 경관지구 조례의 높이 (묶음 F5)
+    maxHeight: env.maxHeight ?? autoMaxHeight,
     apartment: law.apartment,
     step: env.step === 'meter' ? { kind: 'meter' } : { kind: 'floor', floorH: env.floorH ?? 3.5 },
   }
@@ -139,25 +180,32 @@ export interface EnvelopeRun {
   /** 조례 표에서 고른 띄울 거리 (칸을 비웠을 때 쓴 값) */
   auto: SetbackAnswer
   /** 실제로 계산에 쓴 띄울 거리 */
-  used: { road: number; side: number; roadFrom: 'input' | 'auto'; sideFrom: 'input' | 'auto' }
+  used: { road: number; side: number; roadFrom: 'input' | 'auto'; sideFrom: 'input' | 'auto'; height: number | null; heightFrom: 'input' | 'auto' | null }
+  /** 경관지구 조례에서 읽은 높이 (묶음 F5) */
+  height: AutoHeight
 }
 
 export function computeEnvelopeFor(d: DiagramData, zones: SiteZone[], siteArea: number, region: RegionTable | null, table: OrdinanceTable | null, law: EnvLaw): EnvelopeRun {
   const plan = planOf(law.plan, siteArea, zones, region)
   const auto = setbackForPlan(zones, region, table, plan)
+  const floorH0 = law.env.floorH ?? 3.5
+  const height = autoHeightOf(region, zones, siteOverlays(d), floorH0)
+  const maxH = law.env.maxHeight ?? height.m
   const used = {
     road: law.env.setbackRoad ?? auto.road,
     side: law.env.setbackSide ?? auto.side,
     roadFrom: (law.env.setbackRoad !== undefined ? 'input' : 'auto') as 'input' | 'auto',
     sideFrom: (law.env.setbackSide !== undefined ? 'input' : 'auto') as 'input' | 'auto',
+    height: maxH,
+    heightFrom: (law.env.maxHeight !== undefined ? 'input' : height.m !== null ? 'auto' : null) as 'input' | 'auto' | null,
   }
-  const base = envelopeInputFrom(d, zones, law, auto)
-  const first = computeEnvelope({ ...base, displayCap: law.env.maxHeight ?? 60 })
-  if (!first || !first.unlimited || law.env.maxHeight) return { result: first, cap: null, auto, used }
+  const base = envelopeInputFrom(d, zones, law, auto, height.m)
+  const first = computeEnvelope({ ...base, displayCap: maxH ?? 60 })
+  if (!first || !first.unlimited || maxH) return { result: first, cap: null, auto, used, height }
   // 높이 제한이 없으면 검토서와 같은 층수(넣은 값 또는 가정)에서 자름 — 층수를 모르면 용적률 상한 연면적을 가능 바닥에 쌓은 높이
   const floorH = law.env.floorH ?? 3.5
   const cap = plan.floors ? Math.max(floorH, plan.floors.v * floorH) : capFor(region, zones, siteArea || first.siteArea, first.buildableArea, floorH)
-  return { result: computeEnvelope({ ...base, displayCap: cap }), cap, auto, used }
+  return { result: computeEnvelope({ ...base, displayCap: cap }), cap, auto, used, height }
 }
 
 /** 도판·모형용: 프로젝트 없이 법규 입력 + 조례 표로 ⑪과 같은 덩어리 */
@@ -312,7 +360,7 @@ export async function envelopeForModel(d: DiagramData, law: LawCtx): Promise<{ s
   const note = [
     '참고용·확인 필요 (법적 판정 아님)',
     `건축선에서 ${used.road}m(${used.roadFrom === 'input' ? '넣은 값' : '조례'}) · 인접 대지에서 ${used.side}m(${used.sideFrom === 'input' ? '넣은 값' : '조례'})`,
-    env.maxHeight ? `최고 높이 ${env.maxHeight}m` : `높이 제한 넣지 않음${cap ? ` — ${Math.round(cap * 10) / 10}m에서 자름` : ''}`,
+    used.height ? `최고 높이 ${Math.round(used.height * 10) / 10}m(${used.heightFrom === 'input' ? '넣은 값' : '경관지구 조례'})` : `높이 제한 넣지 않음${cap ? ` — ${Math.round(cap * 10) / 10}m에서 자름` : ''}`,
     (env.step ?? 'floor') === 'floor' ? `층고 ${env.floorH ?? 3.5}m 계단` : '1m 계단',
     '정북 일조(건축법 제61조 ①) 반영',
   ].join(' · ')

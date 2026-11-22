@@ -34,7 +34,8 @@ import xml.etree.ElementTree as ET
 import zipfile
 
 # 2 = 묶음 F2 칸(zoneUses·scenic·landscape·openSpace·parking)을 더함 — 지난 표(1)는 쓰지 않고 새로 받음
-VERSION = 2
+# 3 = 별표 캐시 고침(2026-11-22) — 2로 받은 표 중 보성 용도지역 별표가 빠져 새로 받음
+VERSION = 3
 SITE = 'https://cjg10040.github.io/site-agent/'
 API = 'https://www.law.go.kr/DRF/'
 SOURCE = '법제처 국가법령정보센터 (www.law.go.kr) 자치법규'
@@ -458,10 +459,12 @@ _ALL_TABLES: dict = {}
 
 
 def all_tables(root: ET.Element) -> dict:
-    """조례의 별표 전부 {(번호, 가지): {'title', 'text'}} — 한 번만 받음 (서식·별지만 든 파일은 뺌)"""
+    """조례의 별표 전부 {(번호, 가지): {'title', 'text'}} — 한 번만 받음 (서식·별지만 든 파일은 뺌)
+    캐시는 조문 트리 자체도 붙잡아 둠: id()만 쓰면 다 쓴 트리의 번호를 다른 조례가 물려받아 남의 별표가 나옴(2026-11-22 배포에서 보성)"""
     key = id(root)
-    if key in _ALL_TABLES:
-        return _ALL_TABLES[key]
+    hit = _ALL_TABLES.get(key)
+    if hit is not None and hit[0] is root:
+        return hit[1]
     out: dict = {}
     for u in root.findall('.//별표단위'):
         title = flat(u.findtext('별표제목'))
@@ -483,7 +486,7 @@ def all_tables(root: ET.Element) -> dict:
                 put(k, v)
         elif nb:
             put(nb, {'title': title, 'text': section_of(t, nb[0])})
-    _ALL_TABLES[key] = out
+    _ALL_TABLES[key] = (root, out)
     return out
 
 
