@@ -1,4 +1,5 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
+import { initLocalData } from './lib/localData'
 import { Monitor, Moon, Sun } from 'lucide-react'
 import DiagnosticsPanel from './components/DiagnosticsPanel'
 import SettingsDialog from './components/SettingsDialog'
@@ -42,6 +43,10 @@ export default function App() {
   const [storageBlocked, setStorageBlocked] = useState(false)
   const [baseMap, setBaseMap] = useState<BaseMap>('Base')
   const [theme, cycleTheme] = useTheme()
+  // 내 PC 자료 폴더 (묶음 H2): 허락이 살아 있으면 열 때 알아서 훑음
+  useEffect(() => {
+    void initLocalData()
+  }, [])
   const ThemeIcon = theme === 'light' ? Sun : theme === 'dark' ? Moon : Monitor
 
   const projectId = route.name === 'project' ? route.id : null

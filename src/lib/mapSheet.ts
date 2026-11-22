@@ -51,3 +51,53 @@ export function sheetsAround(lon: number, lat: number, radiusM: number): string[
     }
   return [...out].sort()
 }
+
+// ── 1:1,000 도엽 (2026-11-22 묶음 H2, 광주 1:1,000 9장의 BOUND로 맞춤): 9자리 = 1:50,000 5자리
+//    + 1:10,000 칸 2자리(15'을 0.05°씩 5×5, 01~25, 북서부터) + 그 안 0.005°씩 10×10 칸 2자리(행×10 + 열 + 1, 100은 '00')
+const STEP10 = 0.05
+const STEP1 = 0.005
+
+export function sheet1000At(lon: number, lat: number): string {
+  const c5 = sheet5000At(lon, lat)
+  const latInt = Math.floor(lat)
+  const lonInt = Math.floor(lon)
+  const n50 = Number(c5.slice(3, 5)) - 1
+  const top = latInt + 1 - Math.floor(n50 / 4) * STEP50
+  const left = lonInt + (n50 % 4) * STEP50
+  const R10 = Math.min(4, Math.floor((top - lat) / STEP10 + 1e-9))
+  const C10 = Math.min(4, Math.floor((lon - left) / STEP10 + 1e-9))
+  const r = Math.min(9, Math.floor((top - R10 * STEP10 - lat) / STEP1 + 1e-9))
+  const c = Math.min(9, Math.floor((lon - left - C10 * STEP10) / STEP1 + 1e-9))
+  return `${c5.slice(0, 5)}${String(R10 * 5 + C10 + 1).padStart(2, '0')}${String((r * 10 + c + 1) % 100).padStart(2, '0')}`
+}
+
+/** 1:1,000 도엽 범위 [서, 남, 동, 북] */
+export function sheet1000Bounds(code: string): [number, number, number, number] | null {
+  if (!/^\d{9}$/.test(code)) return null
+  const latInt = Number(code.slice(0, 2))
+  const lonInt = lonIntOf(Number(code[2]))
+  const n50 = Number(code.slice(3, 5)) - 1
+  const n10 = Number(code.slice(5, 7)) - 1
+  const n1 = (Number(code.slice(7, 9)) + 99) % 100
+  if (n50 < 0 || n50 > 15 || n10 < 0 || n10 > 24) return null
+  const north = latInt + 1 - Math.floor(n50 / 4) * STEP50 - Math.floor(n10 / 5) * STEP10 - Math.floor(n1 / 10) * STEP1
+  const west = lonInt + (n50 % 4) * STEP50 + (n10 % 5) * STEP10 + (n1 % 10) * STEP1
+  return [west, north - STEP1, west + STEP1, north]
+}
+
+/** 대지 중심 반경 안에 걸치는 1:1,000 도엽들 */
+export function sheets1000Around(lon: number, lat: number, radiusM: number): string[] {
+  const dLat = radiusM / 110574
+  const dLon = radiusM / (111320 * Math.cos((lat * Math.PI) / 180))
+  const out = new Set<string>()
+  const nx = Math.max(12, Math.ceil((2 * dLon) / (STEP1 / 2)))
+  const ny = Math.max(12, Math.ceil((2 * dLat) / (STEP1 / 2)))
+  for (let i = 0; i <= nx; i++)
+    for (let j = 0; j <= ny; j++) {
+      const x = lon - dLon + (2 * dLon * i) / nx
+      const y = lat - dLat + (2 * dLat * j) / ny
+      if (((x - lon) / dLon) ** 2 + ((y - lat) / dLat) ** 2 > 1.05) continue
+      out.add(sheet1000At(x, y))
+    }
+  return [...out].sort()
+}

@@ -402,3 +402,14 @@
 .change-legend i.line {
   height: 3px;
 }
+
+/* 내 PC 자료 폴더 (2026-11-22 묶음 H2) */
+.local-folder {
+  margin: 8px 0;
+  padding: 8px 10px;
+  border: 1px dashed var(--line);
+  border-radius: var(--r-sm);
+}
+.local-folder p {
+  margin: 2px 0;
+}

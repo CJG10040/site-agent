@@ -26,6 +26,7 @@ import { panelRulesKey, rulesFor } from './panelRules'
 import { fontStyleBlob, svgBlobWithFont } from '../lib/fonts'
 import { lawCtxOf } from '../law/envelopeData'
 import { listPanelImages, putPanelImage } from '../model/db'
+import { useLocalData } from '../lib/localData'
 import { nowIso } from '../model/project'
 import { ENVELOPE_ID } from './panelsEnvelope'
 
@@ -171,7 +172,9 @@ export function useDiagrams(project: Project, vworldKey: string, only?: string[]
     .join(',')
   // 보는 안(설계안)을 바꾸거나 안을 다시 올리면 자료부터 다시
   const designSig = `${scenarioSig(project)}|${hashOf(addsSig(project))}`
-  const dataSig = `${project.collectedAt ?? ''}|${envSig}|${ngiiSig}|${siteKey(project.site)}|${project.collectedRadiusM ?? project.site.radiusM}|${obsSig}|${hashOf(hideSig)}|${srcSig}|${hashOf(researchSig)}|${designSig}`
+  // 지형 자료(공개 / 내 PC 10m 타일 — 묶음 H2)가 바뀌면 자료부터 다시
+  const local = useLocalData()
+  const dataSig = `${local.index?.dem ? 'L' : 'P'}|${project.collectedAt ?? ''}|${envSig}|${ngiiSig}|${siteKey(project.site)}|${project.collectedRadiusM ?? project.site.radiusM}|${obsSig}|${hashOf(hideSig)}|${srcSig}|${hashOf(researchSig)}|${designSig}`
   const labelEdits = project.edits?.labels ?? []
   const labelSig = labelEdits.map((l) => `${l.panelId}:${l.key}:${l.dx.toFixed(1)},${l.dy.toFixed(1)}:${l.hidden ? 1 : 0}`).join('|')
   // 결론을 고칠 때마다 프로젝트 객체가 바뀌므로, 자료가 실제로 바뀐 때만 다시 만든다

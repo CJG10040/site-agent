@@ -10,6 +10,10 @@ import { utmkToWgs84, wgs84ToUtmk } from './proj'
 /** 학생 PC 폴더의 10m 타일 읽기 (묶음 H2에서 폴더를 연결하면 넣음) — 'manifest.json'·'303_611.png' 같은 이름 → 파일 */
 type LocalTiles = (name: string) => Promise<Blob | null>
 let localTiles: LocalTiles | null = null
+/** 지형 자료가 무엇에서 오는지 (도판 열쇠에 — 폴더를 연결하면 지형 도판이 '바뀜') */
+export function terrainSourceSig(): string {
+  return localTiles ? 'local' : 'public'
+}
 export function setLocalTerrain(fn: LocalTiles | null): void {
   localTiles = fn
   manifestP = null

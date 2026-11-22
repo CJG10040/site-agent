@@ -63,6 +63,7 @@ const db = new Dexie('site-agent') as Dexie & {
   versions: EntityTable<VersionRecord, 'id'>
   fonts: EntityTable<FontRecord, 'id'>
   panelImages: EntityTable<PanelImageRecord, 'id'>
+  kv: EntityTable<{ key: string; value: unknown }, 'key'>
 }
 
 db.version(1).stores({
@@ -92,6 +93,15 @@ db.version(5).stores({
   versions: 'id, projectId, createdAt',
   fonts: 'id, family',
   panelImages: 'id, projectId',
+})
+// 이 브라우저의 설정값 (2026-11-22 묶음 H2: 연결한 자료 폴더 — 폴더 핸들은 IndexedDB에만 넣을 수 있음)
+db.version(6).stores({
+  projects: 'id, updatedAt',
+  photos: 'id, projectId',
+  versions: 'id, projectId, createdAt',
+  fonts: 'id, family',
+  panelImages: 'id, projectId',
+  kv: 'key',
 })
 
 export interface ProjectSummary {
@@ -233,4 +243,22 @@ export async function listPanelImages(projectId: string, mode: 'n' | 'p'): Promi
 
 export async function putPanelImage(rec: PanelImageRecord): Promise<void> {
   await db.panelImages.put(rec)
+}
+
+// ───────────────────────── 이 브라우저 설정값 (2026-11-22) ─────────────────────────
+
+export async function getKv<T>(key: string): Promise<T | undefined> {
+  try {
+    return (await db.kv.get(key))?.value as T | undefined
+  } catch {
+    return undefined
+  }
+}
+
+export async function putKv(key: string, value: unknown): Promise<void> {
+  await db.kv.put({ key, value })
+}
+
+export async function deleteKv(key: string): Promise<void> {
+  await db.kv.delete(key)
 }

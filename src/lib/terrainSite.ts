@@ -271,3 +271,8 @@ export function contourLonLatLines(t: TerrainAnalysis, interval?: number): { lev
   }
   return out
 }
+
+/** 지형 자료가 바뀌면(자료 폴더 연결 — 묶음 H2) 분석을 다시 */
+export function clearTerrainAnalysis(): void {
+  cache.clear()
+}

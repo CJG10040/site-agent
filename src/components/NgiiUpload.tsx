@@ -3,7 +3,8 @@
 
 import { Check } from 'lucide-react'
 import { unzipSync } from 'fflate'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { connectFolder, disconnectFolder, folderSupported, itemsForSite, regrantFolder, rescanFolder, useLocalData, type LocalItem } from '../lib/localData'
 import { centerOf, siteBoundary } from '../lib/geo'
 import { sheetsAround } from '../lib/mapSheet'
 import { applyEnv } from '../model/applyEnv'
@@ -28,10 +29,24 @@ export default function NgiiUpload({ project, update, config }: Props) {
   const [busy, setBusy] = useState<string | null>(null)
   const [msg, setMsg] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
   const [drag, setDrag] = useState(false)
+  // 내 PC 자료 폴더 (2026-11-22 묶음 H2): 대지에 걸친 도엽·정밀도로지도를 알아서 넣음
+  const local = useLocalData()
+  const autoDone = useRef(false)
   const boundary = siteBoundary(project.site)
-  if (!boundary) return null
-  const center = centerOf(boundary)
+  const center: [number, number] = boundary ? centerOf(boundary) : [0, 0]
   const R = project.collectedRadiusM ?? project.site.radiusM
+  const haveCodes = new Set((project.collected[ngiiLayer('sheets')]?.features ?? []).map((f) => String(f.properties.code)))
+  const site = boundary && local.index ? itemsForSite(local.index, center, R) : null
+  const fromFolder: LocalItem[] = site
+    ? [...site.sheets5.filter((i) => !haveCodes.has(i.code!)), ...site.sheets1.filter((i) => !haveCodes.has(i.code!)), ...(hasHd(project) ? [] : site.hd)]
+    : []
+  useEffect(() => {
+    if (local.state !== 'ready' || autoDone.current || busy || !fromFolder.length) return
+    autoDone.current = true
+    void loadFolder(fromFolder)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [local.state, fromFolder.length])
+  if (!boundary) return null
   const needed = sheetsAround(center[0], center[1], R)
   const sheetProps = (project.collected[ngiiLayer('sheets')]?.features ?? []).map((f) => f.properties)
   const have = new Map(sheetProps.map((p) => [String(p.code), p]))
@@ -56,7 +71,20 @@ export default function NgiiUpload({ project, update, config }: Props) {
     }
   }
 
-  const onFiles = async (files: File[]) => {
+  const loadFolder = async (list: LocalItem[]) => {
+    setBusy('자료 폴더에서 꺼내는 중')
+    const files: File[] = []
+    for (const it of list) {
+      try {
+        files.push(await it.get())
+      } catch (e) {
+        setMsg({ kind: 'error', text: `${it.path}: ${e instanceof Error ? e.message : String(e)}` })
+      }
+    }
+    await onFiles(files, '자료 폴더에서 넣었습니다')
+  }
+
+  const onFiles = async (files: File[], okLabel = '올렸습니다') => {
     const usable = files.filter((f) => /\.(zip|ngi|nda)$/i.test(f.name))
     if (!usable.length) {
       setMsg({ kind: 'error', text: '수치지도 2.0 ZIP(1:5,000), NGI·NDA(1:1,000) 또는 정밀도로지도 ZIP을 골라 주세요 (DXF·XML·XLSX는 쓰지 않음).' })
@@ -147,7 +175,7 @@ export default function NgiiUpload({ project, update, config }: Props) {
     const okHd = hdSets.map((h) => `정밀도로지도 ${h.sections.join('·')} 차선 ${fmt(h.counts.lane ?? 0)}·노면표시 ${fmt(h.counts.mark ?? 0)}`)
     setMsg({
       kind: problems.length && !sheets.length && !hdSets.length ? 'error' : 'ok',
-      text: [ok.length || okHd.length ? `올렸습니다: ${[...ok, ...okHd].join(' / ')}.${envText}` : '', problems.length ? `건너뜀: ${problems.join(' / ')}` : ''].filter(Boolean).join(' '),
+      text: [ok.length || okHd.length ? `${okLabel}: ${[...ok, ...okHd].join(' / ')}.${envText}` : '', problems.length ? `건너뜀: ${problems.join(' / ')}` : ''].filter(Boolean).join(' '),
     })
   }
 
@@ -179,6 +207,70 @@ export default function NgiiUpload({ project, update, config }: Props) {
         아래 <strong>항목별로 쓸 자료</strong>에서 항목마다 어느 쪽을 쓸지 고릅니다(기본은 새 자료).{' '}
         <strong>정밀도로지도</strong> ZIP은 차선·노면표시·연석·보도 면을 렌더링 모델(.3dm)에 넣습니다. 여러 파일을 한꺼번에 끌어다 놓아도 종류를 알아서 가립니다.
       </p>
+      <div className="local-folder">
+        {local.state === 'unsupported' ? (
+          <p className="small muted">내 PC 자료 폴더 연결은 크롬·엣지에서만 됩니다 — 아래에 파일을 올려 주세요.</p>
+        ) : local.state === 'none' ? (
+          <>
+            <button type="button" className="btn small" onClick={() => void connectFolder()}>
+              내 PC 자료 폴더 연결
+            </button>
+            <span className="small muted">
+              {' '}
+              국토정보플랫폼에서 받은 수치지도(도엽 ZIP·시군구 묶음·1:1,000)·정밀도로지도·10m 지형 타일을 한 폴더에 두면, 대지에 걸친 것을 앱이 알아서 찾아 넣습니다. 자료는 PC 밖으로 나가지 않습니다.
+            </span>
+          </>
+        ) : local.state === 'prompt' ? (
+          <>
+            <button type="button" className="btn small primary" onClick={() => void regrantFolder()}>
+              자료 폴더 다시 허락
+            </button>
+            <span className="small muted"> 브라우저를 다시 열면 폴더 허락이 풀릴 때가 있습니다.</span>
+          </>
+        ) : local.state === 'scanning' ? (
+          <span className="small">{local.progress ?? '자료 폴더 훑는 중'}…</span>
+        ) : local.state === 'error' ? (
+          <>
+            <span className="small warn-text">{local.message}</span>{' '}
+            <button type="button" className="btn small" onClick={() => void connectFolder()}>
+              다시 연결
+            </button>
+          </>
+        ) : local.index ? (
+          <>
+            <p className="small">
+              <strong>자료 폴더 '{local.index.folder}'</strong> — 1:5,000 {new Set(local.index.items.filter((i) => i.kind === 'ngii5').map((i) => i.code)).size}도엽
+              {local.index.bundles ? `(묶음 ${local.index.bundles}개 안 포함)` : ''} · 1:1,000 {new Set(local.index.items.filter((i) => i.kind === 'ngii1').map((i) => i.code)).size}도엽 · 정밀도로지도{' '}
+              {local.index.items.filter((i) => i.kind === 'hd').length}개 · 10m 지형 {local.index.dem ? `타일 ${local.index.dem.tiles.toLocaleString('ko-KR')}장(지형은 이 타일로)` : '없음(공개 지형)'}
+            </p>
+            {site && (
+              <p className="small">
+                이 대지: 1:5,000 {site.sheets5.length}/{site.sheets5.length + site.missing5.length}도엽 있음
+                {site.missing5.length ? <span className="muted"> (없음 {site.missing5.join(', ')})</span> : ''} · 1:1,000 {new Set(site.sheets1.map((i) => i.code)).size}도엽
+                {fromFolder.length ? (
+                  <>
+                    {' '}
+                    ·{' '}
+                    <button type="button" className="link-btn small" disabled={!!busy} onClick={() => void loadFolder(fromFolder)}>
+                      아직 안 넣은 {fromFolder.length}개 넣기
+                    </button>
+                  </>
+                ) : (
+                  ' · 모두 넣음'
+                )}
+              </p>
+            )}
+            {local.index.problems.length > 0 && <p className="small warn-text">{local.index.problems.join(' / ')}</p>}
+            <button type="button" className="link-btn small" onClick={() => void rescanFolder()}>
+              다시 훑기
+            </button>{' '}
+            <button type="button" className="link-btn small" onClick={() => void disconnectFolder()}>
+              연결 끊기
+            </button>
+          </>
+        ) : null}
+        {!folderSupported && null}
+      </div>
       <div className="ngii-sheets">
         <span className="label">반경 {R}m에 걸치는 도엽</span>
         {needed.map((code) => (
