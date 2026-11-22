@@ -236,7 +236,7 @@ const skyDomePanel: PanelDef = {
   render: (c): PanelOutput => {
     const e = envOf(c)
     if (!e) return emptyOut('환경 계산 결과가 없습니다')
-    const Rd = MAP_R - 46
+    const Rd = c.f.rIn - 46
     const pt = (az: number, alt: number): XY => {
       const r = (Rd * (90 - Math.max(0, alt))) / 90
       const a = (az * Math.PI) / 180
@@ -274,7 +274,7 @@ const skyDomePanel: PanelDef = {
         const s = sunAtLocal(c, day.key, h)
         if (s.altitude <= 0) continue
         const [x, y] = pt(s.azimuth, s.altitude)
-        sun += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3.5" fill="${pathColors[i]}"/>`
+        sun += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${c.sy.v('dot', 3.5)}" fill="${pathColors[i]}"/>`
         if (i === 1) sun += `<text x="${(x + 6).toFixed(1)}" y="${(y - 6).toFixed(1)}" font-size="${c.ty.v('note', 13)}" fill="${c.pal.ink}" stroke="${c.pal.paper}" stroke-width="${c.ty.v('note', 3)}" paint-order="stroke">${h}시</text>`
       }
     })
@@ -452,8 +452,8 @@ function windPanel(season: '여름' | '겨울'): PanelDef {
       const uy = -Math.cos(a)
       let arrows = ''
       for (const off of [-200, 0, 200]) {
-        const cx = MAP_CX - ux * (MAP_R - 70) + -uy * off
-        const cy = MAP_CY - uy * (MAP_R - 70) + ux * off
+        const cx = MAP_CX - ux * (c.f.rIn - 70) + -uy * off
+        const cy = MAP_CY - uy * (c.f.rIn - 70) + ux * off
         const x2 = cx + ux * 60
         const y2 = cy + uy * 60
         arrows += `<path d="M${cx.toFixed(1)} ${cy.toFixed(1)}L${x2.toFixed(1)} ${y2.toFixed(1)}" stroke="${c.pal.ink}" stroke-width="3"/><path d="M${(x2 + ux * 10).toFixed(1)} ${(y2 + uy * 10).toFixed(1)}L${(x2 - uy * 8).toFixed(1)} ${(y2 + ux * 8).toFixed(1)}L${(x2 + uy * 8).toFixed(1)} ${(y2 - ux * 8).toFixed(1)}Z" fill="${c.pal.ink}"/>`

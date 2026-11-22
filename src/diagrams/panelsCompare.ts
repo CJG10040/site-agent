@@ -6,7 +6,7 @@ import { unpackGrid, type UnpackedGrid } from '../lib/env/grid'
 import { SUN_DAYS } from '../lib/sun'
 import { esc, type LegendItem, type PanelLayer, type PanelOutput } from './compose'
 import type { DiagramData } from './data'
-import { MAP_CX, MAP_CY, MAP_R } from './frame'
+import { frameShapeSvg } from './frame'
 import { mix } from './palette'
 import type { PanelCtx, PanelDef } from './panels'
 import { fineHalfOf, gridImage, maskOf, siteFarOf } from './panelsEnv'
@@ -48,7 +48,7 @@ function placeMap(c: PanelCtx, layers: PanelLayer[], box: { x: number; y: number
   const clipped = layers.filter((l) => !l.noClip).map((l) => l.svg).join('')
   const free = layers.filter((l) => l.noClip).map((l) => l.svg).join('')
   const frame =
-    c.f.shape === 'circle' ? `<circle cx="${MAP_CX}" cy="${MAP_CY}" r="${MAP_R}"` : `<rect x="${MAP_CX - MAP_R}" y="${MAP_CY - MAP_R}" width="${MAP_R * 2}" height="${MAP_R * 2}"`
+    frameShapeSvg(c.f).slice(0, -2)
   return (
     `<defs><clipPath id="${clipId}">${frame}/></clipPath></defs>` +
     `<g transform="translate(${box.x.toFixed(1)} ${box.y.toFixed(1)}) scale(${k.toFixed(4)})">` +

@@ -2,9 +2,9 @@
 // 규칙은 패널 모드에만 쓴다 — 보통 도판(⑥ 기본·⑨ 보드·리포트)은 늘 지금 모습 그대로 (사용자 결정).
 // 판 크기는 '지도 지름 mm'로 정하고, 글자(pt)·선(mm)은 그 크기에서 도판 단위로 바꿔 단계 배율을 셈한다.
 
-import type { DiagramSettings, LineStep, PanelRules, PanelRulesEdit, TextStep } from '../model/types'
+import type { DiagramSettings, LineStep, PanelRules, PanelRulesEdit, SymStep, TextStep } from '../model/types'
 import { MAP_R } from './frame'
-import { typeScale, type TypeScale } from './typeScale'
+import { symScale, typeScale, type SymScale, type TypeScale } from './typeScale'
 
 /** 1pt = 25.4/72 mm */
 export const PT_MM = 25.4 / 72
@@ -12,11 +12,14 @@ export const PT_MM = 25.4 / 72
 /** 처음 값: 지도 120mm에서 보통 도판과 거의 같은 모습 (글자·선 숫자는 둥글게) */
 export const DEFAULT_RULES: PanelRules = {
   mapMM: 120,
+  rect: false,
+  mapH: 80,
   legend: 'below',
   north: true,
   scale: true,
   text: { legend: 6.5, label: 5.5, note: 5, mark: 6 },
   line: { site: 0.4, frame: 0.2, bold: 0.4, line: 0.2, fine: 0.1 },
+  sym: { icon: 2.9, dot: 0.7 },
   font: '',
   dpi: 300,
 }
@@ -24,6 +27,8 @@ export const DEFAULT_RULES: PanelRules = {
 /** 단계마다 보통 도판의 대표 크기 (도판 단위) — 이 크기가 규칙 값이 됨 */
 const REF_TEXT: Record<TextStep, number> = { legend: 17, label: 15, note: 13, mark: 16 }
 const REF_LINE: Record<LineStep, number> = { site: 3, frame: 1.5, bold: 3, line: 1.5, fine: 0.8 }
+/** 기호 대표 지름 (도판 단위): 생활 시설 아이콘 반지름 11 · 상가 점 반지름 2.6 — 다른 기호는 같은 배율로 */
+const REF_SYM: Record<SymStep, number> = { icon: 22, dot: 5.2 }
 
 export const LINE_STEP_LABEL: Record<LineStep, string> = {
   site: '대지 경계',
@@ -34,11 +39,12 @@ export const LINE_STEP_LABEL: Record<LineStep, string> = {
 }
 export const TEXT_STEPS: TextStep[] = ['legend', 'label', 'note', 'mark']
 export const LINE_STEPS: LineStep[] = ['site', 'frame', 'bold', 'line', 'fine']
+export const SYM_STEPS: SymStep[] = ['icon', 'dot']
 
 /** 규칙 + 고친 칸 */
 export function mergeRules(base: PanelRules, e: PanelRulesEdit | undefined): PanelRules {
   if (!e) return base
-  return { ...base, ...e, text: { ...base.text, ...(e.text ?? {}) }, line: { ...base.line, ...(e.line ?? {}) } } as PanelRules
+  return { ...base, ...e, text: { ...base.text, ...(e.text ?? {}) }, line: { ...base.line, ...(e.line ?? {}) }, sym: { ...base.sym, ...(e.sym ?? {}) } } as PanelRules
 }
 
 /** 이 도판의 규칙 (처음 값 → 프로젝트 규칙 → 도판 하나만) */
@@ -49,12 +55,20 @@ export function rulesFor(s: DiagramSettings, id: string): PanelRules {
 /** 그림이 바뀌는 열쇠 (해상도는 그림에 영향 없음) */
 export function panelRulesKey(s: DiagramSettings, id: string): string {
   const r = rulesFor(s, id)
-  return JSON.stringify([r.mapMM, r.legend, r.north, r.scale, r.text, r.line, r.font])
+  return JSON.stringify([r.mapMM, r.legend, r.north, r.scale, r.text, r.line, r.font, r.sym, r.rect ? r.mapH : null])
 }
 
-/** 도판 단위 1칸 = 몇 mm */
+/** 도판 단위 1칸 = 몇 mm (직사각은 긴 쪽이 2·MAP_R) */
 export function unitMM(r: PanelRules): number {
-  return r.mapMM / (2 * MAP_R)
+  return (r.rect ? Math.max(r.mapMM, r.mapH) : r.mapMM) / (2 * MAP_R)
+}
+
+/** 직사각 틀의 반폭·반높이 (도판 단위) — 긴 쪽이 MAP_R. 직사각이 아니면 undefined */
+export function rectHalf(r: PanelRules): { hx: number; hy: number } | undefined {
+  if (!r.rect) return undefined
+  const long = Math.max(r.mapMM, r.mapH)
+  const h = (mm: number) => Math.round(((MAP_R * mm) / long) * 10) / 10
+  return { hx: h(r.mapMM), hy: h(r.mapH) }
 }
 
 export interface RuleScale {
@@ -64,13 +78,16 @@ export interface RuleScale {
   ty: TypeScale
   /** 선 단계 배율 */
   kl: Record<LineStep, number>
+  /** 기호 단계 배율 */
+  sy: SymScale
 }
 
 export function ruleScale(r: PanelRules): RuleScale {
   const u = unitMM(r)
   const kt = Object.fromEntries(TEXT_STEPS.map((s) => [s, (r.text[s] * PT_MM) / (REF_TEXT[s] * u)])) as Record<TextStep, number>
   const kl = Object.fromEntries(LINE_STEPS.map((s) => [s, r.line[s] / (REF_LINE[s] * u)])) as Record<LineStep, number>
-  return { rules: r, unit: u, ty: typeScale(kt), kl }
+  const ks = Object.fromEntries(SYM_STEPS.map((s) => [s, r.sym[s] / (REF_SYM[s] * u)])) as Record<SymStep, number>
+  return { rules: r, unit: u, ty: typeScale(kt), kl, sy: symScale(ks) }
 }
 
 /** 지금 굵기로 선 단계 나누기 */

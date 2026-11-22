@@ -7,20 +7,22 @@ import { useEffect, useRef, useState } from 'react'
 import { addFontFiles, FONT_ACCEPT, removeFont, renameFamily, type FontRecord } from '../lib/fonts'
 import { canListAll, loadAllFonts, useSystemFonts } from '../lib/systemFonts'
 import { FONT } from '../diagrams/compose'
-import { DEFAULT_RULES, LINE_STEP_LABEL, LINE_STEPS, mergeRules, rulesFor, TEXT_STEPS } from '../diagrams/panelRules'
-import { TEXT_STEP_LABEL } from '../diagrams/typeScale'
-import type { DiagramSettings, LineStep, PanelRules as Rules, PanelRulesEdit, TextStep } from '../model/types'
+import { DEFAULT_RULES, LINE_STEP_LABEL, LINE_STEPS, mergeRules, rulesFor, SYM_STEPS, TEXT_STEPS } from '../diagrams/panelRules'
+import { SYM_STEP_LABEL, TEXT_STEP_LABEL } from '../diagrams/typeScale'
+import type { DiagramSettings, LineStep, PanelRules as Rules, PanelRulesEdit, SymStep, TextStep } from '../model/types'
 
 /** 고친 칸에서 바탕과 같은 값은 뺌 (바꾼 것만 남김) */
 function tidy(e: PanelRulesEdit, base: Rules): PanelRulesEdit | undefined {
   const out: PanelRulesEdit = {}
-  for (const k of ['mapMM', 'legend', 'north', 'scale', 'font', 'dpi'] as const) {
+  for (const k of ['mapMM', 'rect', 'mapH', 'legend', 'north', 'scale', 'font', 'dpi'] as const) {
     if (e[k] !== undefined && e[k] !== base[k]) (out as Record<string, unknown>)[k] = e[k]
   }
   const text = Object.fromEntries(TEXT_STEPS.filter((s) => e.text?.[s] !== undefined && e.text[s] !== base.text[s]).map((s) => [s, e.text![s]]))
   const line = Object.fromEntries(LINE_STEPS.filter((s) => e.line?.[s] !== undefined && e.line[s] !== base.line[s]).map((s) => [s, e.line![s]]))
+  const sym = Object.fromEntries(SYM_STEPS.filter((s) => e.sym?.[s] !== undefined && e.sym[s] !== base.sym[s]).map((s) => [s, e.sym![s]]))
   if (Object.keys(text).length) out.text = text
   if (Object.keys(line).length) out.line = line
+  if (Object.keys(sym).length) out.sym = sym
   return Object.keys(out).length ? out : undefined
 }
 
@@ -132,17 +134,35 @@ interface FormProps {
 export function RulesForm({ base, fonts, edit, onChange, one = false }: FormProps) {
   const r = mergeRules(base, edit)
   const set = (patch: PanelRulesEdit) => {
-    const next: PanelRulesEdit = { ...(edit ?? {}), ...patch, text: { ...(edit?.text ?? {}), ...(patch.text ?? {}) }, line: { ...(edit?.line ?? {}), ...(patch.line ?? {}) } }
+    const next: PanelRulesEdit = {
+      ...(edit ?? {}),
+      ...patch,
+      text: { ...(edit?.text ?? {}), ...(patch.text ?? {}) },
+      line: { ...(edit?.line ?? {}), ...(patch.line ?? {}) },
+      sym: { ...(edit?.sym ?? {}), ...(patch.sym ?? {}) },
+    }
     onChange(tidy(next, base))
   }
   // 도판 하나만: 전체 규칙과 다른 칸 표시 / 전체 규칙: 처음 값과 다른 칸은 표시 안 함 (흔히 바꾸므로)
   const ch = (k: keyof Rules) => one && edit?.[k] !== undefined
   const cht = (s: TextStep) => one && edit?.text?.[s] !== undefined
   const chl = (s: LineStep) => one && edit?.line?.[s] !== undefined
+  const chs = (s: SymStep) => one && edit?.sym?.[s] !== undefined
   return (
     <div className="rules-form">
       <div className="rules-row">
-        <Num label="지도 지름" unit="mm" value={r.mapMM} step={5} min={30} max={400} onChange={(v) => set({ mapMM: v })} changed={ch('mapMM')} />
+        <Seg
+          label="지도 틀"
+          value={r.rect}
+          options={[
+            [false, '설정대로 (원·정사각)'],
+            [true, '직사각'],
+          ]}
+          onChange={(v) => set({ rect: v })}
+          changed={ch('rect')}
+        />
+        <Num label={r.rect ? '가로' : '지도 지름'} unit="mm" value={r.mapMM} step={5} min={30} max={400} onChange={(v) => set({ mapMM: v })} changed={ch('mapMM')} />
+        {r.rect && <Num label="세로" unit="mm" value={r.mapH} step={5} min={30} max={400} onChange={(v) => set({ mapH: v })} changed={ch('mapH')} />}
         <Seg
           label="범례"
           value={r.legend}
@@ -185,6 +205,12 @@ export function RulesForm({ base, fonts, edit, onChange, one = false }: FormProp
         <span className="rules-head">선 (mm)</span>
         {LINE_STEPS.map((s) => (
           <Num key={s} label={LINE_STEP_LABEL[s]} unit="mm" value={r.line[s]} step={0.05} min={0.02} max={3} onChange={(v) => set({ line: { [s]: v } })} changed={chl(s)} />
+        ))}
+      </div>
+      <div className="rules-row">
+        <span className="rules-head">기호 지름 (mm)</span>
+        {SYM_STEPS.map((s) => (
+          <Num key={s} label={SYM_STEP_LABEL[s]} unit="mm" value={r.sym[s]} step={0.1} min={0.2} max={20} onChange={(v) => set({ sym: { [s]: v } })} changed={chs(s)} />
         ))}
       </div>
       <div className="rules-row">
@@ -391,7 +417,7 @@ export function PanelRulesOne({ id, settings, fonts, setSettings }: { id: string
     <details className="panel-one" open={open} onToggle={(e) => setOpen((e.target as HTMLDetailsElement).open)}>
       <summary className="small">
         이 도판만 따로{edit ? <span className="rule-badge">바꿈</span> : null}
-        <span className="muted"> · 지도 {r.mapMM}mm · 범례 {r.legend === 'below' ? '아래' : r.legend === 'right' ? '오른쪽' : '없음'}</span>
+        <span className="muted"> · 지도 {r.rect ? `${r.mapMM}×${r.mapH}` : r.mapMM}mm · 범례 {r.legend === 'below' ? '아래' : r.legend === 'right' ? '오른쪽' : '없음'}</span>
       </summary>
       {open && <RulesForm base={base} fonts={fonts} edit={edit} onChange={setEdit} one />}
       {open && edit && (

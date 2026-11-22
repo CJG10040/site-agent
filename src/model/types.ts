@@ -469,10 +469,16 @@ export interface DiagramSettings {
 export type TextStep = 'legend' | 'label' | 'note' | 'mark'
 /** 선 단계: 대지 경계 · 지도 틀 · 굵은·보통·가는 선(지금 굵기 2.5 이상 · 1~2.5 · 1 미만) */
 export type LineStep = 'site' | 'frame' | 'bold' | 'line' | 'fine'
+/** 기호 단계 (2026-11-22 사용자 결정: 아이콘 / 작은 점 두 칸) */
+export type SymStep = 'icon' | 'dot'
 
 export interface PanelRules {
-  /** 지도 지름(정사각이면 한 변) mm */
+  /** 지도 지름(정사각이면 한 변, 직사각이면 가로) mm */
   mapMM: number
+  /** 직사각 지도 틀 (2026-11-22 사용자 결정: 패널 모드에만) — 켜면 mapMM × mapH, 끄면 ⑥ 설정의 원·정사각 */
+  rect: boolean
+  /** 직사각일 때 세로 mm */
+  mapH: number
   /** 범례 자리 */
   legend: 'below' | 'right' | 'none'
   north: boolean
@@ -481,6 +487,8 @@ export interface PanelRules {
   text: Record<TextStep, number>
   /** 선 굵기 mm */
   line: Record<LineStep, number>
+  /** 기호 지름 mm — 아이콘(생활 시설·역) / 작은 점(상가·정류소 등) */
+  sym: Record<SymStep, number>
   /** 글꼴 이름 (비우면 기본 Pretendard) */
   font: string
   /** PNG 해상도 */
@@ -488,7 +496,11 @@ export interface PanelRules {
 }
 
 /** 바꾼 칸만 (글자·선은 단계별로) */
-export type PanelRulesEdit = Partial<Omit<PanelRules, 'text' | 'line'>> & { text?: Partial<Record<TextStep, number>>; line?: Partial<Record<LineStep, number>> }
+export type PanelRulesEdit = Partial<Omit<PanelRules, 'text' | 'line' | 'sym'>> & {
+  text?: Partial<Record<TextStep, number>>
+  line?: Partial<Record<LineStep, number>>
+  sym?: Partial<Record<SymStep, number>>
+}
 
 /** 도판 하나의 결론 */
 export interface PanelNote {

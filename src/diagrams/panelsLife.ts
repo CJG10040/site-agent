@@ -132,7 +132,7 @@ const storesTimePanel: PanelDef = {
     const dots = loose
       .map((st) => {
         const [x, y] = c.f.pt(st.lon, st.lat)
-        return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="2.6" fill="${col[timeOf(st)]}" stroke="${c.pal.paper}" stroke-width="0.8"/>`
+        return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${c.sy.v('dot', 2.6)}" fill="${col[timeOf(st)]}" stroke="${c.pal.paper}" stroke-width="0.8"/>`
       })
       .join('')
     const share = (list: Pt[]) => {
@@ -341,19 +341,23 @@ const poiMapPanel: PanelDef = {
       const dx = px - MAP_CX
       const dy = py - MAP_CY
       const r = Math.hypot(dx, dy)
-      const out = c.f.shape === 'circle' ? r > edge : Math.max(Math.abs(dx), Math.abs(dy)) > edge
+      // 직사각 틀(패널 모드)은 가로·세로 가장자리를 따로
+      const rect = c.f.shape !== 'circle' && c.f.hx !== c.f.hy
+      const t = rect ? Math.max(Math.abs(dx) / (c.f.hx - 14), Math.abs(dy) / (c.f.hy - 14)) : 0
+      const out = rect ? t > 1 : c.f.shape === 'circle' ? r > edge : Math.max(Math.abs(dx), Math.abs(dy)) > edge
       if (out) {
-        const k = edge / (c.f.shape === 'circle' ? r : Math.max(Math.abs(dx), Math.abs(dy)))
+        const k = rect ? 1 / t : edge / (c.f.shape === 'circle' ? r : Math.max(Math.abs(dx), Math.abs(dy)))
         px = MAP_CX + dx * k
         py = MAP_CY + dy * k
       }
       lines += `<path d="M${MAP_CX} ${MAP_CY}L${px.toFixed(1)} ${py.toFixed(1)}" stroke="${g.color}" stroke-width="2" stroke-dasharray="5 4" fill="none"/>`
-      const lx = px + (px >= MAP_CX ? 14 : -14)
+      const lgap = 11 * c.sy.k('icon') + 3
+      const lx = px + (px >= MAP_CX ? lgap : -lgap)
       const anchor = px >= MAP_CX ? 'start' : 'end'
       const text = `${x.p.label ?? x.p.kind} ${minText(x.min)}${out ? ' (도판 밖)' : ''}`
       const ly = place(lx, py + 5, text.length * 13, anchor)
       labels += `<text x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" font-size="${c.ty.v('label', 14)}" font-weight="600" text-anchor="${anchor}" fill="${g.color}" stroke="${c.pal.paper}" stroke-width="${c.ty.v('label', 4)}" paint-order="stroke">${esc(text)}</text>`
-      if (out) labels += iconSvg(x.p.kind, px, py, 11, g.color)
+      if (out) labels += iconSvg(x.p.kind, px, py, 11 * c.sy.k('icon'), g.color)
     }
     let icons = ''
     for (const x of list) {
@@ -361,14 +365,14 @@ const poiMapPanel: PanelDef = {
       const g = groupOf(groups, x.p.kind)
       if (!g) continue
       const [px, py] = c.f.pt(x.p.lon, x.p.lat)
-      icons += iconSvg(x.p.kind, px, py, 7.5, mix(c.pal.paper, g.color, 0.75))
+      icons += iconSvg(x.p.kind, px, py, 7.5 * c.sy.k('icon'), mix(c.pal.paper, g.color, 0.75))
     }
     for (const x of near.values()) {
       if (!c.f.inside(x.p.lon, x.p.lat)) continue
       const g = groupOf(groups, x.p.kind)
       if (!g) continue
       const [px, py] = c.f.pt(x.p.lon, x.p.lat)
-      icons += iconSvg(x.p.kind, px, py, 11, g.color)
+      icons += iconSvg(x.p.kind, px, py, 11 * c.sy.k('icon'), g.color)
     }
     const byNet = list.some((x) => x.byNet)
     const groupMins = groups

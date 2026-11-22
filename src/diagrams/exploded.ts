@@ -4,7 +4,7 @@
 
 import type { DiagramSettings } from '../model/types'
 import { esc, type LegendItem, type PanelOutput } from './compose'
-import { MAP_CX, MAP_CY, MAP_R, SHEET_W } from './frame'
+import { frameShapeSvg, MAP_CX, MAP_CY, MAP_R, SHEET_W } from './frame'
 import { mix } from './palette'
 import type { PanelDef } from './panels'
 
@@ -74,7 +74,7 @@ export const EXPLODED_PANEL: PanelDef = {
     const cx = 30 + MAP_R * k
     const bottomCy = 975 - H / 2
     const shape =
-      c.f.shape === 'circle' ? `<circle cx="${MAP_CX}" cy="${MAP_CY}" r="${MAP_R}"/>` : `<rect x="${MAP_CX - MAP_R}" y="${MAP_CY - MAP_R}" width="${MAP_R * 2}" height="${MAP_R * 2}"/>`
+      frameShapeSvg(c.f)
     const filled = (fill: string, extra = '') => shape.replace('/>', ` fill="${fill}"${extra}/>`)
     const clip = `<defs><clipPath id="exploded-clip">${shape}</clipPath></defs>`
     const sitePath = c.f.path(c.d.boundary, false)

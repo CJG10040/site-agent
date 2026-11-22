@@ -11,10 +11,13 @@ import { UNIT_TYPE, type TypeScale } from './typeScale'
 import { featureCollection, intersect, polygon } from '@turf/turf'
 import type { Feature, MultiPolygon, Polygon } from 'geojson'
 import type { Areal } from '../lib/geo'
-import type { DiagramSettings, FrameShape } from '../model/types'
+import type { DiagramSettings } from '../model/types'
 import type { PanelLayer, PanelOutput } from './compose'
 import { bldHeight, type Bld } from './data'
-import { MAP_CX, MAP_CY, MAP_R, type Frame } from './frame'
+import { frameShapeSvg, MAP_CX, MAP_CY, MAP_R, type Frame } from './frame'
+
+/** 틀 모양 (직사각은 shape 'square' + 반폭·반높이) */
+type FrameBox = Pick<Frame, 'shape' | 'hx' | 'hy'>
 import { luminance, mix, type Palette } from './palette'
 
 export interface Cam3d {
@@ -66,7 +69,8 @@ export function projector(cam: Cam3d, f: Frame): Projector {
   const cy = MAP_CY + MAP_R * (1 - sinT) * 0.6
   // 사각 판을 비스듬히(모서리 쪽에서) 보면 화면 폭이 최대 √2배로 넓어져 도판 밖으로 잘리고 제목과 겹침 →
   // 판 전체가 원 틀과 같은 폭에 들어오게 줄임 (원·정면 방향은 그대로 1)
-  const k = f.shape === 'square' ? 1 / (Math.abs(cosA) + Math.abs(sinA)) : 1
+  // 직사각(패널 모드)은 돌린 판의 화면 반폭 |cos|·hx + |sin|·hy가 MAP_R 안에 들어오게
+  const k = f.shape === 'square' ? (f.hx === f.hy ? 1 / (Math.abs(cosA) + Math.abs(sinA)) : MAP_R / (Math.abs(cosA) * f.hx + Math.abs(sinA) * f.hy)) : 1
   const zs = f.s * cam.vex * cosT * k
   const P = (px: number, py: number, zM = 0): [number, number] => {
     const X = (px - MAP_CX) * k
@@ -121,12 +125,12 @@ const COS_HALF = Math.cos(Math.PI / CIRCLE_N)
 const EDGE_EPS = 0.05
 
 /** 틀 모양 고리 (닫힘) — 원은 정256각형, 꼭짓점 k의 각 = k·2π/N */
-export function frameRing(shape: FrameShape): XY[] {
-  if (shape === 'square') {
-    const l = MAP_CX - MAP_R
-    const r = MAP_CX + MAP_R
-    const t = MAP_CY - MAP_R
-    const b = MAP_CY + MAP_R
+export function frameRing(f: FrameBox): XY[] {
+  if (f.shape === 'square') {
+    const l = MAP_CX - f.hx
+    const r = MAP_CX + f.hx
+    const t = MAP_CY - f.hy
+    const b = MAP_CY + f.hy
     return [[l, t], [r, t], [r, b], [l, b], [l, t]]
   }
   const out: XY[] = []
@@ -137,8 +141,8 @@ export function frameRing(shape: FrameShape): XY[] {
   return out
 }
 
-function insideFrame(shape: FrameShape, x: number, y: number): boolean {
-  if (shape === 'square') return Math.abs(x - MAP_CX) <= MAP_R && Math.abs(y - MAP_CY) <= MAP_R
+function insideFrame(f: FrameBox, x: number, y: number): boolean {
+  if (f.shape === 'square') return Math.abs(x - MAP_CX) <= f.hx && Math.abs(y - MAP_CY) <= f.hy
   return (x - MAP_CX) ** 2 + (y - MAP_CY) ** 2 <= (MAP_R * COS_HALF) ** 2
 }
 
@@ -152,11 +156,11 @@ function onCircleEdge(x: number, y: number): boolean {
 }
 
 /** 변 a→b가 틀 경계를 따라가는지 (= 자른 자리) */
-export function isCutEdge(shape: FrameShape, a: XY, b: XY): boolean {
-  if (shape === 'square') {
+export function isCutEdge(f: FrameBox, a: XY, b: XY): boolean {
+  if (f.shape === 'square') {
     const near = (v: number, w: number) => Math.abs(v - w) < EDGE_EPS
-    for (const L of [MAP_CX - MAP_R, MAP_CX + MAP_R]) if (near(a[0], L) && near(b[0], L)) return true
-    for (const L of [MAP_CY - MAP_R, MAP_CY + MAP_R]) if (near(a[1], L) && near(b[1], L)) return true
+    for (const L of [MAP_CX - f.hx, MAP_CX + f.hx]) if (near(a[0], L) && near(b[0], L)) return true
+    for (const L of [MAP_CY - f.hy, MAP_CY + f.hy]) if (near(a[1], L) && near(b[1], L)) return true
     return false
   }
   const rMin = MAP_R * COS_HALF - EDGE_EPS
@@ -197,8 +201,8 @@ function circleWedge(pts: XY[]): Feature<Polygon> | null {
  * 발자국(도판 픽셀, 닫지 않은 고리)을 틀 모양으로 자름 → 틀 안쪽 조각들(닫지 않은 고리).
  * 모두 안이면 그대로, 모두 밖이면 빈 목록. 자르기가 실패하면(꼬인 도형 등) 가운데 점 기준으로 예전처럼.
  */
-export function clipToFrame(pts: XY[], shape: FrameShape, frame: Feature<Polygon>): { pieces: XY[][]; cut: boolean } {
-  if (pts.every(([x, y]) => insideFrame(shape, x, y))) return { pieces: [pts], cut: false }
+export function clipToFrame(pts: XY[], f: FrameBox, frame: Feature<Polygon>): { pieces: XY[][]; cut: boolean } {
+  if (pts.every(([x, y]) => insideFrame(f, x, y))) return { pieces: [pts], cut: false }
   let x0 = Infinity
   let y0 = Infinity
   let x1 = -Infinity
@@ -209,9 +213,9 @@ export function clipToFrame(pts: XY[], shape: FrameShape, frame: Feature<Polygon
     if (y < y0) y0 = y
     if (y > y1) y1 = y
   }
-  if (x1 < MAP_CX - MAP_R || x0 > MAP_CX + MAP_R || y1 < MAP_CY - MAP_R || y0 > MAP_CY + MAP_R) return { pieces: [], cut: false }
+  if (x1 < MAP_CX - f.hx || x0 > MAP_CX + f.hx || y1 < MAP_CY - f.hy || y0 > MAP_CY + f.hy) return { pieces: [], cut: false }
   try {
-    const g = intersect(featureCollection<Polygon | MultiPolygon>([polygon([[...pts, pts[0]]]), shape === 'circle' ? circleWedge(pts) ?? frame : frame]))
+    const g = intersect(featureCollection<Polygon | MultiPolygon>([polygon([[...pts, pts[0]]]), f.shape === 'circle' ? circleWedge(pts) ?? frame : frame]))
     if (!g) return { pieces: [], cut: false }
     const polys = g.geometry.type === 'Polygon' ? [g.geometry.coordinates] : g.geometry.coordinates
     const pieces = polys.map((p) => p[0].slice(0, -1).map(([x, y]) => [x, y] as XY)).filter((r) => r.length >= 3)
@@ -219,7 +223,7 @@ export function clipToFrame(pts: XY[], shape: FrameShape, frame: Feature<Polygon
   } catch {
     const cx = pts.reduce((s, p) => s + p[0], 0) / pts.length
     const cy = pts.reduce((s, p) => s + p[1], 0) / pts.length
-    return { pieces: insideFrame(shape, cx, cy) ? [pts] : [], cut: false }
+    return { pieces: insideFrame(f, cx, cy) ? [pts] : [], cut: false }
   }
 }
 
@@ -252,8 +256,7 @@ export function to3d(
   const over = opts.cam?.(asked) ?? null
   const cam = over?.cam ?? asked
   const pr = projector(cam, f)
-  const shape =
-    f.shape === 'circle' ? `<circle cx="${MAP_CX}" cy="${MAP_CY}" r="${MAP_R}"/>` : `<rect x="${MAP_CX - MAP_R}" y="${MAP_CY - MAP_R}" width="${MAP_R * 2}" height="${MAP_R * 2}"/>`
+  const shape = frameShapeSvg(f)
   const fillShape = (fill: string, extra = '') => shape.replace('/>', ` fill="${fill}"${extra}/>`)
 
   // ── 바닥: 판 두께 + 판 + 평면 그림 + 대지 표시
@@ -281,7 +284,7 @@ export function to3d(
   const la = ((cam.az - 70) * Math.PI) / 180
   const lx = Math.sin(la)
   const ly = Math.cos(la)
-  const frame = polygon([frameRing(f.shape)])
+  const frame = polygon([frameRing(f)])
   let cutCount = 0
   type Mass = { away: number; svg: string }
   const masses: Mass[] = []
@@ -304,7 +307,7 @@ export function to3d(
       }
       if (raw.length > 2 && Math.hypot(raw[0][0] - raw[raw.length - 1][0], raw[0][1] - raw[raw.length - 1][1]) < 0.1) raw.pop()
       if (raw.length < 3) continue
-      const clipped = clipToFrame(raw, f.shape, frame)
+      const clipped = clipToFrame(raw, f, frame)
       if (clipped.cut) cutCount++
       for (const pts of clipped.pieces) {
         const cx = pts.reduce((s, p) => s + p[0], 0) / pts.length
@@ -337,7 +340,7 @@ export function to3d(
           const b1 = pr.P(x2, y2, h)
           const b0 = pr.P(x1, y1, h)
           const q = `M${a0[0].toFixed(1)} ${a0[1].toFixed(1)}L${a1[0].toFixed(1)} ${a1[1].toFixed(1)}L${b1[0].toFixed(1)} ${b1[1].toFixed(1)}L${b0[0].toFixed(1)} ${b0[1].toFixed(1)}Z`
-          if (clipped.cut && isCutEdge(f.shape, pts[i], pts[(i + 1) % pts.length])) cut += q
+          if (clipped.cut && isCutEdge(f, pts[i], pts[(i + 1) % pts.length])) cut += q
           else if (nx * lx + ny * ly > 0) lit += q
           else dark += q
         }

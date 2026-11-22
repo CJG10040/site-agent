@@ -1,7 +1,7 @@
 // 도판 정의. 도판 하나 = 사실 하나 (주제색 한 계열 + 회색 바탕, 모르는 값은 회색 '미상').
 // 각 도판은 그림(레이어)·범례·읽은 수치(summary)·출처와 한계(caption)를 돌려준다.
 
-import type { TypeScale } from './typeScale'
+import type { SymScale, SymStep, TypeScale } from './typeScale'
 import { contours } from 'd3-contour'
 import { area, booleanPointInPolygon, feature, featureCollection, intersect, point } from '@turf/turf'
 import type { Position } from 'geojson'
@@ -57,6 +57,8 @@ export interface PanelCtx {
   renderOther?: (id: string, d: DiagramData) => Promise<PanelOutput | null>
   /** 글자 단계 배율 (2026-11-21 묶음 D1): 보통 도판은 모두 1, 패널 모드는 규칙에서 */
   ty: TypeScale
+  /** 기호 단계 배율 (2026-11-22): 보통 도판은 1, 패널 모드는 규칙(아이콘·작은 점 mm)에서 */
+  sy: SymScale
   /** ⑪ 법규 검토 입력 (2026-11-21 묶음 E6 건축 가능 영역 도판) — 정하지 않았으면 null */
   law?: LawCtx | null
 }
@@ -91,7 +93,7 @@ function median(values: number[]): number {
 }
 
 function frameArea(f: Frame): number {
-  return f.shape === 'circle' ? Math.PI * f.R * f.R : 4 * f.R * f.R
+  return f.shape === 'circle' ? Math.PI * f.R * f.R : 4 * f.R * f.R * (f.hx / MAP_R) * (f.hy / MAP_R)
 }
 
 /**
@@ -138,7 +140,8 @@ function baseRoads(c: PanelCtx, color = mix(c.pal.paper, c.pal.ink, 0.18)): Pane
   return { id: '바탕_도로', svg: d ? `<path d="${d}" fill="none" stroke="${color}" stroke-width="1" stroke-linecap="round"/>` : '' }
 }
 
-function ptSvg(c: PanelCtx, p: { lon: number; lat: number }, r: number, fill: string, shape: 'dot' | 'square' = 'dot'): string {
+function ptSvg(c: PanelCtx, p: { lon: number; lat: number }, r0: number, fill: string, shape: 'dot' | 'square' = 'dot', step: SymStep = 'dot'): string {
+  const r = Number(c.sy.v(step, r0))
   const [x, y] = c.f.pt(p.lon, p.lat)
   if (shape === 'square') return `<rect x="${(x - r).toFixed(1)}" y="${(y - r).toFixed(1)}" width="${(r * 2).toFixed(1)}" height="${(r * 2).toFixed(1)}" fill="${fill}" stroke="${c.pal.paper}" stroke-width="1.2"/>`
   return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${r}" fill="${fill}" stroke="${c.pal.paper}" stroke-width="1.2"/>`
@@ -820,7 +823,7 @@ export const PANELS: PanelDef[] = [
         .slice(0, 3)
         .map((x) => {
           const [px, py] = c.f.pt(x.p.lon, x.p.lat)
-          return `<text x="${(px + 14).toFixed(1)}" y="${(py + 5 * c.ty.k('label')).toFixed(1)}" font-size="${c.ty.v('label', 16)}" font-weight="600" fill="${c.pal.ink}" stroke="${c.pal.paper}" stroke-width="${c.ty.v('label', 4)}" paint-order="stroke">${esc(x.p.name.replace(/\s.*$/, ''))}</text>`
+          return `<text x="${(px + 10 * c.sy.k('icon') + 4).toFixed(1)}" y="${(py + 5 * c.ty.k('label')).toFixed(1)}" font-size="${c.ty.v('label', 16)}" font-weight="600" fill="${c.pal.ink}" stroke="${c.pal.paper}" stroke-width="${c.ty.v('label', 4)}" paint-order="stroke">${esc(x.p.name.replace(/\s.*$/, ''))}</text>`
         })
         .join('')
       return {
@@ -828,7 +831,7 @@ export const PANELS: PanelDef[] = [
           baseBuildings(c),
           baseRoads(c),
           { id: '버스정류소', svg: sp.map((p) => ptSvg(c, p, 5, stopColor, 'square')).join('') },
-          { id: '지하철역', svg: st.map((p) => ptSvg(c, p, 10, stationColor)).join('') + labels },
+          { id: '지하철역', svg: st.map((p) => ptSvg(c, p, 10, stationColor, 'dot', 'icon')).join('') + labels },
         ],
         legend: [
           { color: stationColor, label: '지하철역 (카카오)', shape: 'dot' },
@@ -866,7 +869,7 @@ export const PANELS: PanelDef[] = [
         else if (kind === 'sunhour' && sf.geometry.type === 'Point') {
           const [x, y] = c.f.pt(sf.geometry.coordinates[0], sf.geometry.coordinates[1])
           const col = pathColors[sf.properties.day as 'summer']
-          pathSvg += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3.5" fill="${col}"/>`
+          pathSvg += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${c.sy.v('dot', 3.5)}" fill="${col}"/>`
           if (sf.properties.label) pathSvg += `<text x="${x.toFixed(1)}" y="${(y - 9 * c.ty.k('note')).toFixed(1)}" font-size="${c.ty.v('note', 13)}" text-anchor="middle" fill="${col}" stroke="${c.pal.paper}" stroke-width="${c.ty.v('note', 3)}" paint-order="stroke">${esc(String(sf.properties.label))}</text>`
         }
       }
@@ -1213,7 +1216,7 @@ function sunCam(lat: number, cam: Cam3d): { cam: Cam3d; note: string } | null {
 function sunDome3d(c: PanelCtx, pr: Projector): string {
   const [lon, lat] = c.d.center
   const cols = sunPathColors(c.pal)
-  const Rd = MAP_R * 0.78
+  const Rd = c.f.rIn * 0.78
   const zOf = (alt: number) => ((Rd / c.f.s) * Math.sin((alt * Math.PI) / 180)) / pr.cam.vex
   const at = (alt: number, az: number): [number, number] => {
     const r = Rd * Math.cos((alt * Math.PI) / 180)
@@ -1234,7 +1237,7 @@ function sunDome3d(c: PanelCtx, pr: Projector): string {
       const p = at(s0.altitude, s0.azimuth)
       pts.push(p)
       if (m % 60 === 0) {
-        dots.push(`<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="3" fill="${col}"/>`)
+        dots.push(`<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="${c.sy.v('dot', 3)}" fill="${col}"/>`)
         if (d.key === c.st.sunDay && (m / 60) % 3 === 0)
           dots.push(`<text x="${p[0].toFixed(1)}" y="${(p[1] - 9 * c.ty.k('note')).toFixed(1)}" font-size="${c.ty.v('note', 13)}" text-anchor="middle" fill="${col}" stroke="${c.pal.paper}" stroke-width="${c.ty.v('note', 3)}" paint-order="stroke">${m / 60}시</text>`)
       }
@@ -1246,7 +1249,7 @@ function sunDome3d(c: PanelCtx, pr: Projector): string {
   if (now.altitude > 0) {
     const sp = at(now.altitude, now.azimuth)
     const [ox, oy] = pr.P(...c.f.pt(lon, lat))
-    svg += `<path d="M${ox.toFixed(1)} ${oy.toFixed(1)}L${sp[0].toFixed(1)} ${sp[1].toFixed(1)}" stroke="${cols[c.st.sunDay]}" stroke-width="1.3" stroke-dasharray="5 4"/><circle cx="${sp[0].toFixed(1)}" cy="${sp[1].toFixed(1)}" r="9" fill="${cols[c.st.sunDay]}" stroke="${c.pal.paper}" stroke-width="2"/>`
+    svg += `<path d="M${ox.toFixed(1)} ${oy.toFixed(1)}L${sp[0].toFixed(1)} ${sp[1].toFixed(1)}" stroke="${cols[c.st.sunDay]}" stroke-width="1.3" stroke-dasharray="5 4"/><circle cx="${sp[0].toFixed(1)}" cy="${sp[1].toFixed(1)}" r="${c.sy.v('icon', 9)}" fill="${cols[c.st.sunDay]}" stroke="${c.pal.paper}" stroke-width="2"/>`
   }
   return svg
 }

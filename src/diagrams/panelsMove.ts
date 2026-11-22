@@ -10,7 +10,7 @@ import { WALK_R } from '../sources/network'
 import { CALM_MS, DIR16, prevailing, SEASONS, WIND_BINS } from '../sources/wind'
 import { basisItem } from './basis'
 import { esc, type LegendItem, type PanelLayer, type PanelOutput } from './compose'
-import { MAP_CX, MAP_CY, MAP_R } from './frame'
+import { MAP_CX, MAP_CY } from './frame'
 import { blockView, encView, linkSpeeds, netView, projOf, siteRingsXY, topShare, walkAt, walkshed, walkToPoint, WALK_BANDS, WALK_SPEED } from './move'
 import type { DiagramData, Pt } from './data'
 import { mix, monoShades, speedColors, steps } from './palette'
@@ -320,14 +320,15 @@ export const MOVE_PANELS: PanelDef[] = [
         .filter((x) => x.m !== null && x.m <= lim[2])
         .map((x) => {
           const [px, py] = c.f.pt(x.pt.lon, x.pt.lat)
-          return `<rect x="${(px - 3.5).toFixed(1)}" y="${(py - 3.5).toFixed(1)}" width="7" height="7" fill="${c.pal.ink}" stroke="${c.pal.paper}" stroke-width="1"/>`
+          const h = 3.5 * c.sy.k('dot')
+          return `<rect x="${(px - h).toFixed(1)}" y="${(py - h).toFixed(1)}" width="${c.sy.v('dot', 7)}" height="${c.sy.v('dot', 7)}" fill="${c.pal.ink}" stroke="${c.pal.paper}" stroke-width="1"/>`
         })
         .join('')
       const stSvg = st
         .filter((x) => c.f.inside(x.pt.lon, x.pt.lat))
         .map((x) => {
           const [px, py] = c.f.pt(x.pt.lon, x.pt.lat)
-          return `<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="8" fill="${c.pal.ink}" stroke="${c.pal.paper}" stroke-width="2"/><text x="${(px + 12).toFixed(1)}" y="${(py + 5 * c.ty.k('label')).toFixed(1)}" font-size="${c.ty.v('label', 15)}" font-weight="600" fill="${c.pal.ink}" stroke="${c.pal.paper}" stroke-width="${c.ty.v('label', 4)}" paint-order="stroke">${esc(x.pt.name.replace(/\s.*$/, ''))}</text>`
+          return `<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="${c.sy.v('icon', 8)}" fill="${c.pal.ink}" stroke="${c.pal.paper}" stroke-width="2"/><text x="${(px + 8 * c.sy.k('icon') + 4).toFixed(1)}" y="${(py + 5 * c.ty.k('label')).toFixed(1)}" font-size="${c.ty.v('label', 15)}" font-weight="600" fill="${c.pal.ink}" stroke="${c.pal.paper}" stroke-width="${c.ty.v('label', 4)}" paint-order="stroke">${esc(x.pt.name.replace(/\s.*$/, ''))}</text>`
         })
         .join('')
       const ring = (m: number) => `<circle cx="${MAP_CX}" cy="${MAP_CY}" r="${(m * c.f.s).toFixed(1)}" fill="none" stroke="${c.pal.subtle}" stroke-width="1" stroke-dasharray="4 6"/>`
@@ -472,7 +473,7 @@ export const MOVE_PANELS: PanelDef[] = [
       const gridStep = maxShare > 0.2 ? 0.05 : maxShare > 0.1 ? 0.04 : 0.02
       const top = Math.max(gridStep, Math.ceil(maxShare / gridStep) * gridStep)
       const r0 = 46
-      const R1 = MAP_R - 70
+      const R1 = c.f.rIn - 70
       const rad = (share: number) => r0 + (share / top) * (R1 - r0)
       const colors = c.pal.kind === 'mono' ? monoShades(c.pal, WIND_BINS.length) : steps(c.pal, WIND_BINS.length + 1).slice(1)
       const wedge = (dirI: number, a: number, b: number) => {

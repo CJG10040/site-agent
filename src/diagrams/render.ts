@@ -3,7 +3,7 @@
 import { applyLabelEdits, editNote } from '../model/edits'
 import type { DiagramSettings, LabelEdit, PanelRules, Project } from '../model/types'
 import { composePanel, composePanelMode, siteMarkSvg, type PanelOutput } from './compose'
-import { ruleScale, scaleStrokes } from './panelRules'
+import { rectHalf, ruleScale, scaleStrokes } from './panelRules'
 import type { DiagramData } from './data'
 import { makeFrame } from './frame'
 import { paletteFor } from './palette'
@@ -11,7 +11,7 @@ import type { TerrainAnalysis } from '../lib/terrainSite'
 import { ORDERED_PANELS, panelNumber, type PanelCtx, type PanelDef } from './panels'
 import { NOT_MAP_PANELS, type SynthCtx } from './synth'
 import { is3d, to3d } from './view3d'
-import { UNIT_TYPE } from './typeScale'
+import { UNIT_SYM, UNIT_TYPE } from './typeScale'
 import { COMPARE_IDS } from './panelsCompare'
 import type { LawCtx } from '../law/envelopeData'
 
@@ -75,13 +75,15 @@ export async function renderPanel(
   const borrow = def.frameFrom?.(settings)
   const fd = borrow ? (ORDERED_PANELS.find((p) => p.id === borrow) ?? def) : def
   const R = fd.frameR ? fd.frameR(data, extra) : data.R
-  const frame = makeFrame(data.center[0], data.center[1], R, settings.frame)
+  // 패널 모드 직사각 틀 (2026-11-22): 그림은 정사각 그대로 그리고 틀이 가운데를 직사각으로 잘라 냄
+  const half = extra.panel ? rectHalf(extra.panel) : undefined
+  const frame = makeFrame(data.center[0], data.center[1], R, half ? 'square' : settings.frame, half)
   const pal = paletteFor(settings, def.id)
   let out: PanelOutput
   // 패널 모드(2026-11-21 묶음 D2): 규칙에서 글자·선 단계 배율. 보통 도판은 모두 1
   const rs = extra.panel ? ruleScale(extra.panel) : null
   const ty = rs ? rs.ty : UNIT_TYPE
-  const ctx: PanelCtx = { d: data, f: frame, pal, st: settings, vworldKey, date, t: terrain, synth: extra.synth ?? null, ty, law: extra.law ?? null }
+  const ctx: PanelCtx = { d: data, f: frame, pal, st: settings, vworldKey, date, t: terrain, synth: extra.synth ?? null, ty, sy: rs ? rs.sy : UNIT_SYM, law: extra.law ?? null }
   try {
     // 종합 도판은 다른 도판의 그림을 같은 틀로 다시 그려 바탕에 깔 수 있다
     ctx.basePanel = async (id) => {

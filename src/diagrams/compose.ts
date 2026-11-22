@@ -2,7 +2,7 @@
 // 그룹마다 id를 붙여 일러스트레이터에서 레이어로 열리게 한다.
 
 import type { DiagramSettings, HideLayer, PanelRules } from '../model/types'
-import { MAP_CX, MAP_CY, MAP_R, niceLength, SHEET_W, type Frame } from './frame'
+import { frameShapeSvg, MAP_CX, MAP_CY, MAP_R, niceLength, SHEET_W, type Frame } from './frame'
 import type { Palette } from './palette'
 import { UNIT_TYPE, type TypeScale } from './typeScale'
 
@@ -229,14 +229,15 @@ export function composePanelMode(meta: ComposeMeta, out: PanelOutput, frame: Fra
   const clipId = `clip-${meta.id}`
   const nf = !!out.noFrame
   const sq = frame.shape !== 'circle'
-  const frameShape = sq
-    ? `<rect x="${MAP_CX - MAP_R}" y="${MAP_CY - MAP_R}" width="${MAP_R * 2}" height="${MAP_R * 2}"/>`
-    : `<circle cx="${MAP_CX}" cy="${MAP_CY}" r="${MAP_R}"/>`
+  // 틀 반폭·반높이: 원·정사각은 MAP_R, 직사각(2026-11-22)은 긴 쪽이 MAP_R
+  const hx = frame.hx
+  const hy = frame.hy
+  const frameShape = frameShapeSvg(frame)
 
   // 그림 영역: 지도면 틀 둘레에 조금 여유, 지도가 아닌 그림(단면·그래프·3D)은 보통 도판의 그림 칸 그대로
   const PAD = 24
-  const box = nf ? { x: 0, y: 0, w: SHEET_W, h: SHEET_W } : { x: MAP_CX - MAP_R - PAD, y: MAP_CY - MAP_R - PAD, w: 2 * (MAP_R + PAD), h: 2 * (MAP_R + PAD) }
-  const inner = nf ? { x: 40, w: SHEET_W - 80, y: 40 } : { x: MAP_CX - MAP_R, w: 2 * MAP_R, y: MAP_CY - MAP_R }
+  const box = nf ? { x: 0, y: 0, w: SHEET_W, h: SHEET_W } : { x: MAP_CX - hx - PAD, y: MAP_CY - hy - PAD, w: 2 * (hx + PAD), h: 2 * (hy + PAD) }
+  const inner = nf ? { x: 40, w: SHEET_W - 80, y: 40 } : { x: MAP_CX - hx, w: 2 * hx, y: MAP_CY - hy }
 
   // 범례: 글자 단계에 맞춰 견본·줄 간격도 함께
   const L = 17 * ty.k('legend')
@@ -277,14 +278,14 @@ export function composePanelMode(meta: ComposeMeta, out: PanelOutput, frame: Fra
 
   // 방위표·축척: 글자 단계(방위표·축척)에 맞춰 그림도 함께 (일러스트레이터에서 글자 크기가 바로 보이게 변환 없이)
   const km = ty.k('mark')
-  const nx = MAP_CX + MAP_R - (sq ? 40 : 10)
-  const ny = MAP_CY - MAP_R + (sq ? 30 : 14)
+  const nx = MAP_CX + hx - (sq ? 40 : 10)
+  const ny = MAP_CY - hy + (sq ? 30 : 14)
   const P = (dx: number, dy: number) => `${f1(nx + dx * km)} ${f1(ny + dy * km)}`
   const north = `<g id="방위표"><path d="M${P(0, 0)} L${P(11, 32)} L${P(0, 25)} L${P(-11, 32)} Z" fill="${pal.ink}"/><text x="${f1(nx)}" y="${f1(ny + 52 * km)}" font-size="${ty.v('mark', 16)}" font-weight="600" text-anchor="middle" fill="${pal.ink}">N</text></g>`
   const len = niceLength(frame.R * 0.45)
   const lenPx = len * frame.s
-  const sx = MAP_CX - MAP_R + (sq ? 30 : 40)
-  const sy = MAP_CY + MAP_R - (sq ? 30 : 18)
+  const sx = MAP_CX - hx + (sq ? 30 : 40)
+  const sy = MAP_CY + hy - (sq ? 30 : 18)
   const scale = `<g id="축척"><rect x="${sx}" y="${f1(sy)}" width="${lenPx.toFixed(1)}" height="${f2(6 * km)}" fill="${pal.ink}"/><rect x="${sx}" y="${f1(sy - 6 * km)}" width="${f2(2 * km)}" height="${f2(12 * km)}" fill="${pal.ink}"/><rect x="${f1(sx + lenPx - 2 * km)}" y="${f1(sy - 6 * km)}" width="${f2(2 * km)}" height="${f2(12 * km)}" fill="${pal.ink}"/><text x="${f1(sx + lenPx + 10 * km)}" y="${f1(sy + 7 * km)}" font-size="${ty.v('mark', 15)}" fill="${pal.ink}">${len >= 1000 ? `${len / 1000}km` : `${len}m`}</text></g>`
 
   // 3D 그림은 자기 방위표를 그림 안에 그림 — 방위표를 끄면 함께 뺌
@@ -303,13 +304,13 @@ export function composePanelMode(meta: ComposeMeta, out: PanelOutput, frame: Fra
     `<defs><clipPath id="${clipId}">${frameShape}</clipPath></defs>`,
     bg,
     `<g id="도판_${meta.number}_${esc(meta.title.replace(/[\s·()]+/g, '_'))}">`,
-    nf ? '' : sq ? `<rect id="틀_바탕" x="${MAP_CX - MAP_R}" y="${MAP_CY - MAP_R}" width="${MAP_R * 2}" height="${MAP_R * 2}" fill="${pal.paper}"/>` : `<circle id="틀_바탕" cx="${MAP_CX}" cy="${MAP_CY}" r="${MAP_R}" fill="${pal.paper}"/>`,
+    nf ? '' : sq ? `<rect id="틀_바탕" x="${MAP_CX - hx}" y="${MAP_CY - hy}" width="${hx * 2}" height="${hy * 2}" fill="${pal.paper}"/>` : `<circle id="틀_바탕" cx="${MAP_CX}" cy="${MAP_CY}" r="${MAP_R}" fill="${pal.paper}"/>`,
     layers,
     out.hideBase || nf ? '' : `<g id="대지" clip-path="url(#${clipId})">${siteSvg}</g>`,
     nf
       ? ''
       : sq
-        ? `<rect id="틀" x="${MAP_CX - MAP_R}" y="${MAP_CY - MAP_R}" width="${MAP_R * 2}" height="${MAP_R * 2}" fill="none" stroke="${pal.ink}" stroke-opacity="0.45" stroke-width="${frameW}"/>`
+        ? `<rect id="틀" x="${MAP_CX - hx}" y="${MAP_CY - hy}" width="${hx * 2}" height="${hy * 2}" fill="none" stroke="${pal.ink}" stroke-opacity="0.45" stroke-width="${frameW}"/>`
         : `<circle id="틀" cx="${MAP_CX}" cy="${MAP_CY}" r="${MAP_R}" fill="none" stroke="${pal.ink}" stroke-opacity="0.45" stroke-width="${frameW}"/>`,
     emptyNote,
     nf || !rules.north ? '' : north,

@@ -19,6 +19,14 @@ export interface Frame {
   /** 픽셀/m */
   s: number
   shape: FrameShape
+  /**
+   * 틀 반폭·반높이 (도판 단위). 원·정사각은 둘 다 MAP_R.
+   * 직사각 (2026-11-22 사용자 결정: 패널 모드에만, 가로·세로 mm): shape은 'square'로 두고 긴 쪽이 MAP_R, 짧은 쪽은 잘림
+   */
+  hx: number
+  hy: number
+  /** 틀 안에 들어가는 가장 큰 원의 반지름 — 바람장미·하늘·태양 궤적처럼 둥근 그림 */
+  rIn: number
   x: (lon: number) => number
   y: (lat: number) => number
   /** 경위도 → 도판 픽셀 */
@@ -37,7 +45,12 @@ export interface Frame {
 
 const R_EARTH_LAT = 110574
 
-export function makeFrame(lon0: number, lat0: number, R: number, shape: FrameShape): Frame {
+export function makeFrame(lon0: number, lat0: number, R: number, shape: FrameShape, half?: { hx: number; hy: number }): Frame {
+  const hx = half?.hx ?? MAP_R
+  const hy = half?.hy ?? MAP_R
+  // 틀 안 판정 거리(m): 원·정사각은 R 그대로
+  const rx = half ? (R * hx) / MAP_R : R
+  const ry = half ? (R * hy) / MAP_R : R
   const kx = 111320 * Math.cos((lat0 * Math.PI) / 180)
   const ky = R_EARTH_LAT
   const s = MAP_R / R
@@ -115,6 +128,9 @@ export function makeFrame(lon0: number, lat0: number, R: number, shape: FrameSha
     R,
     s,
     shape,
+    hx,
+    hy,
+    rIn: Math.min(hx, hy),
     x,
     y,
     pt: (lon, lat) => [x(lon), y(lat)],
@@ -129,9 +145,16 @@ export function makeFrame(lon0: number, lat0: number, R: number, shape: FrameSha
     inside: (lon, lat) => {
       const dx = (lon - lon0) * kx
       const dy = (lat - lat0) * ky
-      return shape === 'circle' ? Math.hypot(dx, dy) <= R : Math.abs(dx) <= R && Math.abs(dy) <= R
+      return shape === 'circle' ? Math.hypot(dx, dy) <= R : Math.abs(dx) <= rx && Math.abs(dy) <= ry
     },
   }
+}
+
+/** 틀 모양 SVG 요소 (자르기·바탕·테두리) — attrs는 끝에 덧붙임 */
+export function frameShapeSvg(f: Pick<Frame, 'shape' | 'hx' | 'hy'>, attrs = ''): string {
+  return f.shape === 'circle'
+    ? `<circle cx="${MAP_CX}" cy="${MAP_CY}" r="${MAP_R}"${attrs}/>`
+    : `<rect x="${MAP_CX - f.hx}" y="${MAP_CY - f.hy}" width="${f.hx * 2}" height="${f.hy * 2}"${attrs}/>`
 }
 
 const DIR8 = ['북', '북동', '동', '남동', '남', '남서', '서', '북서']
