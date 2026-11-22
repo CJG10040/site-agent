@@ -33,7 +33,7 @@ export const ENVELOPE_PANEL: PanelDef = {
     const law = c.law
     if (!law) return empty("⑪ 법규 검토의 '건축 가능 영역'에서 띄울 거리·최고 높이를 정하면 그립니다")
     const table = await loadOrdinances()
-    const { result: r, cap, region, zones, siteArea } = envelopeOf(c.d, law, table)
+    const { result: r, cap, region, zones, siteArea, used } = envelopeOf(c.d, law, table)
     if (!r) return empty('대지 경계가 없습니다')
     const slabs = simplifiedSlabs(r)
     if (!slabs.length) return empty('띄울 거리를 빼고 나면 지을 수 있는 곳이 없습니다 — ⑪에서 띄울 거리를 확인하세요')
@@ -71,7 +71,7 @@ export const ENVELOPE_PANEL: PanelDef = {
     const summary: string[] = []
     summary.push(`대지 약 ${fmt(siteArea || r.siteArea)}㎡ · 1층으로 쓸 수 있는 넓이 약 ${fmt(r.buildableArea)}㎡ (띄울 거리·정북 1.5m를 뺀 곳)`)
     summary.push(
-      `가장 높은 곳 ${fmt(r.maxHeight, 1)}m${floorStep ? ` (${Math.round(r.maxHeight / floorH)}층, 층고 ${fmt(floorH, 1)}m 계단)` : ' (1m 계단)'}${r.unlimited && !env.maxHeight ? ` — 높이 제한을 넣지 않아 ${cap ? `${fmt(cap)}m(용적률 상한 연면적을 가능 바닥에 쌓은 높이)` : '그림용 높이'}에서 자름` : ''}`,
+      `가장 높은 곳 ${fmt(r.maxHeight, 1)}m${floorStep ? ` (${Math.round(r.maxHeight / floorH)}층, 층고 ${fmt(floorH, 1)}m 계단)` : ' (1m 계단)'}${r.unlimited && !env.maxHeight ? ` — 높이 제한을 넣지 않아 ${cap ? `${fmt(cap, 1)}m(검토서의 층수 × 층고 — 층수를 넣지 않았으면 가정한 층수)` : '그림용 높이'}에서 자름` : ''}`,
     )
     if (r.fullGfa !== null) summary.push(`덩어리를 층마다 꽉 채우면 연면적 약 ${fmt(r.fullGfa)}㎡ — 실제로는 건폐율·용적률로 더 작음`)
     const bcr = bcrOf(region, zones)
@@ -82,7 +82,7 @@ export const ENVELOPE_PANEL: PanelDef = {
           .filter(Boolean)
           .join(' · ') + (region ? ` (${region.org} 조례 표)` : ' (법 상한 — 조례로 더 낮을 수 있음)'),
       )
-    summary.push(`넣은 값: 건축선에서 ${env.setbackRoad ?? 0}m · 인접 대지에서 ${env.setbackSide ?? 0}m · 최고 높이 ${env.maxHeight ? `${env.maxHeight}m` : '넣지 않음'}${law.apartment ? ' · 공동주택(정북 일조는 북쪽 도로·공원의 가운데 선부터)' : ''}`)
+    summary.push(`띄울 거리: 건축선에서 ${used.road}m(${used.roadFrom === 'input' ? '넣은 값' : '조례'}) · 인접 대지에서 ${used.side}m(${used.sideFrom === 'input' ? '넣은 값' : '조례'}) · 최고 높이 ${env.maxHeight ? `${env.maxHeight}m` : '넣지 않음'}${law.apartment ? ' · 공동주택(정북 일조는 북쪽 도로·공원의 가운데 선부터)' : ''}`)
     if (!law.edgesValid) summary.push('대지 경계가 바뀌어 ⑪에서 손으로 고친 도로변을 쓰지 않음 — ⑪에서 다시 확인')
     if (r.unknownWidthRoads) summary.push(`너비를 모르는 도로에 접한 변 ${r.unknownWidthRoads}곳 — 4m 미만이면 건축선이 물러남`)
     if (r.sunUnknownNeighbor) summary.push('북쪽 대지의 용도지역을 자료로 알 수 없는 곳은 주거지역으로 보고 깎음')

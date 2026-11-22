@@ -1,6 +1,6 @@
 // 건축 가능 영역 공통 (2026-11-21 묶음 E5·E6): ⑪ 화면 · ⑥ 3D 도판 · ⑩ .3dm이 같은 입력으로 같은 덩어리를 만들도록.
 //  - envelopeInputFrom: 대지 자료(도판 자료) + ⑪ 입력 → 계산 입력
-//  - computeEnvelopeFor: 높이 제한이 없으면 용적률 상한 연면적을 가능 바닥에 쌓은 높이에서 그림용으로 자름
+//  - computeEnvelopeFor: 높이 제한이 없으면 검토서의 층수(넣은 값 또는 가정) × 층고에서 그림용으로 자름, 띄울 거리 칸이 비면 조례 별표 값
 //  - envelopeSlabMeshes: 단(바닥~위 + 발자국)을 삼각형으로 (윗면·바닥면은 earcut, 벽은 변마다 두 삼각형) — ⑩ .3dm·미리보기
 
 import { area, feature } from '@turf/turf'
@@ -14,6 +14,8 @@ import type { EnvelopeState, Project } from '../model/types'
 import { siteKey } from '../model/project'
 import { computeEnvelope, type EnvelopeInput, type EnvelopeResult, type EnvSlab } from './envelope'
 import { loadOrdinances, regionIdOf, zoneKey, type OrdinanceTable, type RegionTable } from './ordinances'
+import { planOf, type PlanInput } from './plan'
+import { setbackFor, type SetbackAnswer } from './setback'
 
 export type SiteZone = { name: string; share: number; rule: ZoneRule | null }
 
@@ -25,9 +27,11 @@ export interface LawCtx {
   regionId: string | null
   /** 필지로 정한 대지의 토지대장 면적 합 (그린 경계면 null → 도형 넓이) */
   parcelArea: number | null
+  /** 계획 값 (2026-11-21 묶음 F1): 띄울 거리를 조례 표에서 고를 때 주용도·연면적·층수 */
+  plan: PlanInput
 }
 
-type EnvLaw = Pick<LawCtx, 'env' | 'apartment' | 'edgesValid'>
+type EnvLaw = Pick<LawCtx, 'env' | 'apartment' | 'edgesValid' | 'plan'>
 
 /** 필지로 정한 대지면 토지대장 면적 합, 그린 경계면 null (⑪과 도판·모형이 같은 면적을 쓰게) */
 export function parcelAreaOf(project: Project): number | null {
@@ -44,18 +48,40 @@ export function boundaryArea(d: DiagramData | null): number {
 }
 
 export function lawCtxOf(project: Project): LawCtx | null {
-  const env = project.law?.envelope
-  if (!env) return null
+  // ⑪에서 무엇이든 정했으면 (띄울 거리는 비워도 조례 값으로 — 묶음 F1)
+  if (!project.law || (!project.law.envelope && !project.law.use)) return null
+  const env = project.law.envelope ?? {}
   return {
     env,
     apartment: project.law?.use?.no === '2',
     edgesValid: !env.siteKey || env.siteKey === siteKey(project.site),
     regionId: regionIdOf(project),
     parcelArea: parcelAreaOf(project),
+    plan: planInputOf(project),
   }
 }
 
-export function envelopeInputFrom(d: DiagramData, zones: SiteZone[], law: EnvLaw): Omit<EnvelopeInput, 'displayCap'> {
+export function planInputOf(project: Project): PlanInput {
+  const l = project.law ?? {}
+  return { use: l.use ?? null, gfa: l.gfa, floors: l.floors, basement: l.basement, units: l.units }
+}
+
+/** 조례 표에서 고른 띄울 거리 (⑪ 칸을 비우면 이 값) — 넣은 값이 없을 때 가능 영역·도판·모형이 같이 씀 */
+export function autoSetbackOf(zones: SiteZone[], siteArea: number, region: RegionTable | null, table: OrdinanceTable | null, plan: PlanInput): SetbackAnswer {
+  return setbackForPlan(zones, region, table, planOf(plan, siteArea, zones, region))
+}
+
+function setbackForPlan(zones: SiteZone[], region: RegionTable | null, table: OrdinanceTable | null, p: ReturnType<typeof planOf>): SetbackAnswer {
+  return setbackFor(region, table?.regions ?? [], {
+    useNo: p.use?.no ?? null,
+    sub: p.use?.sub,
+    area: p.gfa?.v ?? 0,
+    floors: p.floors?.v ?? 0,
+    zone: zones[0]?.rule?.label ?? zones[0]?.name ?? '',
+  })
+}
+
+export function envelopeInputFrom(d: DiagramData, zones: SiteZone[], law: EnvLaw, auto: { road: number; side: number } = { road: 0, side: 0 }): Omit<EnvelopeInput, 'displayCap'> {
   const { env } = law
   const p = projOf(d)
   const site = siteRingsXY(d)
@@ -78,8 +104,9 @@ export function envelopeInputFrom(d: DiagramData, zones: SiteZone[], law: EnvLaw
     zones: zoneShapes,
     opens,
     siteResidentialFallback: !d.zoning.length && zones.some((z) => z.rule?.sunlight),
-    setbackRoad: env.setbackRoad ?? 0,
-    setbackSide: env.setbackSide ?? 0,
+    // 칸을 비우면 조례 표에서 고른 값 (묶음 F1)
+    setbackRoad: env.setbackRoad ?? auto.road,
+    setbackSide: env.setbackSide ?? auto.side,
     edgeOverride: law.edgesValid ? env.edges : undefined,
     maxHeight: env.maxHeight ?? null,
     apartment: law.apartment,
@@ -106,12 +133,31 @@ function capFor(region: RegionTable | null, zones: SiteZone[], siteArea: number,
   return Math.max(10, Math.ceil(((far / 100) * siteArea) / buildable) * floorH)
 }
 
-export function computeEnvelopeFor(d: DiagramData, zones: SiteZone[], siteArea: number, region: RegionTable | null, law: EnvLaw): { result: EnvelopeResult | null; cap: number | null } {
-  const base = envelopeInputFrom(d, zones, law)
+export interface EnvelopeRun {
+  result: EnvelopeResult | null
+  cap: number | null
+  /** 조례 표에서 고른 띄울 거리 (칸을 비웠을 때 쓴 값) */
+  auto: SetbackAnswer
+  /** 실제로 계산에 쓴 띄울 거리 */
+  used: { road: number; side: number; roadFrom: 'input' | 'auto'; sideFrom: 'input' | 'auto' }
+}
+
+export function computeEnvelopeFor(d: DiagramData, zones: SiteZone[], siteArea: number, region: RegionTable | null, table: OrdinanceTable | null, law: EnvLaw): EnvelopeRun {
+  const plan = planOf(law.plan, siteArea, zones, region)
+  const auto = setbackForPlan(zones, region, table, plan)
+  const used = {
+    road: law.env.setbackRoad ?? auto.road,
+    side: law.env.setbackSide ?? auto.side,
+    roadFrom: (law.env.setbackRoad !== undefined ? 'input' : 'auto') as 'input' | 'auto',
+    sideFrom: (law.env.setbackSide !== undefined ? 'input' : 'auto') as 'input' | 'auto',
+  }
+  const base = envelopeInputFrom(d, zones, law, auto)
   const first = computeEnvelope({ ...base, displayCap: law.env.maxHeight ?? 60 })
-  if (!first || !first.unlimited || law.env.maxHeight) return { result: first, cap: null }
-  const cap = capFor(region, zones, siteArea || first.siteArea, first.buildableArea, law.env.floorH ?? 3.5)
-  return { result: computeEnvelope({ ...base, displayCap: cap }), cap }
+  if (!first || !first.unlimited || law.env.maxHeight) return { result: first, cap: null, auto, used }
+  // 높이 제한이 없으면 검토서와 같은 층수(넣은 값 또는 가정)에서 자름 — 층수를 모르면 용적률 상한 연면적을 가능 바닥에 쌓은 높이
+  const floorH = law.env.floorH ?? 3.5
+  const cap = plan.floors ? Math.max(floorH, plan.floors.v * floorH) : capFor(region, zones, siteArea || first.siteArea, first.buildableArea, floorH)
+  return { result: computeEnvelope({ ...base, displayCap: cap }), cap, auto, used }
 }
 
 /** 도판·모형용: 프로젝트 없이 법규 입력 + 조례 표로 ⑪과 같은 덩어리 */
@@ -119,7 +165,7 @@ export function envelopeOf(d: DiagramData, law: LawCtx, table: OrdinanceTable | 
   const zones = siteZones(d)
   const region = (law.regionId && table?.regions.find((r) => r.id === law.regionId)) || null
   const siteArea = law.parcelArea ?? boundaryArea(d)
-  return { ...computeEnvelopeFor(d, zones, siteArea, region, law), zones, region, siteArea }
+  return { ...computeEnvelopeFor(d, zones, siteArea, region, table, law), zones, region, siteArea }
 }
 
 // ───────────────────────── 삼각형 ─────────────────────────
@@ -258,15 +304,15 @@ function inRing(p: XY, ring: XY[]): boolean {
 /** 모형(⑩ .3dm·미리보기)에 넣을 건축 가능 영역: ⑪과 같은 계산 → 단마다 삼각형 + 넣은 값 메모 */
 export async function envelopeForModel(d: DiagramData, law: LawCtx): Promise<{ slabs: EnvSlabMesh[]; note: string } | null> {
   const table = await loadOrdinances()
-  const { result: r, cap } = envelopeOf(d, law, table)
+  const { result: r, cap, used } = envelopeOf(d, law, table)
   if (!r) return null
   const slabs = envelopeSlabMeshes(r)
   if (!slabs.length) return null
   const env = law.env
   const note = [
     '참고용·확인 필요 (법적 판정 아님)',
-    `건축선에서 ${env.setbackRoad ?? 0}m · 인접 대지에서 ${env.setbackSide ?? 0}m`,
-    env.maxHeight ? `최고 높이 ${env.maxHeight}m` : `높이 제한 넣지 않음${cap ? ` — ${Math.round(cap)}m에서 자름` : ''}`,
+    `건축선에서 ${used.road}m(${used.roadFrom === 'input' ? '넣은 값' : '조례'}) · 인접 대지에서 ${used.side}m(${used.sideFrom === 'input' ? '넣은 값' : '조례'})`,
+    env.maxHeight ? `최고 높이 ${env.maxHeight}m` : `높이 제한 넣지 않음${cap ? ` — ${Math.round(cap * 10) / 10}m에서 자름` : ''}`,
     (env.step ?? 'floor') === 'floor' ? `층고 ${env.floorH ?? 3.5}m 계단` : '1m 계단',
     '정북 일조(건축법 제61조 ①) 반영',
   ].join(' · ')

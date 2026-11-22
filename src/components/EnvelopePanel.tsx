@@ -1,13 +1,14 @@
 // ⑪ 건축 가능 영역 (2026-11-21 묶음 E5): 띄울 거리·최고 높이·계단을 넣으면 대지를 깎은 계단형 덩어리를 평면도로 보여 준다.
-// 사용자 결정: 띄울 거리·최고 높이는 직접 넣기(조례 별표 줄을 옆에), 도로변은 앱이 찾고 평면도에서 눌러 고침, 계단은 층고/1m.
+// 사용자 결정: 띄울 거리·최고 높이는 직접 넣기, 도로변은 앱이 찾고 평면도에서 눌러 고침, 계단은 층고/1m.
+// 묶음 F1(2026-11-21): 띄울 거리 칸을 비우면 앱이 조례 별표에서 고른 값으로 (넣으면 그 값).
 // 참고용 — 건폐율·용적률은 덩어리와 따로(덩어리 = 지을 수 있는 껍데기, 실제 바닥은 건폐율·용적률로 더 작음).
 
 import { useEffect, useMemo, useState } from 'react'
 import type { DiagramData } from '../diagrams/data'
 import { siteRingsXY } from '../diagrams/move'
-import type { EnvelopeResult } from '../law/envelope'
-import { bcrOf, computeEnvelopeFor, farOf, type SiteZone } from '../law/envelopeData'
-import type { RegionTable } from '../law/ordinances'
+import { bcrOf, computeEnvelopeFor, planInputOf, type EnvelopeRun, type SiteZone } from '../law/envelopeData'
+import { farOf } from '../law/envelopeData'
+import type { OrdinanceTable, RegionTable } from '../law/ordinances'
 import type { XY } from '../lib/network'
 import { siteKey } from '../model/project'
 import { panelNumber } from '../diagrams/panels'
@@ -21,8 +22,8 @@ interface Props {
   siteArea: number
   overlays: string[]
   region: RegionTable | null
-  /** 체크리스트 '대지 안의 공지' 항목의 값 줄 (조례 별표에서 고른 용도 줄) */
-  setbackHint: string[]
+  /** 위(⑪ 화면)에서 한 번 계산한 가능 영역 — 검토서와 같은 계산 */
+  run: EnvelopeRun & { edgesValid: boolean }
 }
 
 const fmt = (n: number, d = 0) => n.toLocaleString('ko-KR', { maximumFractionDigits: d })
@@ -55,21 +56,24 @@ function Num({ label, unit, value, onChange, step = 0.5, min = 0, max = 300, pla
   )
 }
 
-export function useEnvelope(d: DiagramData | null, zones: SiteZone[], siteArea: number, region: RegionTable | null, project: Project): { result: EnvelopeResult | null; cap: number | null; edgesValid: boolean } {
+const NO_AUTO: EnvelopeRun['auto'] = { road: 0, side: 0, roadPick: null, sidePick: null, source: 'none', assumed: [] }
+
+export function useEnvelope(d: DiagramData | null, zones: SiteZone[], siteArea: number, region: RegionTable | null, table: OrdinanceTable | null, project: Project): EnvelopeRun & { edgesValid: boolean } {
   const env = project.law?.envelope ?? {}
   const sk = siteKey(project.site)
   const edgesValid = !env.siteKey || env.siteKey === sk
   const apartment = project.law?.use?.no === '2'
+  const plan = planInputOf(project)
   return useMemo(() => {
-    if (!d) return { result: null, cap: null, edgesValid }
-    return { ...computeEnvelopeFor(d, zones, siteArea, region, { env, apartment, edgesValid }), edgesValid }
+    if (!d) return { result: null, cap: null, auto: NO_AUTO, used: { road: 0, side: 0, roadFrom: 'auto', sideFrom: 'auto' }, edgesValid }
+    return { ...computeEnvelopeFor(d, zones, siteArea, region, table, { env, apartment, edgesValid, plan }), edgesValid }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [d, zones, siteArea, region, JSON.stringify(env), apartment, sk])
+  }, [d, zones, siteArea, region, table, JSON.stringify(env), JSON.stringify(plan), apartment, sk])
 }
 
-export default function EnvelopePanel({ project, update, data, zones, siteArea, overlays, region, setbackHint }: Props) {
+export default function EnvelopePanel({ project, update, data, zones, siteArea, overlays, region, run }: Props) {
   const env: EnvelopeState = project.law?.envelope ?? {}
-  const { result: r, cap, edgesValid } = useEnvelope(data, zones, siteArea, region, project)
+  const { result: r, cap, edgesValid, auto, used } = run
   const patch = (fn: (e: EnvelopeState) => EnvelopeState) =>
     update((dr) => {
       const law: LawState = dr.law ?? {}
@@ -112,8 +116,9 @@ export default function EnvelopePanel({ project, update, data, zones, siteArea, 
   const applied: string[] = []
   const unknown: string[] = []
   if (r) {
-    if ((env.setbackRoad ?? 0) > 0 || (env.setbackSide ?? 0) > 0) applied.push(`대지 안의 공지: 건축선에서 ${env.setbackRoad ?? 0}m, 인접 대지경계선에서 ${env.setbackSide ?? 0}m (넣은 값 — 조례 별표로 확인, 건축법 제58조)`)
-    else unknown.push('대지 안의 공지 띄울 거리를 넣지 않음 (0m로 계산) — 조례 별표 확인')
+    const from = (f: 'input' | 'auto') => (f === 'input' ? '넣은 값' : auto.source === 'ordinance' ? '조례 별표' : '가정')
+    applied.push(`대지 안의 공지 (건축법 제58조): 건축선에서 ${used.road}m(${from(used.roadFrom)}) · 인접 대지경계선에서 ${used.side}m(${from(used.sideFrom)})`)
+    if ((used.roadFrom === 'auto' || used.sideFrom === 'auto') && auto.source !== 'ordinance') unknown.push(...auto.assumed)
     applied.push(`도로에 접한 변 ${roadEdges}곳${overridden ? ` (손으로 고친 변 ${overridden}곳)` : ''} — 평면도에서 변을 눌러 고침`)
     if (r.narrowRoads) applied.push(`좁은 도로(4m 미만) 건축선 후퇴 ${r.narrowRoads}곳 (건축법 제46조 ①)`)
     if (r.unknownWidthRoads) unknown.push(`너비를 모르는 도로에 접한 변 ${r.unknownWidthRoads}곳 — 4m 미만이면 건축선이 물러남`)
@@ -124,20 +129,20 @@ export default function EnvelopePanel({ project, update, data, zones, siteArea, 
     else applied.push('정북 일조: 대지가 전용·일반주거지역이 아니라 적용 안 함')
     if (r.sunUnknownNeighbor) unknown.push('북쪽 대지의 용도지역을 자료로 알 수 없는 곳이 있음 — 주거지역으로 보고 깎음')
     if (env.maxHeight) applied.push(`최고 높이 ${env.maxHeight}m (넣은 값)`)
-    else unknown.push(`높이 제한(고도·경관지구, 가로구역별 최고높이, 지구단위계획)을 넣지 않음${cap ? ` — 그림은 ${fmt(cap)}m(용적률 상한 연면적을 가능 바닥에 쌓은 높이)에서 자름` : ''}`)
+    else unknown.push(`높이 제한(고도·경관지구, 가로구역별 최고높이, 지구단위계획)을 넣지 않음${cap ? ` — 그림은 ${fmt(cap, 1)}m(검토서의 층수 × 층고 — 층수를 넣지 않았으면 가정한 층수)에서 자름` : ''}`)
     if (overlays.some((n) => /지구단위계획/.test(n))) unknown.push('지구단위계획구역 — 건축한계선·높이·배치가 따로 정해질 수 있음')
-    unknown.push('도로 모퉁이 건축선(건축법 시행령 제31조)', '공동주택 채광·동 사이 거리(시행령 제86조 ③)', '건폐율·용적률은 덩어리와 따로 — 아래 숫자 참고')
+    unknown.push('도로 모퉁이 가각 건축선(건축법 시행령 제31조)은 넣지 않음', '공동주택 채광·동 사이 거리(시행령 제86조 ③)는 배치할 때 — 위 검토서', '건폐율·용적률은 덩어리와 따로 — 오른쪽 숫자')
   }
 
   return (
-    <section className="law-envelope">
+    <section className="law-envelope" id="law-envelope">
       <div className="law-envelope-head">
         <h3>건축 가능 영역</h3>
         <span className="muted small">참고용 — 띄울 거리·정북 일조·최고 높이로 깎은 덩어리 (건폐율·용적률은 따로) · ⑥ 도판 {panelNumber('envelope')}(3D)과 ⑩ .3dm '법규_가능영역' 레이어에도 같은 덩어리</span>
       </div>
       <div className="law-envelope-inputs">
-        <Num label="건축선에서" unit="m" value={env.setbackRoad} onChange={(v) => patch((e) => ({ ...e, setbackRoad: v }))} placeholder="0" />
-        <Num label="인접 대지에서" unit="m" value={env.setbackSide} onChange={(v) => patch((e) => ({ ...e, setbackSide: v }))} placeholder="0" />
+        <Num label="건축선에서" unit="m" value={env.setbackRoad} onChange={(v) => patch((e) => ({ ...e, setbackRoad: v }))} placeholder={`조례 ${auto.road}`} />
+        <Num label="인접 대지에서" unit="m" value={env.setbackSide} onChange={(v) => patch((e) => ({ ...e, setbackSide: v }))} placeholder={`조례 ${auto.side}`} />
         <Num label="최고 높이" unit="m" value={env.maxHeight} onChange={(v) => patch((e) => ({ ...e, maxHeight: v }))} step={1} max={1000} placeholder="모르면 비움" />
         <div className="seg-field">
           <span className="label">계단</span>
@@ -159,16 +164,11 @@ export default function EnvelopePanel({ project, update, data, zones, siteArea, 
         </div>
         {(env.step ?? 'floor') === 'floor' && <Num label="층고" unit="m" value={env.floorH ?? 3.5} onChange={(v) => patch((e) => ({ ...e, floorH: v ?? 3.5 }))} step={0.1} min={2} max={10} />}
       </div>
-      {setbackHint.length > 0 && (
-        <details className="law-envelope-hint small">
-          <summary>조례 별표에서 고른 용도 줄 (띄울 거리 정하기)</summary>
-          <ul>
-            {setbackHint.map((l, i) => (
-              <li key={i}>{l}</li>
-            ))}
-          </ul>
-        </details>
-      )}
+      <p className="muted small law-envelope-auto">
+        띄울 거리 칸을 비우면 조례 값: 건축선에서 <strong>{auto.road}m</strong> · 인접 대지에서 <strong>{auto.side}m</strong>
+        {auto.source === 'ordinance' ? (auto.roadPick || auto.sidePick ? ` (${[auto.roadPick && `건축선 ${auto.roadPick.item}`, auto.sidePick && `인접 ${auto.sidePick.item}`].filter(Boolean).join(' · ')})` : ' (조례가 이 용도·규모에 정하지 않음)') : ` — 가정: ${auto.assumed.join(', ')}`}
+        {(used.roadFrom === 'input' || used.sideFrom === 'input') && ' · 지금은 넣은 값으로 계산'}
+      </p>
       {overlays.length > 0 && <p className="muted small">걸친 지구·구역: {overlays.join(', ')} — 높이 제한이 있으면 '최고 높이'에</p>}
 
       {r && view ? (
@@ -241,7 +241,7 @@ export default function EnvelopePanel({ project, update, data, zones, siteArea, 
                 <li key={a}>{a}</li>
               ))}
             </ul>
-            <h4>확인 필요 (반영 못 함)</h4>
+            <h4>가정 · 반영 안 한 것</h4>
             <ul className="small">
               {unknown.map((a) => (
                 <li key={a}>{a}</li>

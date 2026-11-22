@@ -1,7 +1,10 @@
-"""조례 표 만들기 (2026-11-21 묶음 E2).
+"""조례 표 만들기 (2026-11-21 묶음 E2, 묶음 F2에서 더함).
 
 광주 + 전남·전북 모든 시·군의 도시계획 조례(건폐율·용적률)와 건축 조례(대지 안의 공지·일조 높이 제한)를
 국가법령정보센터 공식 API에서 받아 앱이 읽는 표(JSON)로 만든다.
+묶음 F2(2026-11-22): 앱이 스스로 판정하도록 더 받음 — 도시계획 조례의 용도지역별 건축할 수 있는(없는) 건축물 별표·경관/고도지구 조문,
+건축 조례의 조경·공개공지 조문, 주차장 조례의 부설주차장 설치기준(별표), 국토계획법 시행령 별표 2~22, 건축법 시행령 별표 2,
+주택건설기준 등에 관한 규정 제25·27조. 글은 그대로 담고 앱(TypeScript)이 읽어 판정한다(규칙을 고칠 때 다시 받지 않아도 되게).
 
 - 인증값은 환경 변수 LAW_OC에서만 읽는다(GitHub 저장소 비밀 값, 사용자가 직접 넣음). 로그·파일에 남기지 않는다.
 - 법령센터는 등록한 도메인으로 확인하므로 사이트 주소(Referer)를 밝혀 부른다(2026-11-21 사용자 결정).
@@ -21,14 +24,17 @@ import json
 import os
 import re
 import sys
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 import urllib.error
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
 import zipfile
 
-VERSION = 1
+# 2 = 묶음 F2 칸(zoneUses·scenic·landscape·openSpace·parking)을 더함 — 지난 표(1)는 쓰지 않고 새로 받음
+VERSION = 2
 SITE = 'https://cjg10040.github.io/site-agent/'
 API = 'https://www.law.go.kr/DRF/'
 SOURCE = '법제처 국가법령정보센터 (www.law.go.kr) 자치법규'
@@ -112,11 +118,15 @@ def find_ordinance(name: str, org: str, queries: list[str], pattern: str) -> dic
                 'effective': flat(it.findtext('시행일자')),
                 'promulgated': flat(it.findtext('공포일자')),
             }
-    LAST_CANDIDATES[:] = seen[:12]
+    _LOCAL.candidates = seen[:12]
     return None
 
 
-LAST_CANDIDATES: list[str] = []
+_LOCAL = threading.local()
+
+
+def last_candidates() -> list[str]:
+    return getattr(_LOCAL, 'candidates', [])
 
 
 def body(mst: str) -> ET.Element:
@@ -328,7 +338,13 @@ def hwp_text(data: bytes) -> str | None:
                             k += 7  # 확장·인라인 조종 문자는 8글자 차지
                         k += 1
                         continue
-                    buf.append(chr(c))
+                    # 짝을 이룬 서로게이트는 한 글자로, 짝 없는 반쪽은 버림 (JSON에 쓸 수 없음)
+                    if 0xD800 <= c <= 0xDBFF and k + 1 < len(chars) and 0xDC00 <= chars[k + 1] <= 0xDFFF:
+                        buf.append(chr(0x10000 + ((c - 0xD800) << 10) + (chars[k + 1] - 0xDC00)))
+                        k += 2
+                        continue
+                    if not 0xD800 <= c <= 0xDFFF:
+                        buf.append(chr(c))
                     k += 1
                 t = ' '.join(''.join(buf).split())
                 if t:
@@ -339,8 +355,9 @@ def hwp_text(data: bytes) -> str | None:
 
 
 def section_of(text: str, no: int) -> str:
-    """한 파일에 별표가 여럿 들어 있으면 [별표 no] 부분만"""
-    heads = [(m.start(), int(m.group(1))) for m in re.finditer(r'[\[(〔]\s*별표\s*(\d+)\s*[\])〕]', text)]
+    """한 파일에 별표가 여럿 들어 있으면 [별표 no] 부분만
+    머리는 줄 맨 앞의 '[별표 n]'만 — 본문의 '영 〔별표 5〕 제1호'(고창) 같은 참조에서 자르지 않게"""
+    heads = [(m.start(), int(m.group(1))) for m in re.finditer(r'(?m)^\s*[\[(〔【]\s*별표\s*(\d+)\s*[\])〕】](?!\s*제\s*\d+\s*호)', text)]
     if len({n for _, n in heads}) < 2:
         return text
     for k, (pos, n) in enumerate(heads):
@@ -350,8 +367,133 @@ def section_of(text: str, no: int) -> str:
     return text
 
 
+def unit_text(u: ET.Element, no: int) -> tuple[str | None, str | None]:
+    """별표단위 하나의 글: (글, 못 읽은 까닭) — 본문 글이 없으면 첨부 파일(hwpx·hwp)을 받아 읽음"""
+    txt = (u.findtext('별표내용') or '').strip()
+    if txt:
+        return txt, None
+    url = (u.findtext('별표첨부파일명') or '').strip()
+    kind = (u.findtext('별표첨부파일구분') or '').strip().lower()
+    if not url.startswith('http'):
+        return None, '별표 파일 주소가 없음'
+    data = fetch(url)
+    if kind == 'hwpx' or data[:2] == b'PK':
+        t = hwpx_text(data)
+        return (section_of(t, no), None) if t else (None, '별표 파일(hwpx)에서 글을 찾지 못함')
+    if data[:4] == bytes([0xD0, 0xCF, 0x11, 0xE0]):
+        t = hwp_text(data)
+        return (section_of(t, no), None) if t else (None, '별표 파일(hwp)에서 글을 읽지 못함 (배포용·암호 문서일 수 있음)')
+    return None, f'별표가 {kind or "알 수 없는"} 파일이라 글을 읽지 못함'
+
+
+def unit_no(u: ET.Element) -> tuple[int, int] | None:
+    """별표단위의 (번호, 가지번호) — 제목의 '[별표 3의2]'를 먼저, 없으면 번호 칸"""
+    title = flat(u.findtext('별표제목'))
+    tm = re.match(r'\[?\s*별표\s*(\d+)(?:\s*의\s*(\d+))?\s*\]?', title)
+    if tm:
+        return int(tm.group(1)), int(tm.group(2) or 0)
+    try:
+        return int(re.sub(r'\D', '', u.findtext('별표번호') or '') or -1), int(re.sub(r'\D', '', u.findtext('별표가지번호') or '') or 0)
+    except ValueError:
+        return None
+
+
+def table_list(root: ET.Element) -> str:
+    """진단용: 이 조례의 별표 번호·제목 (처음 12개)"""
+    out = []
+    for u in root.findall('.//별표단위'):
+        out.append(f"{flat(u.findtext('별표번호'))}/{flat(u.findtext('별표가지번호'))} {flat(u.findtext('별표제목'))[:40]} ({flat(u.findtext('별표첨부파일구분'))})")
+    return '; '.join(out[:12]) or '별표 없음'
+
+
+def unit_raw(u: ET.Element) -> tuple[str | None, str | None]:
+    """별표단위 하나의 글 전체 (여러 별표가 한 파일이면 나누지 않은 채로)"""
+    txt = (u.findtext('별표내용') or '').strip()
+    if txt:
+        return txt, None
+    url = (u.findtext('별표첨부파일명') or '').strip()
+    if not url.startswith('http'):
+        return None, '별표 파일 주소가 없음'
+    data = fetch(url)
+    if data[:2] == b'PK':
+        t = hwpx_text(data)
+        return (t, None) if t else (None, '별표 파일(hwpx)에서 글을 찾지 못함')
+    if data[:4] == bytes([0xD0, 0xCF, 0x11, 0xE0]):
+        t = hwp_text(data)
+        return (t, None) if t else (None, '별표 파일(hwp)에서 글을 읽지 못함 (배포용·암호 문서일 수 있음)')
+    return None, '별표가 hwp·hwpx가 아니라 글을 읽지 못함'
+
+
+# 줄 맨 앞의 별표 머리: '[별표 3]', '〔별표 3의2〕', '【별표 4】', '별표 5' (짧은 줄)
+# 괄호 없는 '별표 5'는 그 줄에 번호만 있거나 바로 '<개정'·'(제○조'·괄호가 올 때만 — '별표 5 제1호 각 목의 건축물'처럼 본문이 줄을 넘어 온 것은 아님(고창·순창)
+TABLE_HEAD = re.compile(r'^\s*[\[〔【(]\s*별표\s*(\d+)(?:\s*의\s*(\d+))?\s*[\]〕】)](?!\s*제\s*\d+\s*호)|^\s*별표\s*(\d+)(?:\s*의\s*(\d+))?(?!\s*제\s*\d+\s*호)(?=\s|$|<|\()')
+
+
+def split_tables(text: str) -> dict:
+    """여러 별표가 든 글 → {(번호, 가지): {'title', 'text'}} (머리가 둘 이상일 때만)"""
+    lines = text.split('\n')
+    heads = []
+    for i, ln in enumerate(lines):
+        # 괄호 머리('[별표 7] [전문개정 …] <개정 …>' — 광양)는 길어도 머리, 괄호 없는 머리는 짧은 줄만
+        if len(ln.strip()) > 90 and not re.match(r'^\s*[\[〔【(]\s*별표', ln):
+            continue
+        m = TABLE_HEAD.match(ln)
+        if m:
+            n = int(m.group(1) or m.group(3))
+            b = int(m.group(2) or m.group(4) or 0)
+            heads.append((i, n, b))
+    if len({(n, b) for _, n, b in heads}) < 2:
+        return {}
+    out = {}
+    for k, (i, n, b) in enumerate(heads):
+        j = heads[k + 1][0] if k + 1 < len(heads) else len(lines)
+        body = '\n'.join(lines[i:j]).strip()
+        title = ' '.join(x.strip() for x in lines[i:i + 3] if x.strip())[:160]
+        if (n, b) not in out:
+            out[(n, b)] = {'title': title, 'text': body}
+    return out
+
+
+_ALL_TABLES: dict = {}
+
+
+def all_tables(root: ET.Element) -> dict:
+    """조례의 별표 전부 {(번호, 가지): {'title', 'text'}} — 한 번만 받음 (서식·별지만 든 파일은 뺌)"""
+    key = id(root)
+    if key in _ALL_TABLES:
+        return _ALL_TABLES[key]
+    out: dict = {}
+    for u in root.findall('.//별표단위'):
+        title = flat(u.findtext('별표제목'))
+        if re.search(r'서식|별지', title) and not re.search(r'별표', title):
+            continue
+        nb = unit_no(u)
+        t, why = unit_raw(u)
+        if not t:
+            if nb and nb not in out:
+                out[nb] = {'title': title, 'text': '', 'why': why}
+            continue
+        parts = split_tables(t)
+        # 앞서 글을 못 읽은 번호(순창 '[별표 3] 주차방법…')가 뒤의 진짜 별표를 막지 않게: 글이 있는 쪽이 이김
+        def put(k, v):
+            if k not in out or not out[k].get('text'):
+                out[k] = v
+        if parts:
+            for k, v in parts.items():
+                put(k, v)
+        elif nb:
+            put(nb, {'title': title, 'text': section_of(t, nb[0])})
+    _ALL_TABLES[key] = out
+    return out
+
+
 def table_text(root: ET.Element, no: int) -> tuple[str | None, str, str | None]:
-    """별표 no의 글: (글, 제목, 못 읽은 까닭)"""
+    """별표 no의 글: (글, 제목, 못 읽은 까닭) — 한 파일에 여러 별표가 든 조례도 나눠서 찾음"""
+    got = all_tables(root).get((no, 0))
+    if got and got.get('text'):
+        return got['text'], got['title'], None
+    if got:
+        return None, got['title'], got.get('why') or '글이 없음'
     for u in root.findall('.//별표단위'):
         title = flat(u.findtext('별표제목'))
         if re.search(r'서식|별지', title):
@@ -367,22 +509,45 @@ def table_text(root: ET.Element, no: int) -> tuple[str | None, str, str | None]:
                 continue
         if n != no or branch:
             continue
-        txt = (u.findtext('별표내용') or '').strip()
-        if txt:
-            return txt, title, None
-        url = (u.findtext('별표첨부파일명') or '').strip()
-        kind = (u.findtext('별표첨부파일구분') or '').strip().lower()
-        if not url.startswith('http'):
-            return None, title, '별표 파일 주소가 없음'
-        data = fetch(url)
-        if kind == 'hwpx' or data[:2] == b'PK':
-            t = hwpx_text(data)
-            return (section_of(t, no), title, None) if t else (None, title, '별표 파일(hwpx)에서 글을 찾지 못함')
-        if data[:4] == b'\xd0\xcf\x11\xe0':
-            t = hwp_text(data)
-            return (section_of(t, no), title, None) if t else (None, title, '별표 파일(hwp)에서 글을 읽지 못함 (배포용·암호 문서일 수 있음)')
-        return None, title, f'별표가 {kind or "알 수 없는"} 파일이라 글을 읽지 못함'
+        t, why = unit_text(u, no)
+        return t, title, why
     return None, '', f'별표 {no}를 찾지 못함'
+
+
+def refd_tables(root: ET.Element, text: str, limit: int = 20000) -> dict:
+    """조문 글이 가리키는 별표('별표 3과 같다')의 글"""
+    out = {}
+    for m in re.finditer(r'별표\s*(\d+)(?!\s*의\s*\d)', text):
+        n = int(m.group(1))
+        if str(n) in out:
+            continue
+        t, title, why = table_text(root, n)
+        out[str(n)] = {'title': title, 'text': (t or '')[:limit], **({'why': why} if why else {})}
+    return out
+
+
+def pick_articles(arts: list[dict], pattern: str, limit: int = 4000) -> list[dict]:
+    return [{'article': a['no'], 'title': a['title'], 'text': a['text'][:limit]} for a in arts if re.search(pattern, a['title'])]
+
+
+ZONE_USE_TITLE = re.compile(r'지역\s*안?\s*에서\s*건축\s*(할|하는)?\s*수\s*(있는|없는)|건축할\s*수\s*(있는|없는)\s*건축물|건축제한')
+
+
+def zone_use_tables(root: ET.Element) -> tuple[list[dict], list[str]]:
+    """도시계획 조례의 '○○지역안에서 건축할 수 있는(없는) 건축물' 별표들 (묶음 F2) — 제목이 '[별표 2]'뿐이면 글 첫머리로 가림"""
+    out: list[dict] = []
+    issues: list[str] = []
+    for (n, b), v in sorted(all_tables(root).items()):
+        head = v['title'] + ' ' + (v.get('text') or '')[:300]
+        if not ZONE_USE_TITLE.search(head) or not re.search(r'지역', head):
+            continue
+        if v.get('text'):
+            # 제목이 번호뿐이면 글 첫 줄들을 제목으로
+            title = v['title'] if ZONE_USE_TITLE.search(v['title']) else ' '.join(v['text'].split('\n')[:3])[:160]
+            out.append({'no': n, 'branch': b, 'title': title, 'text': v['text'][:20000]})
+        else:
+            issues.append(f"용도지역 건축제한 별표 {n}({v['title'][:30]}): {v.get('why')}")
+    return out, issues
 
 
 def building_values(root: ET.Element, arts: list[dict]) -> tuple[dict, list[str]]:
@@ -394,16 +559,15 @@ def building_values(root: ET.Element, arts: list[dict]) -> tuple[dict, list[str]
             entry = {'article': a['no'], 'title': a['title'], 'text': a['text'][:1500]}
             if m:
                 t, ttitle, why = table_text(root, int(m.group(1)))
-                if not t and why and '찾지 못함' in why:
-                    alt = next((int(re.match(r'\[?\s*별표\s*(\d+)', flat(u.findtext('별표제목'))).group(1)) for u in root.findall('.//별표단위')
-                                if re.search(r'대지\s*안?\S?\s*공지|대지의\s*공지', flat(u.findtext('별표제목'))) and re.match(r'\[?\s*별표\s*(\d+)', flat(u.findtext('별표제목')))), None)
+                if not t:
+                    alt = next((k[0] for k, v in all_tables(root).items() if v.get('text') and re.search(r'대지\s*안?\S?\s*공지|대지의\s*공지', v['title'] + v['text'][:200])), None)
                     if alt is not None and alt != int(m.group(1)):
                         t, ttitle, why = table_text(root, alt)
                 entry['table'] = f'별표 {m.group(1)}' + (f' {ttitle}' if ttitle else '')
                 if t:
                     entry['tableText'] = t[:12000]
                 else:
-                    issues.append(f"대지 안의 공지 {entry['table']}: {why}")
+                    issues.append(f"대지 안의 공지 {entry['table']}: {why}" + (f' — 별표 목록: {table_list(root)}' if '찾지 못함' in (why or '') else ''))
             out['setback'] = entry
             break
     else:
@@ -412,6 +576,13 @@ def building_values(root: ET.Element, arts: list[dict]) -> tuple[dict, list[str]
         if '일조' in a['title']:
             out['sunlight'] = {'article': a['no'], 'title': a['title'], 'text': a['text'][:3000]}
             break
+    # 묶음 F2: 조경·공개공지 조문과 그 조문이 가리키는 별표
+    for key, pat in (('landscape', r'조경'), ('openSpace', r'공개\s*공지|공개\s*공간')):
+        got = pick_articles(arts, pat)
+        if got:
+            out[key] = {'articles': got, 'tables': refd_tables(root, ' '.join(a['text'] for a in got))}
+        else:
+            issues.append(f"{'조경' if key == 'landscape' else '공개공지'} 조문을 찾지 못함")
     return out, issues
 
 
@@ -454,7 +625,7 @@ def transition_note() -> dict | None:
 LAW_ARTICLES = {
     '국토의 계획 및 이용에 관한 법률': ['제54조', '제76조', '제84조'],
     '국토의 계획 및 이용에 관한 법률 시행령': ['제71조', '제84조', '제85조'],
-    '건축법': ['제2조', '제11조', '제42조', '제43조', '제44조', '제46조', '제47조', '제49조', '제55조', '제56조', '제58조', '제60조', '제61조', '제64조'],
+    '건축법': ['제2조', '제11조', '제42조', '제43조', '제44조', '제46조', '제47조', '제49조', '제51조', '제55조', '제56조', '제58조', '제60조', '제61조', '제64조'],
     '건축법 시행령': ['제2조', '제27조', '제27조의2', '제28조', '제31조', '제34조', '제35조', '제46조', '제80조의2', '제86조', '제119조'],
     # 묶음 E4: 나머지 법
     '주차장법': ['제19조'],
@@ -466,12 +637,17 @@ LAW_ARTICLES = {
     '문화예술진흥법 시행령': ['제12조'],
     '교육환경 보호에 관한 법률': ['제8조', '제9조'],
     '문화유산의 보존 및 활용에 관한 법률': ['제13조'],
+    # 묶음 F2: 공동주택 진입도로·주차
+    '주택건설기준 등에 관한 규정': ['제25조', '제27조'],
 }
 
 # 법령 별표 (용도별 기준 표 — 화면에서 고른 용도 줄을 뽑아 보여 줌)
 LAW_TABLES = {
     '주차장법 시행령': [1],
     '장애인ㆍ노인ㆍ임산부 등의 편의증진 보장에 관한 법률 시행령': [1, 2],
+    # 묶음 F2: 용도지역 안에서 건축할 수 있는 건축물(별표 2~22) · 대지 안의 공지 법 범위(별표 2)
+    '국토의 계획 및 이용에 관한 법률 시행령': list(range(2, 23)),
+    '건축법 시행령': [2],
 }
 
 
@@ -566,13 +742,22 @@ def region_entry(r: dict) -> dict:
         bcr, used_b = urban_values(arts, '건폐율')
         far, used_f = urban_values(arts, '용적률')
         urban.update({'url': ordin_link(urban['mst']), 'bcr': bcr, 'far': far, 'from': used_b + used_f})
+        # 묶음 F2: 용도지역별 건축할 수 있는(없는) 건축물 별표 · 경관/고도지구 조문
+        zt, zi = zone_use_tables(root)
+        urban['zoneUses'] = zt
+        issues += zi
+        if not zt:
+            issues.append('용도지역 건축제한 별표를 찾지 못함 — 별표 목록: ' + table_list(root))
+        sc = pick_articles(arts, r'경관지구|고도지구|미관지구')
+        if sc:
+            urban['scenic'] = {'articles': sc, 'tables': refd_tables(root, ' '.join(a['text'] for a in sc))}
         if not bcr:
             issues.append('용도지역별 건폐율을 조문에서 읽지 못함')
         if not far:
             issues.append('용도지역별 용적률을 조문에서 읽지 못함')
         entry['urban'] = urban
     else:
-        issues.append('도시계획 조례를 찾지 못함' + (f" (같은 지자체의 다른 조례: {', '.join(LAST_CANDIDATES)})" if LAST_CANDIDATES else ''))
+        issues.append('도시계획 조례를 찾지 못함' + (f" (같은 지자체의 다른 조례: {', '.join(last_candidates())})" if last_candidates() else ''))
 
     building = find_ordinance(n, r['org'], [f'{n} 건축 조례', f'{n} 건축조례'], base + r'건축조례')
     if building:
@@ -582,7 +767,20 @@ def region_entry(r: dict) -> dict:
         issues += more
         entry['building'] = building
     else:
-        issues.append('건축 조례를 찾지 못함' + (f" (같은 지자체의 다른 조례: {', '.join(LAST_CANDIDATES)})" if LAST_CANDIDATES else ''))
+        issues.append('건축 조례를 찾지 못함' + (f" (같은 지자체의 다른 조례: {', '.join(last_candidates())})" if last_candidates() else ''))
+
+    # 묶음 F2: 주차장 조례 — 부설주차장 설치기준(조례로 강화한 별표)
+    parking = find_ordinance(n, r['org'], [f'{n} 주차장 조례', f'{n} 주차장'], base + r'(시|군)?주차장(설치및관리운영|설치및관리|설치및운영|의설치및관리|설치·관리)?(에관한)?조례')
+    if parking:
+        root = body(parking['mst'])
+        arts = articles(root)
+        got = pick_articles(arts, r'부설주차장', 3000)
+        parking.update({'url': ordin_link(parking['mst']), 'articles': got, 'tables': refd_tables(root, ' '.join(a['text'] for a in got), 30000)})
+        if not got:
+            issues.append('주차장 조례에서 부설주차장 조문을 찾지 못함')
+        entry['parking'] = parking
+    else:
+        issues.append('주차장 조례를 찾지 못함' + (f" (같은 지자체의 다른 조례: {', '.join(last_candidates())})" if last_candidates() else ''))
 
     entry['issues'] = issues
     return entry
@@ -622,20 +820,30 @@ def main() -> int:
 
     prev_by_id = {r['id']: r for r in (prev or {}).get('regions', [])}
     only = {x.strip() for x in a.only.split(',') if x.strip()}
-    regions = []
-    for r in REGIONS:
-        if only and r['name'] not in only:
-            continue
+    todo = [r for r in REGIONS if not only or r['name'] in only]
+
+    # 지자체 넷씩 함께 받음 (요청마다 0.3초 쉬는 것은 그대로) — 한 곳이 실패해도 나머지는 계속
+    lock = threading.Lock()
+
+    def one(r: dict) -> dict:
         try:
             e = region_entry(r)
             e['checkedAt'] = now.isoformat(timespec='seconds')
-            regions.append(e)
-            print(f"{r['org']}: 건폐율 {len(e.get('urban', {}).get('bcr', {}))} · 용적률 {len(e.get('urban', {}).get('far', {}))} · 공지 {'있음' if e.get('building', {}).get('setback', {}).get('tableText') else '없음'} · 문제 {len(e['issues'])}")
+            with lock:
+                print(f"{r['org']}: 건폐율 {len(e.get('urban', {}).get('bcr', {}))} · 용적률 {len(e.get('urban', {}).get('far', {}))} · 공지 {'있음' if e.get('building', {}).get('setback', {}).get('tableText') else '없음'}"
+                  f" · 용도 별표 {len(e.get('urban', {}).get('zoneUses', []))} · 조경 {'있음' if e.get('building', {}).get('landscape') else '없음'} · 주차 {'있음' if e.get('parking') else '없음'} · 문제 {len(e['issues'])}")
+                for i in e['issues']:
+                    print('   -', i[:600])
+            return e
         except Exception as ex:  # 한 곳이 실패해도 나머지는 계속
             msg = redact(str(ex))
-            print(f"{r['org']}: 실패 — {msg}")
+            with lock:
+                print(f"{r['org']}: 실패 — {msg}")
             old = prev_by_id.get(r['id'])
-            regions.append({**old, 'stale': True, 'staleReason': msg} if old else {**{k: v for k, v in r.items()}, 'issues': [f'받지 못함: {msg}'], 'stale': True})
+            return {**old, 'stale': True, 'staleReason': msg} if old else {**{k: v for k, v in r.items()}, 'issues': [f'받지 못함: {msg}'], 'stale': True}
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        regions = list(pool.map(one, todo))  # 순서는 REGIONS 그대로
 
     try:
         trans = transition_note()
@@ -664,7 +872,8 @@ def main() -> int:
         'lawTables': tables,
         'regions': regions,
     }
-    json.dump(out, open(a.out, 'w', encoding='utf-8'), ensure_ascii=False, separators=(',', ':'))
+    with open(a.out, 'w', encoding='utf-8', errors='replace') as f:
+        json.dump(out, f, ensure_ascii=False, separators=(',', ':'))
     ok = sum(1 for r in regions if not r.get('stale'))
     print(f'지자체 {len(regions)}곳 중 {ok}곳 새로 받음 → {a.out}')
     return 0

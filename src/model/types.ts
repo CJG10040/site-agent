@@ -654,6 +654,8 @@ export interface LawState {
   basement?: number
   /** 연면적(㎡) */
   gfa?: number
+  /** 세대수 (공동주택·다가구·오피스텔, 2026-11-21 묶음 F1 — 주차 대수) */
+  units?: number
   /** 항목 id → 내 확인 상태 */
   checks?: Record<string, LawCheckState>
   /** 건축 가능 영역 (2026-11-21 묶음 E5) */
@@ -662,9 +664,9 @@ export interface LawState {
 
 /** 건축 가능 영역 입력 — 사용자 결정: 띄울 거리·최고 높이는 직접, 도로변은 앱이 찾고 눌러 고침, 계단은 층고/1m */
 export interface EnvelopeState {
-  /** 건축선(도로에 접한 변)에서 띄울 거리 m */
+  /** 건축선(도로에 접한 변)에서 띄울 거리 m — 비우면 조례 별표에서 고른 값 (묶음 F1) */
   setbackRoad?: number
-  /** 인접 대지경계선에서 띄울 거리 m */
+  /** 인접 대지경계선에서 띄울 거리 m — 비우면 조례 별표에서 고른 값 */
   setbackSide?: number
   /** 아는 최고 높이 m (지구·가로구역·지구단위계획) */
   maxHeight?: number

@@ -32,7 +32,8 @@ jobs:
       - uses: actions/checkout@v5
       - name: 조례 표 (지난 표를 받아 두고, 오래됐으면 새로)
         continue-on-error: true
-        timeout-minutes: 40
+        # 묶음 F2(2026-11-22): 용도지역 별표·조경·공개공지·주차장 조례까지 받아 오래 걸림 (지자체 넷씩 함께 받아 20분 안팎)
+        timeout-minutes: 60
         env:
           LAW_OC: ${{ secrets.LAW_OC }}
           FORCE: ${{ github.event_name == 'schedule' || inputs.law_refresh == true }}
@@ -42,6 +43,12 @@ jobs:
           ARGS="--out public/law/ordinances.json --prev $RUNNER_TEMP/prev.json --max-age-days 7"
           if [ "$FORCE" = "true" ]; then ARGS="$ARGS --force"; fi
           python3 tools/law/update_ordinances.py $ARGS
+      - name: 조례 표가 없으면 지난 표로 (받기가 실패하거나 시간이 넘었을 때)
+        if: always()
+        run: |
+          if [ ! -s public/law/ordinances.json ] && [ -s "$RUNNER_TEMP/prev.json" ]; then
+            mkdir -p public/law && cp "$RUNNER_TEMP/prev.json" public/law/ordinances.json && echo "지난 표를 그대로 씀"
+          fi
       - uses: actions/setup-node@v5
         with:
           node-version: 24

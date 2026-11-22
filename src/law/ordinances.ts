@@ -24,12 +24,28 @@ export interface UrbanOrdinance extends OrdinanceRef {
   bcr: Record<string, ZoneValue>
   far: Record<string, ZoneValue>
   from: string[]
+  /** 묶음 F2: 용도지역 안에서 건축할 수 있는(없는) 건축물 별표들 */
+  zoneUses?: { no: number; branch: number; title: string; text: string }[]
+  /** 묶음 F2: 경관·고도지구 조문 */
+  scenic?: ArticleBundle
+}
+
+/** 조문 몇 개 + 그 조문이 가리키는 별표 (묶음 F2) */
+export interface ArticleBundle {
+  articles: { article: string; title: string; text: string }[]
+  tables: Record<string, { title: string; text: string; why?: string }>
 }
 
 export interface BuildingOrdinance extends OrdinanceRef {
   setback?: { article: string; title: string; text: string; table?: string; tableText?: string }
   sunlight?: { article: string; title: string; text: string }
+  /** 묶음 F2: 대지 안의 조경 · 공개공지 */
+  landscape?: ArticleBundle
+  openSpace?: ArticleBundle
 }
+
+/** 묶음 F2: 주차장 조례 — 부설주차장 조문·별표 */
+export interface ParkingOrdinance extends OrdinanceRef, ArticleBundle {}
 
 export interface RegionTable {
   id: string
@@ -39,6 +55,7 @@ export interface RegionTable {
   districts?: string[]
   urban?: UrbanOrdinance
   building?: BuildingOrdinance
+  parking?: ParkingOrdinance
   issues: string[]
   checkedAt?: string
   stale?: boolean
