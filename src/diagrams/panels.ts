@@ -2,6 +2,7 @@
 // 각 도판은 그림(레이어)·범례·읽은 수치(summary)·출처와 한계(caption)를 돌려준다.
 
 import type { SymScale, SymStep, TypeScale } from './typeScale'
+import type { PastLayer } from '../past/georef'
 import { contours } from 'd3-contour'
 import { area, booleanPointInPolygon, feature, featureCollection, intersect, point } from '@turf/turf'
 import type { Position } from 'geojson'
@@ -61,9 +62,12 @@ export interface PanelCtx {
   sy: SymScale
   /** ⑪ 법규 검토 입력 (2026-11-21 묶음 E6 건축 가능 영역 도판) — 정하지 않았으면 null */
   law?: LawCtx | null
+  /** 과거와 현재 (2026-11-22): 옛 사진 도판에 그릴 그림 */
+  past?: { layer: PastLayer | null; year: number | null; name: string; roadsOver: boolean } | null
 }
 
-export type PanelGroup = '위치' | '땅의 조건' | '지형' | '주변 현황' | '연계와 접근' | '환경' | '사회·경제' | '현장' | '겹쳐 보기' | '종합' | '설계안 비교'
+/** '과거와 현재'는 ⑥ 목록(PANEL_GROUP_ORDER) 밖 — 새 단계에서만 그림 */
+export type PanelGroup = '위치' | '땅의 조건' | '지형' | '주변 현황' | '연계와 접근' | '환경' | '사회·경제' | '현장' | '겹쳐 보기' | '종합' | '설계안 비교' | '과거와 현재'
 
 export interface PanelDef {
   id: string
@@ -741,7 +745,7 @@ export const PANELS: PanelDef[] = [
           np ? `가장 가까운 공원·녹지: ${np.p.name} (대지 경계에서 ${np.d === 0 ? '대지에 걸침' : dist(np.d)})` : '반경 안에 도시계획 공원·녹지 없음',
           nr ? `가장 가까운 하천: ${nr.p.name} (${dist(nr.d)})` : '반경 안에 하천 없음',
         ],
-        caption: `도시계획시설 공원·녹지·광장, 하천망(브이월드) · ${c.date} 수집 · 지정된 녹지만 표시 (단지 조경·가로수는 없음)`,
+        caption: `도시계획시설 공원·녹지·광장, 하천(도시계획 하천 구역) · ${c.date} 수집 · 지정된 녹지만 표시 (단지 조경·가로수는 없음) · 브이월드 하천망은 옛 물길이 섞여 뺌`,
       }
     },
   },

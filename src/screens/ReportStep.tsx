@@ -7,7 +7,10 @@ import { ORDERED_PANELS, panelNumber } from '../diagrams/panels'
 import { panelFileName, panelLabel, settingsOf } from '../diagrams/render'
 import { evidenceOf, evidenceText, hasEvidence, needsEvidence, synthCtxOf } from '../diagrams/synth'
 import { symOf, SYMS, TONES } from '../diagrams/synthSymbols'
-import { useDiagrams, visiblePanelIds } from '../diagrams/useDiagrams'
+import { useDiagrams, visiblePanelIds, type CachedPanel } from '../diagrams/useDiagrams'
+import { svgBlob } from '../diagrams/export'
+import type { PanelDef } from '../diagrams/panels'
+import { loadPastOutputs, pastOutputIds, type PastOutput } from '../past/outputs'
 import { formatObservedAt, timeBand } from '../lib/photos'
 import { observationsOf } from '../model/observations'
 import { downloadBlob, nowIso } from '../model/project'
@@ -143,6 +146,23 @@ export default function ReportStep({ project, update, config }: Props) {
   } = useDiagrams(project, config.key, includedIds)
   const diagrams = ORDERED_PANELS.filter((p) => includedIds.includes(p.id) && diagramPanels[p.id] && !diagramPanels[p.id].out.empty)
   const diagramMissing = diagramStale.filter((id) => !diagramPanels[id]).length
+  // 과거와 현재 (2026-11-22): 그 단계에서 그려 저장해 둔 그림 (넣기를 끈 것은 빼고)
+  const [pastOuts, setPastOuts] = useState<PastOutput[]>([])
+  useEffect(() => {
+    void loadPastOutputs(project.id).then(setPastOuts)
+  }, [project.id])
+  const pastShown = useMemo(() => {
+    const ids = pastOutputIds(project, diagramData)
+    const ex = new Set(project.past?.exclude ?? [])
+    return ids.filter((id) => !ex.has(id)).flatMap((id) => pastOuts.filter((o) => o.id === id))
+  }, [pastOuts, project, diagramData])
+  const pastUrls = useMemo(() => Object.fromEntries(pastShown.map((o) => [o.id, URL.createObjectURL(svgBlob(o.svg))])), [pastShown])
+  useEffect(() => () => Object.values(pastUrls).forEach((u) => URL.revokeObjectURL(u)), [pastUrls])
+  // 보드에도 같은 그림 (번호 없이)
+  const pastDefs: PanelDef[] = pastShown.map((o) => ({ id: o.id, title: o.title.replace(/^과거와 현재 · /, '과거와 현재 · '), group: '과거와 현재', needs: '', render: () => ({ layers: [], legend: [], summary: [], caption: '' }) }))
+  const pastPanels: Record<string, CachedPanel> = Object.fromEntries(
+    pastShown.map((o) => [o.id, { id: o.id, svg: o.svg, out: { layers: [], legend: [], summary: o.summary, caption: o.title }, url: pastUrls[o.id], key: o.key, mode: 'n' as const }]),
+  )
 
   useEffect(() => {
     const onAfter = () => {
@@ -233,7 +253,7 @@ export default function ReportStep({ project, update, config }: Props) {
         </Suspense>
       ) : view === 'board' ? (
         <Suspense fallback={<p className="muted">보드를 여는 중…</p>}>
-          <BoardView project={project} update={update} defs={diagrams} panels={diagramPanels} busy={diagramsBusy} data={diagramData} terrain={terrain} />
+          <BoardView project={project} update={update} defs={[...diagrams, ...pastDefs]} panels={{ ...diagramPanels, ...pastPanels }} busy={diagramsBusy} data={diagramData} terrain={terrain} />
         </Suspense>
       ) : (
       <>
@@ -396,6 +416,22 @@ export default function ReportStep({ project, update, config }: Props) {
             })}
           </div>
           {diagrams.some((d) => d.id === 'synth') && <SynthEvidenceTable project={project} />}
+          {pastShown.length > 0 && (
+            <div className="report-past">
+              <h3>과거와 현재</h3>
+              <div className="report-diagrams">
+                {pastShown.map((o) => (
+                  <figure key={o.id} className="report-diagram wide">
+                    <img src={pastUrls[o.id]} alt={o.title} />
+                    <figcaption>
+                      <strong>{o.title}</strong>
+                      {o.summary[0] ? <span className="muted"> — {o.summary[0]}</span> : null}
+                    </figcaption>
+                  </figure>
+                ))}
+              </div>
+            </div>
+          )}
           {(editsOf(project).hides.length > 0 || editsOf(project).labels.length > 0) && (
             <div className="report-synth-ev">
               <h3>

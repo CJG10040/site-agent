@@ -202,7 +202,7 @@ export function composePanel(meta: ComposeMeta, out: PanelOutput, frame: Frame, 
     nf ? '' : north,
     out.noScale || nf ? '' : scale,
     // 제목·부제·출처는 보통 도판에만 (패널 모드는 다이어그램만 — 2026-11-21) — 글자 단계 밖
-    `<g id="제목"><text x="40" y="1012" font-size="34" font-weight="600" fill="${pal.ink}"><tspan fill="${pal.subtle}" font-weight="400">${String(meta.number).padStart(2, '0')}  </tspan>${esc(meta.title)}</text>`,
+    `<g id="제목"><text x="40" y="1012" font-size="34" font-weight="600" fill="${pal.ink}">${meta.number > 0 ? `<tspan fill="${pal.subtle}" font-weight="400">${String(meta.number).padStart(2, '0')}  </tspan>` : ''}${esc(meta.title)}</text>`,
     `<text x="40" y="1046" font-size="17" fill="${pal.subtle}">${esc(meta.subtitle)}</text></g>`,
     `<g id="범례">${out.legendTitle ? `<text x="40" y="${legendTop - 10}" font-size="${ty.v('legend', 16)}" font-weight="600" fill="${pal.ink}">${esc(out.legendTitle)}</text>` : ''}${legendSvg}</g>`,
     `<g id="출처">${captionLines.map((l, i) => `<text x="40" y="${captionTop + 14 + i * 19}" font-size="13" fill="${pal.subtle}">${esc(l)}</text>`).join('')}</g>`,

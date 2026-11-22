@@ -170,7 +170,7 @@ export default function BoardView({ project, update, defs, panels, busy, data, t
               if (!def) return null
               return (
                 <li key={id}>
-                  <span className="num">{String(panelNumber(id)).padStart(2, '0')}</span>
+                  <span className="num">{panelNumber(id) > 0 ? String(panelNumber(id)).padStart(2, '0') : '·'}</span>
                   <span className="t" title={def.title}>
                     {def.title}
                   </span>

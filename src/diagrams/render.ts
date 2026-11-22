@@ -69,7 +69,7 @@ export async function renderPanel(
   vworldKey: string,
   date: string,
   terrain: TerrainAnalysis | null = null,
-  extra: { synth?: SynthCtx | null; labels?: LabelEdit[]; scenarios?: { id: string; name: string; d: DiagramData; editedAt?: string }[]; panel?: PanelRules | null; law?: LawCtx | null } = {},
+  extra: { synth?: SynthCtx | null; labels?: LabelEdit[]; scenarios?: { id: string; name: string; d: DiagramData; editedAt?: string }[]; panel?: PanelRules | null; law?: LawCtx | null; past?: PanelCtx['past'] } = {},
 ): Promise<RenderedPanel> {
   // 겹쳐 보기는 아래 도판의 틀을 빌림
   const borrow = def.frameFrom?.(settings)
@@ -83,7 +83,7 @@ export async function renderPanel(
   // 패널 모드(2026-11-21 묶음 D2): 규칙에서 글자·선 단계 배율. 보통 도판은 모두 1
   const rs = extra.panel ? ruleScale(extra.panel) : null
   const ty = rs ? rs.ty : UNIT_TYPE
-  const ctx: PanelCtx = { d: data, f: frame, pal, st: settings, vworldKey, date, t: terrain, synth: extra.synth ?? null, ty, sy: rs ? rs.sy : UNIT_SYM, law: extra.law ?? null }
+  const ctx: PanelCtx = { d: data, f: frame, pal, st: settings, vworldKey, date, t: terrain, synth: extra.synth ?? null, ty, sy: rs ? rs.sy : UNIT_SYM, law: extra.law ?? null, past: extra.past ?? null }
   try {
     // 종합 도판은 다른 도판의 그림을 같은 틀로 다시 그려 바탕에 깔 수 있다
     ctx.basePanel = async (id) => {

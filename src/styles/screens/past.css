@@ -1,0 +1,124 @@
+/* 과거와 현재 (2026-11-22) */
+.past-list {
+  list-style: none;
+  padding: 0;
+  margin: 12px 0 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 10px;
+}
+.past-list li {
+  display: flex;
+  gap: 10px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+.past-list li.on {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+.past-thumb {
+  flex: 0 0 88px;
+  height: 88px;
+  padding: 0;
+  border: 0;
+  background: var(--paper, #eee);
+  cursor: pointer;
+  overflow: hidden;
+  border-radius: var(--r-xs);
+}
+.past-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.past-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.past-meta input[type='text'] {
+  width: 100%;
+}
+.past-meta input[type='number'] {
+  width: 6em;
+}
+.past-pick {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin: 8px 0;
+}
+@media (max-width: 760px) {
+  .past-pick {
+    grid-template-columns: 1fr;
+  }
+}
+.panzoom svg {
+  width: 100%;
+  height: 380px;
+  display: block;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: #e9e7e1;
+  touch-action: none;
+  cursor: crosshair;
+}
+.panzoom-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+.past-preview img {
+  display: block;
+  max-width: 560px;
+  width: 100%;
+  margin-top: 6px;
+  border: 1px solid var(--line);
+  background: #fff;
+}
+.past-settings {
+  flex-wrap: wrap;
+  gap: 12px 20px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.past-outputs {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.past-out {
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+.past-out.changed {
+  outline: 2px dashed var(--accent);
+  outline-offset: -2px;
+}
+.past-out img {
+  display: block;
+  width: 100%;
+  background: #fff;
+}
+.changed-badge-inline {
+  padding: 0 4px;
+  border-radius: var(--r-xs);
+  background: var(--accent);
+  color: #fff;
+  font-weight: 400;
+}
+.report-past h3 {
+  margin-top: 16px;
+}
+.report-diagram.wide {
+  grid-column: 1 / -1;
+}

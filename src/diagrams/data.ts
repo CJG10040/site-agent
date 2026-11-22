@@ -426,6 +426,8 @@ export interface DiagramData {
   facilities: Area<{ type: string }>[]
   /** src (하천): wkmstrm = 브이월드 하천망(물 면), upis = 도시계획 하천(구역) */
   parks: Area<{ kind: 'park' | 'river'; src?: 'wkmstrm' | 'upis' }>[]
+  /** 브이월드 하천망 (옛 물길이 섞임 — 도판·모형에는 안 씀, 과거와 현재 비교용) */
+  oldRivers: { geom: Areal; name: string }[]
   stations: Pt[]
   stops: Pt[]
   statsAreas: Area<{ density: number | null; year: number | null }>[]
@@ -898,8 +900,11 @@ export function buildDiagramData(project: Project): DiagramData | null {
     if (f.properties.dgm_nm !== undefined && !/공원|녹지|광장|유원지|공지/.test(`${name}${str(f.properties.mls_nam)}`)) continue
     parks.push({ geom: f.geometry, name: name || '공원·녹지', layer: 'park', extra: { kind: 'park' } })
   }
+  // 브이월드 하천망은 옛 물길이 섞여 있어(2026-11-22 사용자 확인: 유스퀘어 광주천이 지금 건물 자리까지 덮음) 도판·모형에서 빼고
+  // '과거와 현재' 단계의 옛 물길 참고로만 따로 둠
+  const oldRivers: DiagramData['oldRivers'] = []
   for (const f of feats('LT_C_WKMSTRM')) {
-    if (isAreal(f.geometry)) parks.push({ geom: f.geometry, name: str(f.properties.riv_nm) || '하천', layer: 'river', extra: { kind: 'river', src: 'wkmstrm' } })
+    if (isAreal(f.geometry)) oldRivers.push({ geom: f.geometry, name: str(f.properties.riv_nm) || '하천' })
   }
   for (const f of feats('LT_C_UPISUQ156')) {
     const name = str(f.properties.dgm_nm)
@@ -1021,6 +1026,7 @@ export function buildDiagramData(project: Project): DiagramData | null {
     districts,
     facilities,
     parks,
+    oldRivers,
     stations,
     stops,
     statsAreas,

@@ -5,7 +5,7 @@ import type { Geometry, Polygon, MultiPolygon } from 'geojson'
 
 export const SCHEMA_VERSION = 1
 
-export type StepId = 'brief' | 'question' | 'site' | 'data' | 'facts' | 'diagrams' | 'observe' | 'interpret' | 'report' | 'model' | 'law'
+export type StepId = 'brief' | 'question' | 'site' | 'data' | 'facts' | 'diagrams' | 'observe' | 'interpret' | 'report' | 'model' | 'law' | 'past'
 
 /** F-02 과제 맥락 + 6.1 시작 입력 */
 export interface Brief {
@@ -271,6 +271,8 @@ export interface Project {
   designs?: DesignScheme[]
   /** ⑪ 법규 검토 (2026-11-21 묶음 E3) */
   law?: LawState
+  /** 과거와 현재 (2026-11-22 사용자 결정: 새 단계 — 올린 옛 항공사진 + 앱 자료로 본 과거) */
+  past?: PastState
   /** 보는 안: 설계안 id. 없으면 현황(대지 안 건물을 비운 빈 대지) */
   scenario?: string | null
 }
@@ -657,6 +659,31 @@ export interface LawCheckState {
   status: 'todo' | 'ok' | 'na'
   memo?: string
   at: string
+}
+
+/** 올린 옛 항공사진·지도 한 장 (그림은 photos 표에, 위치는 세 점) */
+export interface PastImage {
+  /** photos 표의 id */
+  id: string
+  /** 찍은 해 (모르면 null) */
+  year: number | null
+  name: string
+  /** 저장한 그림 크기(px) */
+  width: number
+  height: number
+  /** 세 점: 사진 픽셀 [u, v] ↔ 지금 지도 경위도 [lon, lat] */
+  gcps: { img: [number, number]; ll: [number, number] }[]
+  addedAt: string
+}
+
+export interface PastState {
+  images: PastImage[]
+  /** 나란히 보기의 지금 쪽: 항공사진(브이월드) / 지도 그림 */
+  present?: 'aerial' | 'map'
+  /** 옛 사진 위에 지금 도로 선 (길의 변화) */
+  roadsOver?: boolean
+  /** 리포트에 넣을 그림 id (past:pair:사진id · past:oldRiver · past:growth) — 없으면 그린 것 모두 */
+  exclude?: string[]
 }
 
 export interface LawState {

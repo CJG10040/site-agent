@@ -21,6 +21,7 @@ import QuestionStep from './screens/QuestionStep'
 import ReportStep from './screens/ReportStep'
 import ModelStep from './screens/ModelStep'
 import LawStep from './screens/LawStep'
+import PastStep from './screens/PastStep'
 import SiteStep from './screens/SiteStep'
 import { loadKeys, saveKeys, type ApiKeys } from './sources/keys'
 import { loadConfig, saveConfig, type BaseMap, type VWorldConfig } from './sources/vworld'
@@ -194,6 +195,7 @@ export default function App() {
                 {step === 'report' && <ReportStep project={project} update={update} config={config} />}
                 {step === 'model' && <ModelStep project={project} update={update} config={config} keys={keys} onGoData={() => go('data')} onGoSite={() => go('site')} />}
                 {step === 'law' && <LawStep project={project} update={update} onGoData={() => go('data')} onGoDiagrams={() => go('diagrams')} />}
+                {step === 'past' && <PastStep project={project} update={update} config={config} onGoData={() => go('data')} />}
               </main>
             </div>
           )}

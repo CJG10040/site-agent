@@ -31,7 +31,8 @@ interface ExportFile {
 }
 
 function photoIdsOf(project: Project): string[] {
-  return project.cards.flatMap((c) => c.observation?.photoIds ?? [])
+  // 과거와 현재의 옛 사진도 같은 표에 있어 함께 옮김 (2026-11-22)
+  return [...project.cards.flatMap((c) => c.observation?.photoIds ?? []), ...(project.past?.images ?? []).map((i) => i.id)]
 }
 
 export async function exportProjectFile(project: Project): Promise<{ filename: string; blob: Blob; photoCount: number }> {
@@ -107,6 +108,7 @@ export async function importProjectFile(
     photoMap = new Map(photos.map((p) => [p.id, newId()]))
     target = {
       ...project,
+      past: project.past ? { ...project.past, images: project.past.images.map((i) => ({ ...i, id: photoMap.get(i.id) ?? i.id })) } : project.past,
       id: newId(),
       brief: { ...project.brief, projectName: `${project.brief.projectName || '이름 없는 프로젝트'} (사본)` },
       cards: project.cards.map((c) =>

@@ -88,6 +88,8 @@ export const STEPS: { id: StepId; label: string; phase: number; group?: string }
   { id: 'model', label: '3D 모형', phase: 7, group: '모형 만들기' },
   // 2026-11-21 묶음 E 사용자 결정: 새 단계 ⑪ 법규 검토
   { id: 'law', label: '법규 검토', phase: 7, group: '설계 검토' },
+  // 2026-11-22 사용자 결정: 새 단계 — 과거와 현재 (옛 항공사진 · 옛 물길 · 시기별 시가지 · 길의 변화)
+  { id: 'past', label: '과거와 현재', phase: 7, group: '시간의 변화' },
 ]
 
 /** 대지 경계가 바뀌었는지 비교하기 위한 짧은 식별값 */
@@ -160,6 +162,11 @@ export function stepStatus(project: Project, step: StepId): { done: boolean; not
       const checks = Object.values(project.law?.checks ?? {})
       const done = checks.filter((c) => c.status !== 'todo').length
       return { done: !!project.law?.use && checks.length > 0 && checks.every((c) => c.status !== 'todo'), note: project.law?.use ? `확인 ${done}` : '' }
+    }
+    case 'past': {
+      const imgs = project.past?.images ?? []
+      const set = imgs.filter((i) => i.gcps.length >= 3).length
+      return { done: set > 0, note: imgs.length ? `사진 ${imgs.length}장${set < imgs.length ? ` · 맞춤 ${set}` : ''}` : '' }
     }
     default:
       return { done: false, note: '' }
